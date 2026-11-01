@@ -1,4 +1,4 @@
-/* Chùa Linh Ứng 3D — khung 1080x1920 (9:16), HUD và nhãn tên Phật tử */
+/* Chùa Thiên Mụ 3D — khung 1080x1920 (9:16), HUD và nhãn tên Phật tử */
 :root {
   --lacquer: #7c1912;
   --lacquer-deep: #3d0a07;
@@ -82,6 +82,7 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
   top: 0;
   will-change: transform;
   white-space: nowrap;
+  transform-origin: 0 0;
 }
 .tag-inner {
   transform: translate(-50%, -100%);
@@ -113,7 +114,39 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
   background: #fff1c4;
   box-shadow: 0 0 16px 4px rgba(255, 210, 110, 0.85);
 }
-.tag.far .tag-inner { font-size: 16px; padding: 2px 8px 2px 6px; }
+.tag.lotus .tag-inner { border-color: #e0607a; }
+.tag.lotus .tag-inner::before { background: linear-gradient(135deg, #ffb3c4, #e0466a); }
+.tag.gold .tag-inner::before { background: linear-gradient(135deg, #fff2b0, #d99a1e); box-shadow: 0 0 6px #ffd24a; }
+/* Hàng đầu (top 8 dâng lễ): thẻ vàng có số hạng */
+.tag.vip .tag-inner {
+  background: linear-gradient(180deg, #fff3c8, #f2cf72);
+  border: 2px solid #b8860b;
+  color: #4a2400;
+  box-shadow: 0 0 12px rgba(255, 200, 80, 0.75), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+/* Người đứng chờ ngoài sân */
+.tag.waiting .tag-inner { background: rgba(225, 232, 240, 0.9); border-color: #6f8ba4; color: #22303c; }
+
+.fixed-label { position: absolute; left: 0; top: 0; will-change: transform; transform-origin: 0 0; z-index: 3; }
+.fixed-label-inner {
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  padding: 5px 14px;
+  border-radius: 14px;
+  font-size: 21px;
+  font-weight: 700;
+}
+.reserved-label .fixed-label-inner {
+  background: rgba(70, 30, 0, 0.72);
+  color: #ffe7a0;
+  border: 1.5px dashed rgba(255, 210, 110, 0.85);
+}
+.wait-sign .fixed-label-inner {
+  background: rgba(30, 40, 70, 0.82);
+  color: #e6efff;
+  border: 1.5px solid rgba(160, 190, 255, 0.7);
+  font-size: 24px;
+}
 
 /* Bong bóng lời nói */
 .bubble {
@@ -409,3 +442,105 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
   font-size: 28px;
   text-align: center;
 }
+
+/* --------------------------------------------------------------------------
+   BẢNG DÂNG LỄ (phải) + BĂNG-RÔN QUÀ + THÔNG BÁO NHỎ
+   -------------------------------------------------------------------------- */
+.gift-board {
+  position: absolute;
+  right: 22px;
+  top: 190px;
+  width: 300px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(70, 40, 6, 0.86), rgba(40, 20, 4, 0.86));
+  border: 2px solid rgba(255, 210, 110, 0.7);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+  overflow: hidden;
+}
+.gift-board-head {
+  text-align: center;
+  font-family: 'Noto Serif', serif;
+  font-weight: 900;
+  font-size: 26px;
+  color: #ffe7a0;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid rgba(255, 210, 110, 0.35);
+  background: linear-gradient(90deg, rgba(140, 90, 10, 0.5), rgba(200, 140, 30, 0.35), rgba(140, 90, 10, 0.5));
+}
+.gift-list { list-style: none; padding: 4px 10px 6px; }
+.gift-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 18px;
+  border-bottom: 1px dashed rgba(255, 210, 110, 0.18);
+}
+.gift-list li:last-child { border-bottom: none; }
+.gift-list li.fresh { animation: giftFresh 1.6s ease; }
+@keyframes giftFresh { 0% { background: rgba(255, 220, 120, 0.5); } 100% { background: transparent; } }
+.gift-ava { flex: none; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1.5px solid #f2c35b; background: #6f8ba4; }
+.gift-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.gift-who small { display: block; font-weight: 500; font-size: 15px; color: #f3dcaa; overflow: hidden; text-overflow: ellipsis; }
+.gift-coins { flex: none; color: #ffe08a; font-weight: 800; font-size: 17px; }
+.gift-rank { color: #ffd24a; margin-right: 2px; }
+.gift-empty { font-size: 17px !important; color: #f3dcaa; line-height: 1.35; }
+
+.gift-banner {
+  position: absolute;
+  left: 50%;
+  top: 470px;
+  transform: translate(-50%, -30px) scale(0.85);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 560px;
+  max-width: 900px;
+  padding: 14px 30px 14px 16px;
+  border-radius: 60px;
+  background: linear-gradient(90deg, rgba(120, 50, 0, 0.94), rgba(190, 120, 20, 0.94), rgba(120, 50, 0, 0.94));
+  border: 3px solid #ffe08a;
+  box-shadow: 0 0 40px rgba(255, 200, 90, 0.7);
+  transition: opacity 0.4s, transform 0.45s cubic-bezier(.2, 1.4, .5, 1);
+  z-index: 22;
+  pointer-events: none;
+}
+.gift-banner.visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.gift-banner.big { border-width: 4px; box-shadow: 0 0 70px rgba(255, 210, 100, 0.95); }
+.gift-banner-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 3px solid #fff1c0; background: #6f8ba4; flex: none; }
+.gift-banner-title { font-family: 'Noto Serif', serif; font-weight: 900; font-size: 34px; color: #fff4c8; text-shadow: 0 2px 6px rgba(60, 20, 0, 0.8); white-space: nowrap; }
+.gift-banner-sub { font-size: 23px; font-weight: 700; color: #ffe6a8; }
+
+.toast-stack {
+  position: absolute;
+  left: 50%;
+  top: 196px;
+  transform: translateX(-50%);
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 12;
+  pointer-events: none;
+}
+.toast {
+  max-width: 400px;
+  padding: 7px 16px;
+  border-radius: 20px;
+  background: rgba(40, 12, 4, 0.8);
+  border: 1.5px solid rgba(255, 210, 120, 0.55);
+  color: #fff1d6;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  animation: toastIn 0.35s ease both;
+}
+.toast.out { animation: toastOut 0.35s ease forwards; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(-10px); } }
+
+.status-pill, .hud-counts { white-space: nowrap; flex-shrink: 0; }
+.hud-counts span { white-space: nowrap; }

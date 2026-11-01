@@ -1,4 +1,4 @@
-# 🪷 Chùa Linh Ứng Online — TikTok Live RPC (9:16 Interactive Buddhist Sanctuary)
+# 🪷 Chùa Thiên Mụ Online — TikTok Live RPC (9:16 Interactive Buddhist Sanctuary)
 
 Hệ thống phát trực tiếp tương tác (**Interactive TikTok Live Stream & JSON-RPC 2.0**) chuẩn khung dọc **9:16 (`1080×1920`)** dành cho **OBS Studio / TikTok Live Studio**, chạy siêu nhẹ trên **Bun.js** và tích hợp giọng đọc AI tiếng Việt **ZeroTTS (`zeroweight-ai/ZeroTTS`)**.
 
@@ -41,13 +41,17 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
   - Chặn tự động các ký tự Cuneiform (`𒐫`), chữ Ả Rập gây lag, Braille, Zalgo, bình luận chỉ toàn dấu chấm (`...`) hoặc từ ngữ phản cảm.
   - Tự động chuẩn hóa Unicode (`NFKC` → `NFC`) chuyển tên kiểu chữ toán học về tiếng Việt sạch trước khi đọc TTS.
 
-### 🛕 Chánh Điện 3D low-poly — Đạo Tràng Phật tử áo lam (`/temple3d.html`)
+### 🛕 Chùa Thiên Mụ 3D — Đại Hùng Bảo Điện & Đạo Tràng Phật tử áo lam (`/temple3d.html`)
 - Mở `http://localhost:3000/temple3d.html` (OBS: `http://localhost:3000/temple3d.html?obs=1`, khung 1080×1920). Mã nguồn: `public/temple3d.html`, `public/js/temple3d.js`, `public/css/temple3d.css`.
-- Toàn bộ cảnh dựng bằng code Three.js (không file model): sàn gỗ, thảm đỏ, cột son, hoành phi “CHÙA LINH ỨNG”, tượng Phật A Di Đà vàng trên tòa sen + hào quang, lư hương đồng có nhang và khói, chuông, mõ, đèn lồng.
-- **Đạo tràng 40 chỗ** (`hall.roster`): mỗi người xem tương tác là một Phật tử áo lam quỳ trên bồ đoàn sen đỏ, có thẻ tên; chỗ trống hiện bồ đoàn mờ. Lệnh bình luận (`hall.action`): “lạy” → lạy 3 lạy, “chào” → chắp tay gật đầu, “niệm Phật” → hào quang vàng + chữ “Nam Mô A Di Đà Phật”, bình luận thường → bong bóng lời nói (~4,5 giây, tối đa 6 bong bóng).
-- **Nghi lễ** (`temple.event`): thắp hương / cầu nguyện / dâng quà → Phật tử đó đứng dậy đi dọc thảm lên lư hương, lạy và bùng hương (cầu nguyện thả thêm đèn hoa đăng mang lời nguyện); Đại Lễ → mưa cánh sen + hào quang rực + camera tiến vào; xin xăm → tờ quẻ hiện đúng lúc giọng đọc bắt đầu; thỉnh chuông → sóng chuông loang; gõ mõ → cả đạo tràng nhún nhẹ.
-- Âm thanh và giọng đọc dùng chung `public/js/audio.js` với trang Live (bấm vào trang 1 lần để mở khóa âm thanh trên trình duyệt).
-- Hiệu năng: 40 Phật tử chỉ tốn vài draw call (InstancedMesh), giới hạn 30 FPS, tự dừng khi tab ẩn, pixel ratio 1, không đổ bóng. Tham số: `?q=0.75` giảm độ phân giải render, `?aa=0` tắt khử răng cưa cho máy yếu.
+- Toàn bộ cảnh + texture dựng bằng code Three.js lúc khởi động (không file model): điện thờ sơn son thếp vàng, sàn gỗ bóng, thảm hồi văn hoa sen, tượng Phật A Di Đà kiết già ôm hoa sen trên tòa sen nhiều tầng + hào quang chạm lửa, lư hương, chuông, mõ; ngoài sân có cổng Tam Quan và **tháp Phước Duyên bát giác 7 tầng**. Vật liệu PBR + môi trường phản chiếu (RoomEnvironment), 1 đèn đổ bóng cho vùng đạo tràng.
+- **Phật tử có khớp tay chân**: đi bộ (bước chân khớp tốc độ), quỳ ngồi trên gót, chắp tay, lạy 3 lạy (tay lên trán → rạp người, tay và trán chạm sàn), đứng dậy. Mỗi bộ phận là 1 InstancedMesh dùng chung (~12 draw call cho cả đạo tràng).
+- **Chỗ ngồi** (`hall.roster`): ghế 0..7 = hàng đầu giữ chỗ cho top 8 người tặng quà (đài sen vàng; trống thì hiện "🎁 Giữ chỗ dâng lễ"), ghế 8..39 = chỗ thường (ghế 8 gần camera nhất). `tier`: đệm gấm / đài sen hồng (đã tặng quà) / đài sen vàng phát sáng (≥ 100 xu).
+- **Người mới** đi từ cổng Tam Quan qua sân, lên bậc, theo thảm về chỗ rồi quỳ; người rời đi bộ ra cổng. Hết chỗ: người chờ (`waiting`) đứng ngoài sân có tên, kèm biển "+N Phật tử đang chờ vào". `promote` = đi lên hàng đầu với ánh vàng. Khách hành hương (`hallStatus: 'guest'`) vào làm lễ rồi ra về; người vừa vào live (`hall.arrive`) đi ngang sân lạy vọng; đám đông vô danh ngoài sân theo số người xem.
+- **Góc máy**: `hall`, `side`, `altar` (nhìn thẳng mặt đạo tràng), `top`, `buddha`, `entrance`/theo người mới. Đạo diễn tự đổi góc mỗi ~13 giây và cắt cảnh theo sự kiện. `?cam=<tên>` khóa góc máy, `?director=0` tắt tự đổi.
+- Lệnh bình luận (`hall.action`): “lạy”, “chào”, “niệm Phật”, bình luận thường → bong bóng (không chồng lên nhau, tối đa 6). Nghi lễ (`temple.event`): dâng hương / cầu nguyện / dâng quà → lên lư hương lạy; Đại Lễ → mưa cánh sen + máy quay cận tượng Phật; xin xăm → tờ quẻ đúng lúc giọng đọc bắt đầu; chuông, mõ.
+- **Bảng Dâng Lễ** (`giftFeed`) + băng-rôn quà lần lượt từng món; lời cảm tạ quà tặng được chen lên đọc ngay sau câu đang đọc (`ttsJump`).
+- Âm thanh + giọng đọc dùng chung `public/js/audio.js` (bấm vào trang 1 lần để mở khóa âm thanh trên trình duyệt).
+- Hiệu năng: giới hạn 30 FPS, dừng khi tab ẩn, pixel ratio 1. Tham số: `?q=0.75` giảm độ phân giải render (q < 1 tự tắt đổ bóng), `?shadows=0`, `?aa=0` tắt khử răng cưa cho máy yếu. OBS: bật *Use hardware acceleration in Browser Sources*.
 
 ---
 
@@ -162,6 +166,8 @@ curl -X POST http://localhost:3000/rpc \
 - `temple.updateSettings`: Cập nhật âm lượng nhạc nền (`musicVolume`), giọng đọc (`ttsVolume`), bật/tắt TTS.
 - `temple.resetMerit`: Đặt lại bảng thống kê Công Đức.
 - `live.connect` / `live.disconnect`: Kết nối / Ngắt kết nối phòng TikTok Live.
+- `live.setAutoSim`: Bật/tắt tự động giả lập đông người (`enabled`).
+- `live.simulateJoin`: Giả lập 1 người xem vừa vào live (`user`, `uniqueId`, `avatar`) → đi ngang sân chùa (`hall.arrive`).
 
 ---
 

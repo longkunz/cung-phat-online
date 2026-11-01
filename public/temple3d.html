@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chùa Linh Ứng 3D — Chánh Điện Đạo Tràng</title>
+  <title>Chùa Thiên Mụ 3D — Chánh Điện Đạo Tràng</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Noto+Serif:wght@700;900&display=swap" rel="stylesheet">
@@ -45,6 +45,23 @@
           </ol>
         </aside>
 
+        <aside class="gift-board" id="giftBoard">
+          <div class="gift-board-head">📜 Bảng Dâng Lễ</div>
+          <ol class="gift-list" id="giftList">
+            <li class="gift-empty">🎁 Tặng quà để được ngồi hàng đầu trên đài sen</li>
+          </ol>
+        </aside>
+
+        <!-- Băng-rôn quà tặng (lần lượt từng món) + thông báo nhỏ xếp chồng -->
+        <div class="gift-banner" id="giftBanner">
+          <img class="gift-banner-avatar" id="giftBannerAvatar" alt="" referrerpolicy="no-referrer" />
+          <div class="gift-banner-text">
+            <div class="gift-banner-title" id="giftBannerTitle"></div>
+            <div class="gift-banner-sub" id="giftBannerSub"></div>
+          </div>
+        </div>
+        <div class="toast-stack" id="toastStack"></div>
+
         <!-- Đại lễ -->
         <div class="grand-banner" id="grandBanner">
           <div class="grand-title" id="grandTitle">ĐẠI LỄ</div>
@@ -68,6 +85,7 @@
   </div>
 
   <script src="/js/audio.js"></script>
+  <script type="importmap">{ "imports": { "three": "/vendor/three/three.module.min.js" } }</script>
   <script type="module" src="/js/temple3d.js"></script>
 </body>
 </html>

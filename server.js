@@ -15,7 +15,7 @@ const STATE_FILE = path.join(DATA_DIR, 'merit-state.json');
 fs.mkdirSync(TTS_CACHE_DIR, { recursive: true });
 
 // ============================================================================
-// 1. BỘ 18 QUẺ LINH XĂM CHÙA LINH ỨNG (FORTUNE STICKS DECK)
+// 1. BỘ 18 QUẺ LINH XĂM CHÙA THIÊN MỤ (FORTUNE STICKS DECK)
 // ============================================================================
 const FORTUNE_DECK = [
   {
@@ -1249,6 +1249,16 @@ function hallArrive(uid, name, avatar) {
   arrivalsSinceLast = 0;
 }
 
+// Bình luận thường (+1 CĐ) không phát temple.event -> gom lại phát temple.state tối đa 1 lần / 2 giây
+let stateBroadcastTimer = null;
+function scheduleStateBroadcast() {
+  if (stateBroadcastTimer) return;
+  stateBroadcastTimer = setTimeout(() => {
+    stateBroadcastTimer = null;
+    broadcastNotification('temple.state', getPublicState());
+  }, 2000);
+}
+
 // Lệnh ngắn điều khiển Phật tử của chính mình (không đọc TTS, không chiếm sân khấu chính)
 const HALL_COMMANDS = [
   { action: 'bow', re: /(^|\s)(lạy|lay|lễ phật|le phat|đảnh lễ|danh le)(\s|$)/ },
@@ -1307,6 +1317,7 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     hallEngage(dev.uniqueId, dev.name, dev.avatar, 'comment');
     hallAction(dev.uniqueId, command ? command.action : 'say', cleanWish, dev);
     saveState();
+    scheduleStateBroadcast(); // để Bảng Công Đức / tổng công đức cập nhật cả khi chỉ bình luận thường
     return { hall: { uid: dev.uniqueId, action: command ? command.action : 'say', text: cleanWish } };
   }
 
@@ -1619,9 +1630,16 @@ const SIM_DEVOTEES = [
   { user: 'Ngô Minh Khang', uniqueId: 'khang.ngo', wish: 'Cầu thi đậu đại học' }
 ];
 const SIM_SHORT_COMMENTS = ['lạy', 'chào cả nhà', 'a di đà phật', 'niệm phật', 'lạy phật', 'chùa đẹp quá', 'hi mọi người'];
+const SIM_JOIN_NAMES = ['Lan Anh', 'Minh Tuấn', 'Thảo Vy', 'Quốc Bảo', 'Ngọc Hân', 'Đức Anh', 'Kim Ngân', 'Hải Đăng', 'Phương Thảo', 'Gia Bảo', 'Tâm An', 'Thiện Nhân'];
 
 function runSingleSimulationStep() {
   const pick = SIM_DEVOTEES[Math.floor(Math.random() * SIM_DEVOTEES.length)];
+  // Tầng 1: vài người xem mới vào live (không bình luận) -> đi ngang sân kèm tên
+  const joins = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < joins; i++) {
+    const name = SIM_JOIN_NAMES[Math.floor(Math.random() * SIM_JOIN_NAMES.length)];
+    setTimeout(() => hallArrive(`sim_join_${Math.random().toString(36).slice(2, 8)}`, name, ''), 300 + i * 3100);
+  }
   // Phần lớn người xem thật chỉ gõ lệnh ngắn -> mô phỏng vài lệnh/bong bóng trước mỗi nghi thức
   const chatters = 1 + Math.floor(Math.random() * 3);
   for (let i = 0; i < chatters; i++) {
@@ -1699,6 +1717,10 @@ async function handleRpcCall(method, params = {}) {
       return await connectTikTokLive(params.username);
     case 'live.disconnect':
       return disconnectTikTokLive();
+    case 'live.simulateJoin':
+      // Giả lập 1 người xem vừa vào live (sự kiện MEMBER của TikTok) để thử hall.arrive
+      hallArrive(params.uniqueId || `sim_join_${Date.now().toString(36)}`, params.user || 'Thí Chủ', params.avatar || '');
+      return { ok: true };
     case 'live.setAutoSim':
       configureAutoSim(Boolean(params.enabled));
       saveState();
@@ -1737,6 +1759,8 @@ app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
+// Addons của Three.js (RoomEnvironment...) cho trang Chánh Điện 3D — nạp qua importmap "three"
+app.use('/vendor/three-addons', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'), { maxAge: '7d' }));
 
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));

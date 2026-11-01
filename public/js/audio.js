@@ -309,10 +309,27 @@ class TempleAudioEngine {
       return;
     }
 
+    // priority: 0 (thắp hương) .. 3 (cảm tạ quà tặng — không bao giờ bị bỏ). jump: chen lên ngay sau câu đang đọc.
+    const priority = Number.isFinite(options.priority) ? options.priority : 1;
+    const jump = Boolean(options.jump);
     if (this.ttsQueue.length >= 6) {
-      const dropped = this.ttsQueue.shift();
-      if (dropped?.onStart) dropped.onStart();
-      if (dropped?.onEnd) dropped.onEnd();
+      // Đầy hàng: bỏ câu ưu tiên thấp nhất (cũ nhất trong cùng mức), không bao giờ bỏ lời cảm tạ quà
+      let victim = -1;
+      for (let i = 0; i < this.ttsQueue.length; i++) {
+        const q = this.ttsQueue[i];
+        if (q.priority >= 3) continue;
+        if (victim < 0 || q.priority < this.ttsQueue[victim].priority) victim = i;
+      }
+      if (victim >= 0 && this.ttsQueue[victim].priority <= priority) {
+        const [dropped] = this.ttsQueue.splice(victim, 1);
+        if (dropped?.onStart) dropped.onStart();
+        if (dropped?.onEnd) dropped.onEnd();
+      } else if (priority < 3) {
+        // câu mới còn kém ưu tiên hơn mọi câu đang chờ -> bỏ qua giọng đọc (vẫn chạy hiệu ứng)
+        if (onStart) onStart();
+        if (onEnd) setTimeout(onEnd, 1500);
+        return;
+      }
     }
 
     const item = {
@@ -322,6 +339,8 @@ class TempleAudioEngine {
       url: options.url || null,
       onStart,
       onEnd,
+      priority,
+      jump,
       fetchPromise: null
     };
 
@@ -329,7 +348,14 @@ class TempleAudioEngine {
       item.fetchPromise = this.fetchZeroTtsAudio(item.text, item.voice);
     }
 
-    this.ttsQueue.push(item);
+    if (jump) {
+      // Không ngắt câu đang đọc: chen trước mọi câu thường đang chờ, sau các câu quà tặng đã chen trước (FIFO giữa quà)
+      let at = 0;
+      while (at < this.ttsQueue.length && this.ttsQueue[at].jump) at++;
+      this.ttsQueue.splice(at, 0, item);
+    } else {
+      this.ttsQueue.push(item);
+    }
     this.processTtsQueue();
   }
 

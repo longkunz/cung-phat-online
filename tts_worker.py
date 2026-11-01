@@ -39,7 +39,8 @@ VIETNAMESE_ALLOWED_RE = re.compile(
     r"[^0-9a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝàáâãèéêìíòóôõùúýĂăĐđĨĩŨũƠơƯưẠ-ỹ\s.,!?]"
 )
 BRACKET_EMOTE_RE = re.compile(r"\[[^\]]{1,24}\]")
-REPEATED_CHARS_RE = re.compile(r"(.)\1{2,}", re.IGNORECASE)
+# Không thu gọn chữ số: "1000" -> "100" làm đọc sai số điểm công đức
+REPEATED_CHARS_RE = re.compile(r"(\D)\1{2,}", re.IGNORECASE)
 MULTI_PUNCT_RE = re.compile(r"([.,!?])\1+")
 MULTI_SPACE_RE = re.compile(r"\s+")
 
@@ -150,7 +151,7 @@ def main() -> None:
             text = (req.get("text") or "").strip()
             voice = (req.get("voice") or "maichi").strip().lower()
             if voice not in voices:
-                voice = "maichi"
+                voice = default_voice
 
             norm_text = clean_and_normalize_text(text)
             if not norm_text:

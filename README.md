@@ -48,6 +48,14 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
 - Tắt bằng `?fx=2d` (ví dụ `http://localhost:3000/?obs=1&fx=2d`). Máy không có WebGL tự quay về ảnh 2D.
 - OBS: bật *Use hardware acceleration in Browser Sources* để GPU xử lý shader.
 
+### 🛕 Chánh Điện 3D low-poly — Đạo Tràng Phật tử áo lam (`/temple3d.html`)
+- Mở `http://localhost:3000/temple3d.html` (OBS: `http://localhost:3000/temple3d.html?obs=1`, khung 1080×1920). Mã nguồn: `public/temple3d.html`, `public/js/temple3d.js`, `public/css/temple3d.css`.
+- Toàn bộ cảnh dựng bằng code Three.js (không file model): sàn gỗ, thảm đỏ, cột son, hoành phi “CHÙA LINH ỨNG”, tượng Phật A Di Đà vàng trên tòa sen + hào quang, lư hương đồng có nhang và khói, chuông, mõ, đèn lồng.
+- **Đạo tràng 40 chỗ** (`hall.roster`): mỗi người xem tương tác là một Phật tử áo lam quỳ trên bồ đoàn sen đỏ, có thẻ tên; chỗ trống hiện bồ đoàn mờ. Lệnh bình luận (`hall.action`): “lạy” → lạy 3 lạy, “chào” → chắp tay gật đầu, “niệm Phật” → hào quang vàng + chữ “Nam Mô A Di Đà Phật”, bình luận thường → bong bóng lời nói (~4,5 giây, tối đa 6 bong bóng).
+- **Nghi lễ** (`temple.event`): thắp hương / cầu nguyện / dâng quà → Phật tử đó đứng dậy đi dọc thảm lên lư hương, lạy và bùng hương (cầu nguyện thả thêm đèn hoa đăng mang lời nguyện); Đại Lễ → mưa cánh sen + hào quang rực + camera tiến vào; xin xăm → tờ quẻ hiện đúng lúc giọng đọc bắt đầu; thỉnh chuông → sóng chuông loang; gõ mõ → cả đạo tràng nhún nhẹ.
+- Âm thanh và giọng đọc dùng chung `public/js/audio.js` với trang Live (bấm vào trang 1 lần để mở khóa âm thanh trên trình duyệt).
+- Hiệu năng: 40 Phật tử chỉ tốn vài draw call (InstancedMesh), giới hạn 30 FPS, tự dừng khi tab ẩn, pixel ratio 1, không đổ bóng. Tham số: `?q=0.75` giảm độ phân giải render, `?aa=0` tắt khử răng cưa cho máy yếu.
+
 ---
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy Nhanh
@@ -175,6 +183,7 @@ curl -X POST http://localhost:3000/rpc \
 ├── public/
 │   ├── index.html             # Giao diện Chánh Điện 9:16 + Bảng điều khiển nhanh
 │   ├── admin.html             # Trang quản trị JSON-RPC 2.0 đầy đủ
+│   ├── temple3d.html          # Chánh Điện 3D low-poly + Đạo Tràng Phật tử áo lam (js/temple3d.js, css/temple3d.css)
 │   ├── css/live.css           # Stylesheet tối ưu GPU Compositor
 │   ├── js/
 │   │   ├── live.js            # Điều phối 8-frame prostration, Đạo Tràng 40 chỗ ngồi & WebSocket RPC

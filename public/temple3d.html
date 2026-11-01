@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chùa Linh Ứng 3D — Chánh Điện Đạo Tràng</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Noto+Serif:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/css/temple3d.css" />
+</head>
+<body>
+  <div class="t3d-workspace">
+    <div class="t3d-wrapper" id="stageWrapper">
+      <div class="t3d-stage" id="stage9x16">
+        <canvas id="t3dCanvas" class="t3d-canvas" width="1080" height="1920"></canvas>
+
+        <!-- Lớp nhãn tên / bong bóng / chữ bay (định vị bằng chiếu 3D -> 2D mỗi khung hình) -->
+        <div class="t3d-overlay" id="t3dOverlay"></div>
+
+        <!-- HUD -->
+        <div class="hud-top">
+          <div class="status-pill" id="statusPill">
+            <span class="status-dot"></span>
+            <span id="statusText">Đang mở cửa chùa...</span>
+            <span class="status-viewers" id="statusViewers"></span>
+          </div>
+          <div class="hud-counts">
+            <span title="Nén hương">🔥 <b id="cntIncense">0</b></span>
+            <span title="Công đức">🪷 <b id="cntMerit">0</b></span>
+            <span title="Tiếng mõ">🪵 <b id="cntFish">0</b></span>
+            <span title="Đạo tràng">🙏 <b id="cntHall">0</b>/40</span>
+          </div>
+        </div>
+
+        <div class="hud-hint" id="hudHint">
+          💬 Bình luận để vào Đạo Tràng · “lạy” · “chào” · “niệm Phật” · ❤️ Thả tim: gõ mõ · 🎁 Tặng quà: dâng lễ
+        </div>
+
+        <aside class="merit-scroll" id="meritScroll">
+          <div class="merit-scroll-head">Sổ Công Đức</div>
+          <ol class="merit-list" id="meritList">
+            <li class="merit-empty">Chưa có thí chủ — hãy bình luận để ghi danh 🙏</li>
+          </ol>
+        </aside>
+
+        <!-- Đại lễ -->
+        <div class="grand-banner" id="grandBanner">
+          <div class="grand-title" id="grandTitle">ĐẠI LỄ</div>
+          <div class="grand-sub" id="grandSub"></div>
+        </div>
+
+        <!-- Quẻ xăm -->
+        <div class="fortune-card" id="fortuneCard">
+          <div class="fortune-inner">
+            <div class="fortune-rank" id="fortuneRank">THƯỢNG CÁT</div>
+            <div class="fortune-title" id="fortuneTitle">Quẻ Số 1</div>
+            <div class="fortune-devotee" id="fortuneDevotee"></div>
+            <div class="fortune-poem" id="fortunePoem"></div>
+            <div class="fortune-meaning" id="fortuneMeaning"></div>
+          </div>
+        </div>
+
+        <div class="no-webgl" id="noWebgl" hidden>Trình duyệt chưa bật WebGL — vui lòng bật tăng tốc phần cứng (OBS: Use hardware acceleration in Browser Sources).</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/audio.js"></script>
+  <script type="module" src="/js/temple3d.js"></script>
+</body>
+</html>

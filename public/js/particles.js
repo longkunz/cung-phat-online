@@ -9,7 +9,9 @@
 class TempleParticleEngine {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // Keep effects in the normal compositor so the canvas stays transparent
+    // above the sanctuary image, including on hardware-accelerated browsers.
+    this.ctx = canvas.getContext('2d', { alpha: true });
     this.width = 1080;
     this.height = 1920;
     this.canvas.width = this.width;

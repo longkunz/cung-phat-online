@@ -77,10 +77,11 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 20px;
     }
     .card {
+      min-width: 0;
       background: var(--card);
       border: 1.5px solid var(--border);
       border-radius: 18px;
@@ -98,6 +99,28 @@
     .row {
       display: flex;
       gap: 10px;
+    }
+    .row > * { min-width: 0; }
+    .row .btn { flex-shrink: 0; }
+    .field { display: flex; flex-direction: column; gap: 8px; }
+    .field label, .toggle-label { font-size: 14px; font-weight: 600; }
+    .toggle-label { display: flex; align-items: center; gap: 10px; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--gold); }
+    input[type="range"] { padding: 0; accent-color: var(--gold); }
+    .help, .feedback { font-size: 13px; line-height: 1.6; color: var(--muted); }
+    .feedback[data-error="true"] { color: #ffb4a6; }
+    .tts-status { font-size: 13px; color: var(--gold-light); }
+    .tts-form { display: flex; flex-direction: column; gap: 16px; }
+    .tts-form fieldset { border: 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    .btn:disabled { cursor: wait; opacity: 0.6; }
+    .log-card { grid-column: 1 / -1; }
+    @media (max-width: 800px) {
+      body { padding: 16px; }
+      .grid { grid-template-columns: minmax(0, 1fr); }
+      .top-bar { flex-direction: column; align-items: stretch; gap: 16px; }
+      .top-title { font-size: 21px; }
+      .top-links, .row { flex-wrap: wrap; }
+      .row input { flex: 1 1 200px; }
     }
     input, select, textarea {
       width: 100%;
@@ -130,7 +153,7 @@
   <div class="container">
     <header class="top-bar">
       <div>
-        <div class="top-title">🪷 BẢNG ĐIỀU KHIỂN CHÙA ONLINE TIKTOK LIVE RPC (BUN.JS + ZEROTTS MAI CHI)</div>
+        <div class="top-title">🪷 BẢNG ĐIỀU KHIỂN CHÙA ONLINE TIKTOK LIVE RPC</div>
         <div class="top-sub" id="statusBanner">Đang tải trạng thái hệ thống...</div>
       </div>
       <div class="top-links">
@@ -141,21 +164,47 @@
 
     <div class="grid">
       <section class="card">
-        <h2>📡 1. Kết Nối Phòng TikTok Live & Giọng Đọc ZeroTTS (Mai Chi)</h2>
+        <h2>📡 1. Kết Nối Phòng TikTok Live</h2>
         <div class="row">
           <input type="text" id="ttUser" placeholder="Nhập @username TikTok đang phát Live..." />
           <button class="btn gold" id="btnConn">Kết Nối Live</button>
           <button class="btn" id="btnDisc">Ngắt</button>
         </div>
-        <div class="row">
-          <input type="text" id="ttsDirectText" value="Nam mô A Di Đà Phật. Chùa Linh Ứng Online xin kính chào quý thí chủ thập phương." />
-          <button class="btn gold" id="btnSpeakMaiChi">🎙️ Đọc thử Giọng Mai Chi</button>
-        </div>
-        <audio id="adminAudioPreview" controls style="width: 100%; height: 38px;"></audio>
       </section>
 
       <section class="card">
-        <h2>🙏 2. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
+        <h2>🎙️ 2. Cài Đặt Giọng Đọc TTS</h2>
+        <p class="tts-status" id="ttsServiceStatus" role="status">Đang kiểm tra dịch vụ TTS...</p>
+        <form class="tts-form" id="ttsSettingsForm">
+          <fieldset id="ttsSettingsFields" disabled>
+            <label class="toggle-label" for="ttsEnabled">
+              <input type="checkbox" id="ttsEnabled" checked /> Bật giọng đọc tự động trên màn live
+            </label>
+            <div class="field">
+              <label for="ttsVoice">Giọng đọc</label>
+              <select id="ttsVoice"><option value="maichi">Mai Chi</option></select>
+            </div>
+            <div class="field">
+              <label for="ttsVolume">Âm lượng giọng đọc: <output id="ttsVolumeValue" for="ttsVolume">95%</output></label>
+              <input type="range" id="ttsVolume" min="0" max="100" step="1" value="95" />
+            </div>
+            <p class="help">Lưu để áp dụng cho các lượt đọc tiếp theo trên màn live. Cài đặt được giữ lại khi khởi động lại server.</p>
+            <button class="btn gold" type="submit" id="btnSaveTtsSettings">Lưu cài đặt giọng đọc</button>
+          </fieldset>
+          <p class="feedback" id="ttsSettingsMessage" role="status"></p>
+        </form>
+        <div class="field">
+          <label for="ttsDirectText">Nội dung đọc thử</label>
+          <textarea id="ttsDirectText" rows="3" maxlength="160">Nam mô A Di Đà Phật. Chùa Linh Ứng Online xin kính chào quý thí chủ thập phương.</textarea>
+        </div>
+        <button class="btn" id="btnPreviewTts" disabled>▶ Nghe thử giọng đã chọn</button>
+        <p class="help">Nghe thử ngay tại admin bằng giọng và âm lượng đang chọn.</p>
+        <p class="feedback" id="ttsPreviewMessage" role="status"></p>
+        <audio id="adminAudioPreview" aria-label="Nghe thử giọng TTS" controls style="width: 100%; height: 38px;"></audio>
+      </section>
+
+      <section class="card">
+        <h2>🙏 3. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
         <div class="row">
           <input type="text" id="rpcUser" value="Đại Thí Chủ Minh Tâm" placeholder="Tên người xem..." />
           <input type="text" id="rpcWish" value="Cầu gia đạo bình an, tài lộc vượng phát" placeholder="Lời cầu nguyện..." />
@@ -173,7 +222,7 @@
       </section>
 
       <section class="card">
-        <h2>💬 3. Giả Lập Bình Luận Người Xem TikTok</h2>
+        <h2>💬 4. Giả Lập Bình Luận Người Xem TikTok</h2>
         <div class="row">
           <input type="text" id="simComment" value="Con xin gieo quẻ cầu tài lộc đầu tháng ạ" placeholder="Nhập nội dung bình luận TikTok..." />
           <button class="btn gold" id="btnSendComment">Gửi Comment</button>
@@ -183,14 +232,54 @@
         </p>
       </section>
 
-      <section class="card">
-        <h2>🔌 4. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
+      <section class="card log-card">
+        <h2>🔌 5. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
         <pre id="rpcOutput">{ "status": "Sẵn sàng nhận lệnh JSON-RPC 2.0" }</pre>
       </section>
     </div>
   </div>
 
   <script>
+    const voiceLabels = {
+      baotrang: 'Bảo Trang', giahuy: 'Gia Huy', hamy: 'Hà My', huuduc: 'Hữu Đức',
+      kimoanh: 'Kim Oanh', maichi: 'Mai Chi', quangminh: 'Quang Minh', tiendat: 'Tiến Đạt'
+    };
+    let ttsSettingsDirty = false;
+    let ttsSettingsSaving = false;
+    let ttsPreviewBusy = false;
+    let ttsReady = false;
+
+    function showFeedback(id, message, error = false) {
+      const el = document.getElementById(id);
+      el.textContent = message;
+      el.dataset.error = String(error);
+    }
+
+    function renderTtsSettings(st) {
+      const tts = st.tts || {};
+      const settings = st.settings || {};
+      ttsReady = Boolean(tts.ready);
+      const statusLabels = { ready: 'Sẵn sàng', loading: 'Đang nạp giọng đọc', starting: 'Đang khởi động', stopped: 'Đã dừng', error: 'Có lỗi', init: 'Đang khởi tạo' };
+      document.getElementById('ttsServiceStatus').textContent =
+        `Dịch vụ TTS: ${statusLabels[tts.status] || tts.status || 'Chưa xác định'}`;
+
+      const select = document.getElementById('ttsVoice');
+      const selected = ttsSettingsDirty ? select.value : (settings.ttsVoice || tts.voice || 'maichi');
+      const voices = Array.from(new Set([...(tts.voices || []), selected]));
+      if (JSON.stringify(Array.from(select.options, option => option.value)) !== JSON.stringify(voices)) {
+        select.replaceChildren(...voices.map(voice => new Option(voiceLabels[voice] || voice, voice)));
+      }
+      select.value = selected;
+      if (!ttsSettingsDirty) {
+        document.getElementById('ttsEnabled').checked = settings.ttsEnabled !== false;
+        const volume = Math.round((settings.ttsVolume ?? 0.95) * 100);
+        document.getElementById('ttsVolume').value = String(volume);
+        document.getElementById('ttsVolumeValue').textContent = `${volume}%`;
+      }
+      document.getElementById('ttsSettingsFields').disabled = ttsSettingsSaving;
+      document.getElementById('btnPreviewTts').disabled = !ttsReady || ttsPreviewBusy;
+    }
+
     async function sendRpc(method, extraParams = {}) {
       const user = document.getElementById('rpcUser').value.trim() || 'Thí Chủ';
       const wish = document.getElementById('rpcWish').value.trim();
@@ -198,7 +287,7 @@
         jsonrpc: '2.0',
         id: Date.now(),
         method,
-        params: { user, wish, ...extraParams }
+        params: method === 'temple.updateSettings' ? extraParams : { user, wish, ...extraParams }
       };
       const res = await fetch('/rpc', {
         method: 'POST',
@@ -207,6 +296,7 @@
       });
       const data = await res.json();
       document.getElementById('rpcOutput').textContent = JSON.stringify(data, null, 2);
+      if (!res.ok) throw new Error('Không gửi được lệnh. Vui lòng thử lại.');
       refreshStatus();
       return data;
     }
@@ -220,21 +310,84 @@
       const comment = document.getElementById('simComment').value.trim();
       sendRpc('temple.comment', { comment });
     };
-    document.getElementById('btnSpeakMaiChi').onclick = async () => {
+    document.getElementById('ttsSettingsForm').addEventListener('input', () => {
+      ttsSettingsDirty = true;
+      const volume = document.getElementById('ttsVolume').value;
+      document.getElementById('ttsVolumeValue').textContent = `${volume}%`;
+      document.getElementById('adminAudioPreview').volume = Number(volume) / 100;
+      showFeedback('ttsSettingsMessage', 'Có thay đổi chưa lưu.');
+    });
+    document.getElementById('ttsSettingsForm').onsubmit = async (event) => {
+      event.preventDefault();
+      ttsSettingsSaving = true;
+      document.getElementById('ttsSettingsFields').disabled = true;
+      showFeedback('ttsSettingsMessage', 'Đang lưu cài đặt...');
+      try {
+        const data = await sendRpc('temple.updateSettings', {
+          ttsEnabled: document.getElementById('ttsEnabled').checked,
+          ttsVoice: document.getElementById('ttsVoice').value,
+          ttsVolume: Number(document.getElementById('ttsVolume').value) / 100
+        });
+        if (data.error) throw new Error(data.error.message);
+        ttsSettingsDirty = false;
+        renderTtsSettings(data.result);
+        showFeedback('ttsSettingsMessage', 'Đã lưu và đồng bộ cài đặt với màn live.');
+      } catch (err) {
+        showFeedback('ttsSettingsMessage', err.message || 'Không lưu được cài đặt.', true);
+      } finally {
+        ttsSettingsSaving = false;
+        document.getElementById('ttsSettingsFields').disabled = false;
+      }
+    };
+    document.getElementById('btnPreviewTts').onclick = async () => {
       const text = document.getElementById('ttsDirectText').value.trim();
-      const data = await sendRpc('temple.speak', { text, voice: 'maichi', broadcast: true });
-      if (data?.result?.url) {
-        const player = document.getElementById('adminAudioPreview');
+      if (!text) {
+        showFeedback('ttsPreviewMessage', 'Nhập nội dung cần đọc thử.', true);
+        return;
+      }
+      const player = document.getElementById('adminAudioPreview');
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      ttsPreviewBusy = true;
+      document.getElementById('btnPreviewTts').disabled = true;
+      showFeedback('ttsPreviewMessage', 'Đang tạo giọng đọc thử...');
+      try {
+        const data = await sendRpc('temple.speak', {
+          text, voice: document.getElementById('ttsVoice').value, broadcast: false
+        });
+        if (data.error || !data.result?.ok || !data.result?.url) {
+          throw new Error(data.error?.message || data.result?.error || 'Không tạo được giọng đọc thử.');
+        }
         player.src = data.result.url;
-        player.play().catch(() => {});
+        player.volume = Number(document.getElementById('ttsVolume').value) / 100;
+        try {
+          await player.play();
+          showFeedback('ttsPreviewMessage', 'Đang phát giọng đọc thử tại admin.');
+        } catch (_) {
+          showFeedback('ttsPreviewMessage', 'Âm thanh đã sẵn sàng. Bấm phát ở trình nghe bên dưới.');
+        }
+      } catch (err) {
+        showFeedback('ttsPreviewMessage', err.message || 'Không tạo được giọng đọc thử.', true);
+      } finally {
+        ttsPreviewBusy = false;
+        document.getElementById('btnPreviewTts').disabled = !ttsReady;
       }
     };
 
     async function refreshStatus() {
-      const res = await fetch('/api/state');
-      const st = await res.json();
-      document.getElementById('statusBanner').textContent =
-        `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | ZeroTTS: ${st.tts?.status} (Giọng: ${st.tts?.voice})`;
+      try {
+        const res = await fetch('/api/state');
+        if (!res.ok) throw new Error('Không tải được trạng thái hệ thống.');
+        const st = await res.json();
+        document.getElementById('statusBanner').textContent =
+          `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | Giọng đọc: ${voiceLabels[st.tts?.voice] || st.tts?.voice || 'Mai Chi'}`;
+        renderTtsSettings(st);
+      } catch (_) {
+        ttsReady = false;
+        document.getElementById('ttsServiceStatus').textContent = 'Không kết nối được dịch vụ TTS. Đang thử lại...';
+        document.getElementById('btnPreviewTts').disabled = true;
+      }
     }
     refreshStatus();
     setInterval(refreshStatus, 4000);

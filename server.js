@@ -119,9 +119,10 @@ class ZeroTTSManager {
   }
 
   resolvePythonBin() {
-    const venvPy = path.join(__dirname, '.venv', 'bin', 'python');
+    const isWindows = process.platform === 'win32';
+    const venvPy = path.join(__dirname, '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python');
     if (fs.existsSync(venvPy)) return venvPy;
-    return 'python3';
+    return isWindows ? 'python' : 'python3';
   }
 
   startWorker() {
@@ -132,6 +133,7 @@ class ZeroTTSManager {
     this.status = 'loading';
     this.proc = spawn(pyBin, [scriptPath], {
       cwd: __dirname,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -260,6 +262,7 @@ const DEFAULT_STATE = {
   settings: {
     ttsEnabled: true,
     ttsVoice: 'maichi',
+    ttsVolume: 0.95,
     bgMusicEnabled: true,
     sfxEnabled: true,
     smokeDensity: 1.0,
@@ -664,6 +667,16 @@ const Rituals = {
   },
 
   updateSettings(params = {}) {
+    if (params.ttsEnabled !== undefined && typeof params.ttsEnabled !== 'boolean') {
+      throw new Error('Trạng thái bật/tắt TTS không hợp lệ');
+    }
+    if (params.ttsVoice !== undefined && !zeroTts.voices.includes(params.ttsVoice)) {
+      throw new Error('Giọng đọc TTS không có trong danh sách hỗ trợ');
+    }
+    if (params.ttsVolume !== undefined &&
+        (typeof params.ttsVolume !== 'number' || !Number.isFinite(params.ttsVolume) || params.ttsVolume < 0 || params.ttsVolume > 1)) {
+      throw new Error('Âm lượng TTS phải nằm trong khoảng 0 đến 1');
+    }
     state.settings = {
       ...state.settings,
       ...params
@@ -1064,7 +1077,7 @@ async function handleRpcCall(method, params = {}) {
     case 'temple.comment':
       return parseViewerComment(params.comment, params.user, params.uniqueId, params.avatar);
     case 'temple.speak': {
-      const res = await zeroTts.synthesize(params.text, params.voice || 'maichi');
+      const res = await zeroTts.synthesize(params.text, params.voice);
       if (res.ok && params.broadcast !== false) {
         broadcastNotification('tts.play', {
           text: params.text,

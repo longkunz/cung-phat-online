@@ -487,6 +487,8 @@ function getPublicState() {
     settings: state.settings,
     tiktok: state.tiktok,
     hall: getHallRoster(),
+    hallWaiting: getHallWaiting(),
+    hallWaitingCount: hallWaiting.size,
     tts: zeroTts ? zeroTts.getStatus() : { ready: false, status: 'init', voice: 'maichi' }
   };
 }
@@ -641,6 +643,7 @@ const Rituals = {
 
     const wish = params.wish || `Dâng cúng ${giftName} lên Tam Bảo`;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 3, 1, wish);
+    hallRecordGift(devotee.uniqueId, coins);
 
     const ttsText = params.readTts === false
       ? ''
@@ -755,6 +758,8 @@ const Rituals = {
     state.devotees = {};
     state.recentEvents = [];
     hall.clear();
+    hallWaiting.clear();
+    giftSession.clear();
     saveState();
     broadcastNotification('temple.state', getPublicState());
     return getPublicState();
@@ -765,13 +770,61 @@ const Rituals = {
 // 4B. ĐẠO TRÀNG — MỖI NGƯỜI XEM TƯƠNG TÁC CÓ 1 PHẬT TỬ RIÊNG TRONG CHÁNH ĐIỆN
 // ============================================================================
 // Ai bình luận / thả tim / tặng quà / follow sẽ được "mời vào" đạo tràng và ngồi 1 chỗ có tên.
-// Không lưu xuống đĩa (chỉ sống trong phiên live). Đầy chỗ -> người im lặng lâu nhất nhường chỗ.
+// Không lưu xuống đĩa (chỉ sống trong phiên live).
+//
+// Sơ đồ ghế (dùng chung cho màn 2.5D và 3D):
+//   - Ghế 0..7  : HÀNG ĐẦU GIỮ CHỖ cho top 8 người tặng quà nhiều xu nhất trong buổi live.
+//                 Ghế 0 = chính giữa sát bàn thờ (hạng 1), càng lớn càng ra xa. Không bị mời ra khi im lặng/đầy chỗ.
+//   - Ghế 8..39 : chỗ thường, ghế 8 là chỗ dễ thấy nhất; im quá 10 phút tự rời.
+// Khi đông người (> 40):
+//   - Người mới chỉ được thay chỗ của người thường đã ngồi >= 90 giây VÀ im lặng >= 60 giây (ít tương tác nhất).
+//   - Không ai nhường được -> vào HÀNG CHỜ ngoài sân (không đá người đang tích cực).
+//   - Mỗi 5 giây mời tối đa 3 người chờ vào chỗ trống, ưu tiên người vừa tương tác gần nhất;
+//     chờ quá 3 phút không tương tác thì rời hàng chờ.
+// Hạng đài: 'normal' (đệm thường) | 'lotus' (đã tặng quà) | 'goldLotus' (tặng >= 100 xu trong buổi).
 const HALL_SEATS = 40;
+const HALL_VIP_SEATS = 8;
 const HALL_IDLE_MS = 10 * 60 * 1000;
+const GOLD_LOTUS_COINS = 100;
+const HALL_MIN_STAY_MS = 90 * 1000;
+const HALL_ACTIVE_GRACE_MS = 60 * 1000;
+const HALL_WAIT_IDLE_MS = 3 * 60 * 1000;
+const HALL_WAITING_MAX = 300;
+const HALL_WAITING_SHOWN = 16;
+const HALL_SEATINGS_PER_TICK = 3;
 const hall = new Map(); // uid -> { uid, name, avatar, seat, joinedAt, lastActive }
+const hallWaiting = new Map(); // uid -> { uid, name, avatar, since, lastActive } — hàng chờ ngoài sân
+const giftSession = new Map(); // uid -> { coins, firstGiftAt } — tổng xu đã tặng trong buổi live
+
+function hallTier(uid) {
+  const coins = giftSession.get(uid)?.coins || 0;
+  if (coins >= GOLD_LOTUS_COINS) return 'goldLotus';
+  if (coins > 0) return 'lotus';
+  return 'normal';
+}
 
 function getHallRoster() {
-  return Array.from(hall.values()).map(({ uid, name, avatar, seat }) => ({ uid, name, avatar, seat }));
+  return Array.from(hall.values()).map(({ uid, name, avatar, seat }) => ({
+    uid,
+    name,
+    avatar,
+    seat,
+    tier: hallTier(uid),
+    giftCoins: giftSession.get(uid)?.coins || 0,
+    vipRank: seat < HALL_VIP_SEATS ? seat + 1 : 0
+  }));
+}
+
+// Hàng chờ hiển thị: những người vừa tương tác gần nhất (màn 3D cho họ đứng ngoài sân)
+function getHallWaiting() {
+  return Array.from(hallWaiting.values())
+    .sort((a, b) => b.lastActive - a.lastActive)
+    .slice(0, HALL_WAITING_SHOWN)
+    .map(({ uid, name, avatar }) => ({ uid, name, avatar, tier: hallTier(uid) }));
+}
+
+function getHallPayload() {
+  return { hall: getHallRoster(), waiting: getHallWaiting(), waitingCount: hallWaiting.size };
 }
 
 let hallBroadcastTimer = null;
@@ -779,14 +832,135 @@ function scheduleHallBroadcast() {
   if (hallBroadcastTimer) return;
   hallBroadcastTimer = setTimeout(() => {
     hallBroadcastTimer = null;
-    broadcastNotification('hall.roster', { hall: getHallRoster() });
+    broadcastNotification('hall.roster', getHallPayload());
   }, 250);
+}
+
+const isVipSeat = (seat) => seat >= 0 && seat < HALL_VIP_SEATS;
+
+// Tìm 1 chỗ thường: ưu tiên ghế trống; hết ghế thì mời 1 người thường đã ngồi đủ lâu và đang im lặng ra.
+// Không bao giờ đụng hàng giữ chỗ, không đá người vừa vào hoặc đang tích cực. Trả về -1 nếu không có chỗ.
+function takeRegularSeat(exceptUid) {
+  const taken = new Set(Array.from(hall.values(), (m) => m.seat));
+  for (let i = HALL_VIP_SEATS; i < HALL_SEATS; i++) {
+    if (!taken.has(i)) return i;
+  }
+  const now = Date.now();
+  let quietest = null;
+  for (const m of hall.values()) {
+    if (m.uid === exceptUid || isVipSeat(m.seat)) continue;
+    if (now - m.joinedAt < HALL_MIN_STAY_MS || now - m.lastActive < HALL_ACTIVE_GRACE_MS) continue;
+    if (!quietest || m.lastActive < quietest.lastActive) quietest = m;
+  }
+  if (!quietest) return -1;
+  hall.delete(quietest.uid);
+  return quietest.seat;
+}
+
+function addToWaiting(uid, name, avatar, lastActive = Date.now()) {
+  const w = hallWaiting.get(uid);
+  if (w) {
+    w.lastActive = lastActive;
+    if (name) w.name = name;
+    if (avatar) w.avatar = avatar;
+    return w;
+  }
+  const entry = { uid, name: name || 'Thí Chủ', avatar: avatar || '', since: Date.now(), lastActive };
+  hallWaiting.set(uid, entry);
+  if (hallWaiting.size > HALL_WAITING_MAX) {
+    // Bỏ người chờ im lặng lâu nhất
+    let quietest = null;
+    for (const x of hallWaiting.values()) if (!quietest || x.lastActive < quietest.lastActive) quietest = x;
+    hallWaiting.delete(quietest.uid);
+  }
+  return entry;
+}
+
+function seatMember(uid, name, avatar, seat, lastActive = Date.now()) {
+  hallWaiting.delete(uid);
+  const member = { uid, name: name || 'Thí Chủ', avatar: avatar || '', seat, joinedAt: Date.now(), lastActive };
+  hall.set(uid, member);
+  scheduleHallBroadcast();
+  broadcastNotification('hall.action', { uid, action: 'join' });
+  return member;
+}
+
+// Xếp lại hàng đầu theo tổng xu tặng trong buổi: top 8 có mặt trong đạo tràng ngồi ghế 0..7
+function rebalanceVipSeats() {
+  // Người tặng quà đang ở hàng chờ cũng được xét: đủ hạng thì vào thẳng hàng đầu
+  for (const w of Array.from(hallWaiting.values())) {
+    if ((giftSession.get(w.uid)?.coins || 0) > 0) {
+      hall.set(w.uid, { uid: w.uid, name: w.name, avatar: w.avatar, seat: -3, joinedAt: Date.now(), lastActive: w.lastActive });
+    }
+  }
+  const ranked = Array.from(hall.values())
+    .filter((m) => (giftSession.get(m.uid)?.coins || 0) > 0)
+    .sort((a, b) => {
+      const ga = giftSession.get(a.uid);
+      const gb = giftSession.get(b.uid);
+      return gb.coins - ga.coins || ga.firstGiftAt - gb.firstGiftAt;
+    })
+    .slice(0, HALL_VIP_SEATS);
+  const vipUids = new Set(ranked.map((m) => m.uid));
+  let changed = false;
+
+  // 1. Ai rơi khỏi top 8 thì xuống chỗ thường
+  for (const m of hall.values()) {
+    if (isVipSeat(m.seat) && !vipUids.has(m.uid)) {
+      m.seat = -1;
+      changed = true;
+    }
+  }
+  // 2. Top 8 vào đúng ghế theo hạng (tạm bỏ ghế cũ trước để không trùng chỗ)
+  const promoted = [];
+  ranked.forEach((m, rank) => {
+    if (m.seat !== rank) {
+      if (!isVipSeat(m.seat)) promoted.push(m.uid);
+      m.seat = -2;
+      changed = true;
+    }
+  });
+  ranked.forEach((m, rank) => {
+    if (m.seat === -2) m.seat = rank;
+  });
+  // Người chờ tặng quà nhưng chưa đủ hạng hàng đầu -> trở lại hàng chờ (seat -3 chưa được xếp)
+  for (const m of Array.from(hall.values())) {
+    if (m.seat === -3) {
+      hall.delete(m.uid);
+    } else if (vipUids.has(m.uid) && hallWaiting.has(m.uid)) {
+      hallWaiting.delete(m.uid);
+      broadcastNotification('hall.action', { uid: m.uid, action: 'join' });
+    }
+  }
+  // 3. Người vừa rời hàng đầu nhận chỗ thường; hết chỗ thì ra hàng chờ (không mất hẳn)
+  for (const m of Array.from(hall.values())) {
+    if (m.seat === -1) {
+      const seat = takeRegularSeat(m.uid);
+      if (seat === -1) {
+        hall.delete(m.uid);
+        addToWaiting(m.uid, m.name, m.avatar, m.lastActive);
+      } else {
+        m.seat = seat;
+      }
+    }
+  }
+  if (changed) scheduleHallBroadcast();
+  for (const uid of promoted) {
+    broadcastNotification('hall.action', { uid, action: 'promote', text: '' });
+  }
 }
 
 function hallTouch(uid, name, avatar) {
   if (!uid) return null;
   const now = Date.now();
   const existing = hall.get(uid);
+  if (!existing && hallWaiting.has(uid)) {
+    // Đang chờ: chỉ cập nhật lần tương tác (để được ưu tiên mời vào); thử lấy chỗ ngay nếu có
+    addToWaiting(uid, name, avatar, now);
+    const seat = takeRegularSeat(uid);
+    if (seat !== -1) return seatMember(uid, name || hallWaiting.get(uid)?.name, avatar, seat, now);
+    return null;
+  }
   if (existing) {
     existing.lastActive = now;
     let changed = false;
@@ -796,38 +970,60 @@ function hallTouch(uid, name, avatar) {
     return existing;
   }
 
-  const taken = new Set(Array.from(hall.values(), (m) => m.seat));
-  let seat = -1;
-  for (let i = 0; i < HALL_SEATS; i++) {
-    if (!taken.has(i)) { seat = i; break; }
-  }
+  const seat = takeRegularSeat(uid);
   if (seat === -1) {
-    // Hết chỗ: mời người im lặng lâu nhất ra, nhường chỗ cho người mới tương tác
-    let oldest = null;
-    for (const m of hall.values()) {
-      if (!oldest || m.lastActive < oldest.lastActive) oldest = m;
-    }
-    hall.delete(oldest.uid);
-    seat = oldest.seat;
+    // Đạo tràng đầy người đang tích cực -> xếp hàng chờ ngoài sân
+    const isNew = !hallWaiting.has(uid);
+    addToWaiting(uid, name, avatar, now);
+    if (giftSession.has(uid)) rebalanceVipSeats();
+    if (isNew) scheduleHallBroadcast();
+    return null;
   }
-  const member = { uid, name: name || 'Thí Chủ', avatar: avatar || '', seat, joinedAt: now, lastActive: now };
-  hall.set(uid, member);
-  scheduleHallBroadcast();
-  broadcastNotification('hall.action', { uid, action: 'join' });
+  const member = seatMember(uid, name, avatar, seat, now);
+  // Người từng tặng quà trong buổi quay lại -> lấy lại hàng đầu nếu đủ hạng
+  if (giftSession.has(uid)) rebalanceVipSeats();
   return member;
 }
 
-setInterval(() => {
-  const cutoff = Date.now() - HALL_IDLE_MS;
-  let removed = false;
+// Gọi sau mỗi lần tặng quà (Rituals.offerGift)
+function hallRecordGift(uid, coins) {
+  if (!uid || !(coins > 0)) return;
+  const entry = giftSession.get(uid) || { coins: 0, firstGiftAt: Date.now() };
+  const before = hallTier(uid);
+  entry.coins += coins;
+  giftSession.set(uid, entry);
+  if (giftSession.size > 2000) giftSession.delete(giftSession.keys().next().value);
+  rebalanceVipSeats();
+  if (hallTier(uid) !== before) scheduleHallBroadcast(); // đổi đệm -> đài sen / đài sen vàng
+}
+
+function hallTick() {
+  const now = Date.now();
+  let changed = false;
   for (const [uid, m] of hall) {
-    if (m.lastActive < cutoff) { hall.delete(uid); removed = true; }
+    // Người đang giữ chỗ hàng đầu không bị mời ra dù im lặng
+    if (!isVipSeat(m.seat) && now - m.lastActive > HALL_IDLE_MS) { hall.delete(uid); changed = true; }
   }
-  if (removed) scheduleHallBroadcast();
-}, 60 * 1000).unref?.();
+  for (const [uid, w] of hallWaiting) {
+    if (now - w.lastActive > HALL_WAIT_IDLE_MS) { hallWaiting.delete(uid); changed = true; }
+  }
+  // Mời người chờ vào (người vừa tương tác gần nhất trước), tối đa vài người mỗi lượt cho mượt
+  const queue = Array.from(hallWaiting.values()).sort((a, b) => b.lastActive - a.lastActive);
+  let seated = 0;
+  for (const w of queue) {
+    if (seated >= HALL_SEATINGS_PER_TICK) break;
+    const seat = takeRegularSeat(w.uid);
+    if (seat === -1) break;
+    seatMember(w.uid, w.name, w.avatar, seat, w.lastActive);
+    seated += 1;
+    changed = true;
+  }
+  if (changed) scheduleHallBroadcast();
+}
+setInterval(hallTick, 5000).unref?.();
 
 function hallAction(uid, action, text = '') {
-  if (!uid || !hall.has(uid)) return;
+  if (!uid || (!hall.has(uid) && !hallWaiting.has(uid))) return;
   broadcastNotification('hall.action', { uid, action, text: String(text || '').slice(0, 80) });
 }
 

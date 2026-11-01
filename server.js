@@ -488,6 +488,7 @@ function getPublicState() {
     hall: getHallRoster(),
     hallWaiting: getHallWaiting(),
     hallWaitingCount: hallWaiting.size,
+    giftFeed,
     tts: zeroTts ? zeroTts.getStatus() : { ready: false, status: 'init', voice: 'maichi' }
   };
 }
@@ -519,6 +520,7 @@ const Rituals = {
 
     const event = pushEventLog({
       type: 'burnIncense',
+      ttsPriority: 0,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
@@ -580,6 +582,7 @@ const Rituals = {
 
     const event = pushEventLog({
       type: 'ringBell',
+      ttsPriority: 1,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
@@ -613,6 +616,7 @@ const Rituals = {
 
     const event = pushEventLog({
       type: 'sendPrayer',
+      ttsPriority: 1,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
@@ -654,20 +658,25 @@ const Rituals = {
 
     const wish = params.wish || `Dâng cúng ${giftName} lên Tam Bảo`;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 3, 1, wish);
-    hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'gift');
     hallRecordGift(devotee.uniqueId, coins);
+    hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'gift');
     const hallStatus = hallStatusOf(devotee.uniqueId);
+    const giftEntry = pushGiftFeed(devotee, giftName, coins, merit, giftType);
 
     const ttsText = params.readTts === false
       ? ''
       : planSpeech(
         `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} đã phát tâm dâng cúng ${giftName}, tích thêm ${merit} điểm công đức. Nguyện cầu chư Phật gia hộ cho thí chủ vạn sự cát tường như ý.`,
         3,
-        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} dâng ${giftName}.`
+        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} dâng ${giftName}.`,
+        { jump: true }
       );
 
     const event = pushEventLog({
       type: giftType === 'dragon' ? 'grandCeremony' : 'offerGift',
+      ttsPriority: 3,
+      ttsJump: true,
+      giftAnnounce: giftEntry,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
@@ -708,6 +717,7 @@ const Rituals = {
 
     const event = pushEventLog({
       type: 'drawFortune',
+      ttsPriority: 2,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
@@ -785,6 +795,7 @@ const Rituals = {
     hallWaiting.clear();
     giftSession.clear();
     engagement.clear();
+    giftFeed.length = 0;
     saveState();
     broadcastNotification('temple.state', getPublicState());
     return getPublicState();
@@ -865,7 +876,9 @@ const isVipSeat = (seat) => seat >= 0 && seat < HALL_VIP_SEATS;
 
 // Tìm 1 chỗ thường: ưu tiên ghế trống; hết ghế thì mời 1 người thường đã ngồi đủ lâu và đang im lặng ra.
 // Không bao giờ đụng hàng giữ chỗ, không đá người vừa vào hoặc đang tích cực. Trả về -1 nếu không có chỗ.
-function takeRegularSeat(exceptUid) {
+// CHEN HÀNG (force = người tặng quà): nếu vẫn không có chỗ, người CHƯA tặng quà im lặng lâu nhất
+// nhường ghế (bất kể vừa vào hay đang tích cực) và ra hàng chờ ngoài sân — không bị mất hẳn.
+function takeRegularSeat(exceptUid, { force = false } = {}) {
   const taken = new Set(Array.from(hall.values(), (m) => m.seat));
   for (let i = HALL_VIP_SEATS; i < HALL_SEATS; i++) {
     if (!taken.has(i)) return i;
@@ -877,10 +890,23 @@ function takeRegularSeat(exceptUid) {
     if (now - m.joinedAt < HALL_MIN_STAY_MS || now - m.lastActive < HALL_ACTIVE_GRACE_MS) continue;
     if (!quietest || m.lastActive < quietest.lastActive) quietest = m;
   }
-  if (!quietest) return -1;
-  hall.delete(quietest.uid);
-  return quietest.seat;
+  if (quietest) {
+    hall.delete(quietest.uid);
+    return quietest.seat;
+  }
+  if (!force) return -1;
+  let bumped = null;
+  for (const m of hall.values()) {
+    if (m.uid === exceptUid || isVipSeat(m.seat) || giftSession.has(m.uid)) continue;
+    if (!bumped || m.lastActive < bumped.lastActive) bumped = m;
+  }
+  if (!bumped) return -1; // cả 32 chỗ thường đều là người đã tặng quà
+  hall.delete(bumped.uid);
+  addToWaiting(bumped.uid, bumped.name, bumped.avatar, bumped.lastActive);
+  return bumped.seat;
 }
+
+const isGifter = (uid) => giftSession.has(uid);
 
 function addToWaiting(uid, name, avatar, lastActive = Date.now()) {
   const w = hallWaiting.get(uid);
@@ -960,7 +986,7 @@ function rebalanceVipSeats() {
   // 3. Người vừa rời hàng đầu nhận chỗ thường; hết chỗ thì ra hàng chờ (không mất hẳn)
   for (const m of Array.from(hall.values())) {
     if (m.seat === -1) {
-      const seat = takeRegularSeat(m.uid);
+      const seat = takeRegularSeat(m.uid, { force: true }); // người rời top 8 cũng là người đã tặng quà
       if (seat === -1) {
         hall.delete(m.uid);
         addToWaiting(m.uid, m.name, m.avatar, m.lastActive);
@@ -982,8 +1008,12 @@ function hallTouch(uid, name, avatar) {
   if (!existing && hallWaiting.has(uid)) {
     // Đang chờ: chỉ cập nhật lần tương tác (để được ưu tiên mời vào); thử lấy chỗ ngay nếu có
     addToWaiting(uid, name, avatar, now);
-    const seat = takeRegularSeat(uid);
-    if (seat !== -1) return seatMember(uid, name || hallWaiting.get(uid)?.name, avatar, seat, now);
+    const seat = takeRegularSeat(uid, { force: isGifter(uid) });
+    if (seat !== -1) {
+      const member = seatMember(uid, name || hallWaiting.get(uid)?.name, avatar, seat, now);
+      if (isGifter(uid)) rebalanceVipSeats();
+      return member;
+    }
     return null;
   }
   if (existing) {
@@ -995,7 +1025,7 @@ function hallTouch(uid, name, avatar) {
     return existing;
   }
 
-  const seat = takeRegularSeat(uid);
+  const seat = takeRegularSeat(uid, { force: isGifter(uid) });
   if (seat === -1) {
     // Đạo tràng đầy người đang tích cực -> xếp hàng chờ ngoài sân
     const isNew = !hallWaiting.has(uid);
@@ -1008,6 +1038,37 @@ function hallTouch(uid, name, avatar) {
   // Người từng tặng quà trong buổi quay lại -> lấy lại hàng đầu nếu đủ hạng
   if (giftSession.has(uid)) rebalanceVipSeats();
   return member;
+}
+
+// ----------------------------------------------------------------------------
+// BẢNG THÔNG BÁO DÂNG LỄ: các món quà gần nhất trong buổi live (màn 3D hiện bảng + băng rôn,
+// thông báo quà luôn chen trước các thông báo khác). Không lưu xuống đĩa.
+// ----------------------------------------------------------------------------
+const GIFT_FEED_MAX = 8;
+const giftFeed = [];
+function pushGiftFeed(devotee, giftName, coins, merit, giftType) {
+  const entry = {
+    id: `gift_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    at: Date.now(),
+    uid: devotee.uniqueId,
+    user: devotee.name,
+    avatar: devotee.avatar || '',
+    giftName,
+    giftType,
+    coins,
+    merit,
+    sessionCoins: giftSession.get(devotee.uniqueId)?.coins || coins,
+    tier: hallTier(devotee.uniqueId),
+    vipRank: (() => {
+      const m = hall.get(devotee.uniqueId);
+      return m && m.seat < HALL_VIP_SEATS ? m.seat + 1 : 0;
+    })(),
+    // big = quà lớn (>= 100 xu): băng rôn to + thời gian hiện lâu hơn
+    big: coins >= GOLD_LOTUS_COINS
+  };
+  giftFeed.unshift(entry);
+  if (giftFeed.length > GIFT_FEED_MAX) giftFeed.length = GIFT_FEED_MAX;
+  return entry;
 }
 
 // Gọi sau mỗi lần tặng quà (Rituals.offerGift)
@@ -1033,12 +1094,17 @@ function hallTick() {
     if (now - w.lastActive > HALL_WAIT_IDLE_MS) { hallWaiting.delete(uid); changed = true; }
   }
   // Mời người chờ vào (người vừa tương tác gần nhất trước), tối đa vài người mỗi lượt cho mượt
-  const queue = Array.from(hallWaiting.values()).sort((a, b) => b.lastActive - a.lastActive);
+  // Người tặng quà được mời vào trước, sau đó tới người vừa tương tác gần nhất
+  const queue = Array.from(hallWaiting.values())
+    .sort((a, b) => (isGifter(b.uid) - isGifter(a.uid)) || (b.lastActive - a.lastActive));
   let seated = 0;
   for (const w of queue) {
     if (seated >= HALL_SEATINGS_PER_TICK) break;
-    const seat = takeRegularSeat(w.uid);
-    if (seat === -1) break;
+    const seat = takeRegularSeat(w.uid, { force: isGifter(w.uid) });
+    if (seat === -1) {
+      if (isGifter(w.uid)) continue;
+      break;
+    }
     seatMember(w.uid, w.name, w.avatar, seat, w.lastActive);
     seated += 1;
     changed = true;
@@ -1125,9 +1191,17 @@ function estimateSpeechSec(text) {
 }
 
 // Trả về câu sẽ đọc ('' = không đọc). shortText: bản rút gọn dùng khi hàng đợi đã dài.
-function planSpeech(fullText, priority, shortText = '') {
+// jump = CHEN HÀNG (tặng quà): luôn đọc, client chèn lên đầu hàng đợi (ngay sau câu đang đọc dở).
+// Khi hàng đợi đã rất dài thì dùng bản rút gọn để người phía sau không phải đợi quá lâu.
+function planSpeech(fullText, priority, shortText = '', { jump = false } = {}) {
   if (!fullText) return '';
   const now = Date.now();
+  if (jump) {
+    const backlogNow = Math.max(0, (ttsBusyUntil - now) / 1000);
+    const text = backlogNow > 45 && shortText ? shortText : fullText;
+    ttsBusyUntil = Math.max(ttsBusyUntil, now) + (estimateSpeechSec(text) + 0.25) * 1000;
+    return text;
+  }
   const backlog = Math.max(0, (ttsBusyUntil - now) / 1000);
   const limit = TTS_MAX_BACKLOG_SEC[priority] ?? 12;
   for (const text of [fullText, shortText]) {

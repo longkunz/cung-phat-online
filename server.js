@@ -454,6 +454,7 @@ function recordDevotee(user, uniqueId, avatar, meritDelta, incenseDelta = 0, gif
 
   state.totalMerit += meritDelta;
   state.haloIntensity = Math.min(1.0, 0.35 + (state.totalMerit % 1000) / 1400);
+  hallTouch(dev.uniqueId, dev.name, dev.avatar);
   return dev;
 }
 
@@ -485,6 +486,7 @@ function getPublicState() {
     recentEvents: state.recentEvents.slice(0, 15),
     settings: state.settings,
     tiktok: state.tiktok,
+    hall: getHallRoster(),
     tts: zeroTts ? zeroTts.getStatus() : { ready: false, status: 'init', voice: 'maichi' }
   };
 }
@@ -752,11 +754,90 @@ const Rituals = {
     state.offerings = { lotus: 1, fruit: 1, lamp: 1, dragon: 0 };
     state.devotees = {};
     state.recentEvents = [];
+    hall.clear();
     saveState();
     broadcastNotification('temple.state', getPublicState());
     return getPublicState();
   }
 };
+
+// ============================================================================
+// 4B. ĐẠO TRÀNG — MỖI NGƯỜI XEM TƯƠNG TÁC CÓ 1 PHẬT TỬ RIÊNG TRONG CHÁNH ĐIỆN
+// ============================================================================
+// Ai bình luận / thả tim / tặng quà / follow sẽ được "mời vào" đạo tràng và ngồi 1 chỗ có tên.
+// Không lưu xuống đĩa (chỉ sống trong phiên live). Đầy chỗ -> người im lặng lâu nhất nhường chỗ.
+const HALL_SEATS = 40;
+const HALL_IDLE_MS = 10 * 60 * 1000;
+const hall = new Map(); // uid -> { uid, name, avatar, seat, joinedAt, lastActive }
+
+function getHallRoster() {
+  return Array.from(hall.values()).map(({ uid, name, avatar, seat }) => ({ uid, name, avatar, seat }));
+}
+
+let hallBroadcastTimer = null;
+function scheduleHallBroadcast() {
+  if (hallBroadcastTimer) return;
+  hallBroadcastTimer = setTimeout(() => {
+    hallBroadcastTimer = null;
+    broadcastNotification('hall.roster', { hall: getHallRoster() });
+  }, 250);
+}
+
+function hallTouch(uid, name, avatar) {
+  if (!uid) return null;
+  const now = Date.now();
+  const existing = hall.get(uid);
+  if (existing) {
+    existing.lastActive = now;
+    let changed = false;
+    if (name && existing.name !== name) { existing.name = name; changed = true; }
+    if (avatar && existing.avatar !== avatar) { existing.avatar = avatar; changed = true; }
+    if (changed) scheduleHallBroadcast();
+    return existing;
+  }
+
+  const taken = new Set(Array.from(hall.values(), (m) => m.seat));
+  let seat = -1;
+  for (let i = 0; i < HALL_SEATS; i++) {
+    if (!taken.has(i)) { seat = i; break; }
+  }
+  if (seat === -1) {
+    // Hết chỗ: mời người im lặng lâu nhất ra, nhường chỗ cho người mới tương tác
+    let oldest = null;
+    for (const m of hall.values()) {
+      if (!oldest || m.lastActive < oldest.lastActive) oldest = m;
+    }
+    hall.delete(oldest.uid);
+    seat = oldest.seat;
+  }
+  const member = { uid, name: name || 'Thí Chủ', avatar: avatar || '', seat, joinedAt: now, lastActive: now };
+  hall.set(uid, member);
+  scheduleHallBroadcast();
+  broadcastNotification('hall.action', { uid, action: 'join' });
+  return member;
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - HALL_IDLE_MS;
+  let removed = false;
+  for (const [uid, m] of hall) {
+    if (m.lastActive < cutoff) { hall.delete(uid); removed = true; }
+  }
+  if (removed) scheduleHallBroadcast();
+}, 60 * 1000).unref?.();
+
+function hallAction(uid, action, text = '') {
+  if (!uid || !hall.has(uid)) return;
+  broadcastNotification('hall.action', { uid, action, text: String(text || '').slice(0, 80) });
+}
+
+// Lệnh ngắn điều khiển Phật tử của chính mình (không đọc TTS, không chiếm sân khấu chính)
+const HALL_COMMANDS = [
+  { action: 'bow', re: /(^|\s)(lạy|lay|lễ phật|le phat|đảnh lễ|danh le)(\s|$)/ },
+  { action: 'greet', re: /(^|\s)(chào|chao|hello|hi|xin chào|xin chao)(\s|$)/ },
+  { action: 'chant', re: /(niệm phật|niem phat|a di đà|a di da|nam mô|nam mo|mô phật|mo phat)/ }
+];
+const SHORT_COMMAND_MAX_WORDS = 4;
 
 // ============================================================================
 // 5. TIKTOK LIVE CONNECTOR & COMMENT PARSER
@@ -776,23 +857,41 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     return null;
   }
 
-  // Chống 1 người spam bình luận liên tục làm nghẽn hàng đợi TTS (cooldown 3.5 giây/người)
-  const userKey = uniqueId || user || '';
-  const now = Date.now();
-  if (userKey) {
-    const lastTs = commentCooldownMap.get(userKey) || 0;
-    if (now - lastTs < 3500) {
-      return null;
-    }
-    commentCooldownMap.set(userKey, now);
-    if (commentCooldownMap.size > 600) {
-      const oldestKey = commentCooldownMap.keys().next().value;
-      commentCooldownMap.delete(oldestKey);
-    }
-  }
-
   const cleanUser = sanitizeUserName(user);
   const lower = cleanWish.toLowerCase();
+  const userKey = uniqueId || user || '';
+  const now = Date.now();
+
+  // Chống spam: nghi thức lớn (có TTS) 3.5 giây/người; lệnh/bong bóng nhẹ 1.2 giây/người
+  const passCooldown = (ms) => {
+    if (!userKey) return true;
+    const lastTs = commentCooldownMap.get(userKey) || 0;
+    if (now - lastTs < ms) return false;
+    commentCooldownMap.delete(userKey); // xóa rồi set lại để Map giữ thứ tự "mới dùng gần nhất"
+    commentCooldownMap.set(userKey, now);
+    if (commentCooldownMap.size > 600) {
+      commentCooldownMap.delete(commentCooldownMap.keys().next().value);
+    }
+    return true;
+  };
+  const isRitual =
+    /xin xăm|xin xam|gieo quẻ|gieo que|rút quẻ|rut que|quẻ|chuông|chuong|gõ mõ|go mo|tụng kinh|thắp hương|thap huong|dâng hương|dang huong|bái phật|bai phat/.test(lower) ||
+    /(^|\s)que(\s|$)/.test(lower);
+  const wordCount = lower.split(/\s+/).filter(Boolean).length;
+  const command = !isRitual && wordCount <= SHORT_COMMAND_MAX_WORDS
+    ? HALL_COMMANDS.find((c) => c.re.test(lower))
+    : null;
+
+  if (!isRitual && (command || !isPrayerText(lower))) {
+    // Lệnh ngắn hoặc bình luận thường: chỉ Phật tử của người đó cử động / hiện bong bóng, +1 Công Đức
+    if (!passCooldown(1200)) return null;
+    const dev = recordDevotee(cleanUser, uniqueId, avatar, 1, 0, 0);
+    hallAction(dev.uniqueId, command ? command.action : 'say', cleanWish);
+    saveState();
+    return { hall: { uid: dev.uniqueId, action: command ? command.action : 'say', text: cleanWish } };
+  }
+
+  if (!passCooldown(3500)) return null;
 
   // 1. Xin xăm / Gieo quẻ
   if (
@@ -825,15 +924,17 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('dâng hương') ||
     lower.includes('dang huong') ||
     lower.includes('bái phật') ||
-    lower.includes('bai phat') ||
-    lower.includes('lạy phật') ||
-    lower.includes('lay phat')
+    lower.includes('bai phat')
   ) {
     return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 3, wish: cleanWish });
   }
 
-  // 5. Cầu nguyện / Thả đèn hoa đăng
-  if (
+  // 5. Lời cầu nguyện dài -> Thả đèn hoa đăng + đọc TTS
+  return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
+}
+
+function isPrayerText(lower) {
+  return (
     lower.includes('cầu') ||
     lower.includes('cau ') ||
     lower.includes('nguyện') ||
@@ -847,11 +948,7 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('bình an') ||
     lower.includes('tài lộc') ||
     lower.includes('chúc')
-  ) {
-    return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
-  }
-
-  return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 1, wish: cleanWish });
+  );
 }
 
 const giftComboTracker = new Map();
@@ -1094,11 +1191,23 @@ const SIM_DEVOTEES = [
   { user: 'Diệu Thảo Tâm An', uniqueId: 'tam_an_99', wish: 'Nam Mô A Di Đà Phật, nguyện cầu thế giới hòa bình chúng sinh an lạc' },
   { user: 'Lê Hoàng Nam', uniqueId: 'hoangnam.dev', wish: 'Cầu thi cử đỗ đạt điểm cao, sự nghiệp rộng mở' },
   { user: 'Phạm Thanh Hà', uniqueId: 'thanhha.lotus', wish: 'Cầu gia đạo êm ấm, con cái ngoan ngoãn học giỏi' },
-  { user: 'Vũ Đức Thịnh', uniqueId: 'ducthinh88', wish: 'Con xin gieo một quẻ cầu tài lộc đầu năm' }
+  { user: 'Vũ Đức Thịnh', uniqueId: 'ducthinh88', wish: 'Con xin gieo một quẻ cầu tài lộc đầu năm' },
+  { user: 'Hoàng Bảo Ngọc', uniqueId: 'baongoc.hb', wish: 'Cầu cho mẹ mau khỏe lại' },
+  { user: 'Đỗ Gia Huy', uniqueId: 'giahuy_do', wish: 'Cầu năm nay đi làm thuận lợi' },
+  { user: 'Bùi Thu Trang', uniqueId: 'thutrang.bui', wish: 'Cầu gia đình luôn hạnh phúc' },
+  { user: 'Ngô Minh Khang', uniqueId: 'khang.ngo', wish: 'Cầu thi đậu đại học' }
 ];
+const SIM_SHORT_COMMENTS = ['lạy', 'chào cả nhà', 'a di đà phật', 'niệm phật', 'lạy phật', 'chùa đẹp quá', 'hi mọi người'];
 
 function runSingleSimulationStep() {
   const pick = SIM_DEVOTEES[Math.floor(Math.random() * SIM_DEVOTEES.length)];
+  // Phần lớn người xem thật chỉ gõ lệnh ngắn -> mô phỏng vài lệnh/bong bóng trước mỗi nghi thức
+  const chatters = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < chatters; i++) {
+    const who = SIM_DEVOTEES[Math.floor(Math.random() * SIM_DEVOTEES.length)];
+    const text = SIM_SHORT_COMMENTS[Math.floor(Math.random() * SIM_SHORT_COMMENTS.length)];
+    setTimeout(() => parseViewerComment(text, who.user, who.uniqueId, ''), 600 + i * 1700);
+  }
   const roll = Math.random();
   if (roll < 0.30) {
     Rituals.burnIncense({ user: pick.user, uniqueId: pick.uniqueId, count: 3, wish: pick.wish });

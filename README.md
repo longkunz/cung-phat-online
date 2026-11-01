@@ -95,7 +95,9 @@ Mặc định server chạy tại cổng `3000`:
 | :--- | :--- | :--- | :---: |
 | **Thả tim (Like)** | Mỗi đợt thả tim | Gõ mõ gỗ tụng kinh + Làn sóng Phật tử vái lạy | `+1` / tim |
 | **Follow / Share** | Theo dõi hoặc chia sẻ | Thỉnh Đại Hồng Chung ngân vang + Sóng âm vàng | `+10` |
-| **Bình luận Thắp hương** | `thắp hương`, `dâng hương`, `bái phật`, `lạy phật` | Phật tử bước dọc thảm đỏ lên trước Lư Hương, quỳ đảnh lễ 3 lạy + Đọc tên khấn | `+15` |
+| **Bình luận bất kỳ** | Lần đầu bình luận / thả tim / tặng quà / follow | **Vào Đạo Tràng**: có 1 Phật tử riêng ngồi cạnh thảm đỏ kèm tên (40 chỗ, người im lâu nhất nhường chỗ, im 10 phút tự rời). Bình luận thường hiện thành bong bóng trên đầu | `+1` |
+| **Lệnh ngắn** (≤ 4 từ) | `lạy`, `lạy phật` · `chào` · `niệm phật`, `a di đà phật` | Phật tử của chính người đó lạy 3 lạy / chắp tay chào / tỏa hào quang niệm Phật (không đọc giọng AI) | `+1` |
+| **Bình luận Thắp hương** | `thắp hương`, `dâng hương`, `bái phật` | Phật tử bước dọc thảm đỏ lên trước Lư Hương, quỳ đảnh lễ 3 lạy + Đọc tên khấn | `+15` |
 | **Bình luận Cầu nguyện** | `cầu ...`, `nguyện ...`, `nam mô`, `a di đà phật`, `bình an`, `chúc ...` | Bước lên đảnh lễ + Thả Đèn Hoa Đăng mang lời khấn bay lên trời + Đọc lời cầu nguyện | `+10` |
 | **Bình luận Xin xăm** | `xin xăm`, `gieo quẻ`, `rút quẻ`, `quẻ` | Lắc ống xăm + Mở tờ Giải Quẻ đồng bộ đúng lúc giọng đọc bắt đầu vang lên | `+10` |
 | **Tặng quà Nhỏ (1–4 xu)** | Hoa hồng (Rose), Heart Me... | Bước lên dâng Đài Hoa Sen Vàng + Thắp 3 nén hương + Đọc lời cảm tạ | `+20` / xu |

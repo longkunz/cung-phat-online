@@ -142,58 +142,189 @@
     }
   })();
 
-  let lastRenderedLeaderboardJson = '';
+  // ------------------------------------------------------------------------
+  // ĐẠO TRÀNG: mỗi người xem tương tác có 1 Phật tử riêng (server gửi 'hall.roster' / 'hall.action')
+  // ------------------------------------------------------------------------
+  // Server đánh số ghế 0..39 theo thứ tự vào; ghế 0 là chỗ dễ nhìn nhất (sát thảm đỏ, hàng trước)
+  const SEAT_PRIORITY = [
+    3, 4, 11, 12, 19, 20, 27, 28, 35, 36,
+    2, 5, 10, 13, 18, 21, 26, 29, 34, 37,
+    1, 6, 9, 14, 17, 22, 25, 30, 33, 38,
+    0, 7, 8, 15, 16, 23, 24, 31, 32, 39
+  ];
+  const seatEls = [];          // chỉ số ghế trên màn hình -> phần tử .hall-seat
+  const seatState = [];        // { uid, sig, timers: [] }
+  const uidToSeat = new Map(); // uid -> chỉ số ghế trên màn hình
+  const activeBubbles = [];
+  const MAX_BUBBLES = 6;
 
-  function renderCongregationHall(leaderboard = []) {
+  (function buildHallOnce() {
     if (!congregationHall) return;
-    // Những người xếp từ hạng 7 trở đi ngồi ở các vị trí đầu tiên cạnh thảm đỏ
-    const hallViewers = leaderboard.slice(6);
-    const sig = JSON.stringify(hallViewers.map((d) => `${d.name}:${d.merit}`));
-    if (sig === lastRenderedLeaderboardJson && congregationHall.children.length > 0) return;
-    lastRenderedLeaderboardJson = sig;
-
-    // Ưu tiên gắn thẻ tên vào các ghế gần thảm đỏ dễ nhìn nhất
-    const labeledSeatIndices = [
-      3, 4, 11, 12, 19, 20, 27, 28, 35, 36, 2, 5, 10, 13, 18, 21, 26, 29
-    ];
-    const seatViewerMap = new Map();
-    hallViewers.forEach((viewer, idx) => {
-      if (idx < labeledSeatIndices.length) {
-        seatViewerMap.set(labeledSeatIndices[idx], viewer);
-      }
-    });
-
-    congregationHall.innerHTML = HALL_SEAT_COORDS.map((seat, idx) => {
-      const viewer = seatViewerMap.get(idx);
-      const badgeHtml = viewer
-        ? `
-          <div class="seat-badge">
-            <span class="seat-avatar">${
-              viewer.avatar
-                ? `<img src="${escapeHtml(viewer.avatar)}" alt="" />`
-                : escapeHtml(String(viewer.name || 'P').charAt(0).toUpperCase())
-            }</span>
-            <span class="seat-username">${escapeHtml(shortenName(viewer.name, 11))}</span>
-          </div>
-        `
-        : '';
-
-      return `
+    congregationHall.innerHTML = HALL_SEAT_COORDS.map((seat, idx) => `
         <div
-          class="hall-seat plx"
+          class="hall-seat plx is-empty"
           data-seat-idx="${idx}"
           style="--d: ${seat.depth}; --x: ${seat.x}; --y: ${seat.y}; left: ${seat.x}px; top: ${seat.y}px; z-index: ${20 + seat.row * 2}; transform: translate(-50%, -100%) scale(${seat.scale});"
         >
-          <img
-            src="/assets/devotee.png"
-            alt="Phật tử"
-            class="devotee-sprite"
-            style="animation-delay: ${((idx * 0.27) % 3.5).toFixed(2)}s;"
-          />
-          ${badgeHtml}
+          <div class="seat-fx"></div>
+          <img src="/assets/devotee.png" alt="Phật tử" class="devotee-sprite"
+               style="animation-delay: ${((idx * 0.27) % 3.5).toFixed(2)}s;" />
+          <div class="seat-badge-slot"></div>
         </div>
-      `;
-    }).join('');
+      `).join('');
+    congregationHall.querySelectorAll('.hall-seat').forEach((el, idx) => {
+      seatEls[idx] = el;
+      seatState[idx] = { uid: null, sig: '', timers: [] };
+    });
+  })();
+
+  function badgeHtml(member) {
+    return `
+      <div class="seat-badge">
+        <span class="seat-avatar">${
+          member.avatar
+            ? `<img src="${escapeHtml(member.avatar)}" alt="" referrerpolicy="no-referrer" />`
+            : escapeHtml(String(member.name || 'P').charAt(0).toUpperCase())
+        }</span>
+        <span class="seat-username">${escapeHtml(shortenName(member.name, 11))}</span>
+      </div>`;
+  }
+
+  function renderHallRoster(roster = []) {
+    if (!seatEls.length) return;
+    const wanted = new Map(); // chỉ số ghế màn hình -> member
+    roster.forEach((m) => {
+      const screenIdx = SEAT_PRIORITY[m.seat];
+      if (screenIdx !== undefined) wanted.set(screenIdx, m);
+    });
+    uidToSeat.clear();
+    seatEls.forEach((el, idx) => {
+      const m = wanted.get(idx);
+      const st = seatState[idx];
+      const sig = m ? `${m.uid}|${m.name}|${m.avatar}` : '';
+      if (m) uidToSeat.set(m.uid, idx);
+      if (sig === st.sig) return;
+      const changedPerson = (m?.uid || null) !== st.uid;
+      st.sig = sig;
+      st.uid = m?.uid || null;
+      el.querySelector('.seat-badge-slot').innerHTML = m ? badgeHtml(m) : '';
+      el.classList.toggle('is-empty', !m);
+      if (changedPerson) resetSeat(idx);
+    });
+  }
+
+  function clearSeatTimers(idx) {
+    const st = seatState[idx];
+    while (st.timers.length) clearTimeout(st.timers.pop());
+  }
+
+  function resetSeat(idx) {
+    clearSeatTimers(idx);
+    const el = seatEls[idx];
+    el.classList.remove('is-busy', 'fx-join', 'fx-chant', 'fx-greet', 'fx-offer', 'has-bubble');
+    el.querySelectorAll('.seat-bubble, .seat-float').forEach((n) => n.remove());
+    const img = el.querySelector('.devotee-sprite');
+    if (img) img.src = SPRITE_FRAMES.kneel;
+  }
+
+  function seatLater(idx, ms, fn) {
+    seatState[idx].timers.push(setTimeout(fn, ms));
+  }
+
+  function flashSeat(idx, cls, ms) {
+    const el = seatEls[idx];
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    seatLater(idx, ms, () => el.classList.remove(cls));
+  }
+
+  function floatSeatText(idx, text) {
+    const el = seatEls[idx];
+    const f = document.createElement('div');
+    f.className = 'seat-float';
+    f.textContent = text;
+    el.appendChild(f);
+    seatLater(idx, 2600, () => f.remove());
+  }
+
+  function playSeatBows(idx, times = 1) {
+    const el = seatEls[idx];
+    const img = el.querySelector('.devotee-sprite');
+    if (!img) return;
+    el.classList.add('is-busy');
+    const seq = [
+      [0, 'forehead'], [180, 'bowMid'], [340, 'prostrate'], [500, 'prostrateDeep'],
+      [900, 'prostrate'], [1060, 'bowMid'], [1220, 'kneel']
+    ];
+    for (let b = 0; b < times; b++) {
+      seq.forEach(([t, pose]) => seatLater(idx, b * 1400 + t, () => { img.src = SPRITE_FRAMES[pose]; }));
+    }
+    seatLater(idx, times * 1400, () => el.classList.remove('is-busy'));
+  }
+
+  function showSeatBubble(idx, text) {
+    const clean = String(text || '').trim();
+    if (!clean) return;
+    const el = seatEls[idx];
+    el.querySelector('.seat-bubble')?.remove();
+    const b = document.createElement('div');
+    b.className = 'seat-bubble';
+    b.textContent = clean.length > 60 ? `${clean.slice(0, 59)}…` : clean;
+    el.appendChild(b);
+    el.classList.add('has-bubble');
+    activeBubbles.push(b);
+    while (activeBubbles.length > MAX_BUBBLES) {
+      const old = activeBubbles.shift();
+      old.closest('.hall-seat')?.classList.remove('has-bubble');
+      old.remove();
+    }
+    seatLater(idx, 4500, () => {
+      b.remove();
+      const i = activeBubbles.indexOf(b);
+      if (i >= 0) activeBubbles.splice(i, 1);
+      if (!el.querySelector('.seat-bubble')) el.classList.remove('has-bubble');
+    });
+  }
+
+  function seatAction(uid, action, text = '') {
+    const idx = uidToSeat.get(uid);
+    if (idx === undefined) return false;
+    switch (action) {
+      case 'join':
+        flashSeat(idx, 'fx-join', 2200);
+        break;
+      case 'bow':
+        playSeatBows(idx, 3);
+        floatSeatText(idx, '🙏 Đảnh lễ');
+        break;
+      case 'greet': {
+        const img = seatEls[idx].querySelector('.devotee-sprite');
+        seatEls[idx].classList.add('is-busy');
+        if (img) img.src = SPRITE_FRAMES.forehead;
+        flashSeat(idx, 'fx-greet', 1500);
+        floatSeatText(idx, '🙏 Chào cả nhà');
+        seatLater(idx, 1500, () => {
+          if (img) img.src = SPRITE_FRAMES.kneel;
+          seatEls[idx].classList.remove('is-busy');
+        });
+        break;
+      }
+      case 'chant':
+        flashSeat(idx, 'fx-chant', 4200);
+        floatSeatText(idx, 'Nam Mô A Di Đà Phật');
+        break;
+      case 'offer':
+        flashSeat(idx, 'fx-offer', 3200);
+        playSeatBows(idx, 1);
+        break;
+      case 'say':
+        showSeatBubble(idx, text);
+        break;
+      default:
+        return false;
+    }
+    return true;
   }
 
   // Preload toàn bộ 8 frame nhân vật vào bộ nhớ để chuyển frame mượt 0ms
@@ -216,7 +347,7 @@
     if (!congregationHall) return;
     const seats = congregationHall.querySelectorAll('.hall-seat');
     seats.forEach((el, i) => {
-      if (i % 4 !== 0) return;
+      if (i % 4 !== 0 || el.classList.contains('is-busy')) return;
       const img = el.querySelector('.devotee-sprite');
       if (!img) return;
       const delay = (i % 4) * 80;
@@ -366,7 +497,7 @@
 
     const lb = Array.isArray(st.leaderboard) ? st.leaderboard : [];
     renderVipCushions(lb);
-    renderCongregationHall(lb);
+    if (Array.isArray(st.hall)) renderHallRoster(st.hall);
 
     // Đồng bộ tên Chủ Lễ mặc định theo người dẫn đầu thực tế nếu chưa có sự kiện mới
     if (!hasInitializedRealLeader && lb.length > 0) {
@@ -483,6 +614,16 @@
   let fortuneTimer = null;
   let grandTimer = null;
 
+  // Phật tử của chính người làm nghi thức cũng cử động theo
+  const SEAT_REACTIONS = {
+    burnIncense: 'bow',
+    sendPrayer: 'chant',
+    offerGift: 'offer',
+    grandCeremony: 'offer',
+    drawFortune: 'bow',
+    ringBell: 'greet'
+  };
+
   // Camera 2.5D (public/js/stage25d.js) — no-op nếu đang ở chế độ 2D
   const STAGE_CUES = {
     burnIncense: 'altar',
@@ -497,6 +638,7 @@
   function triggerRitualVisuals(ev) {
     if (!ev) return;
     if (STAGE_CUES[ev.type]) window.Stage25D?.cue(STAGE_CUES[ev.type]);
+    if (ev.uniqueId && SEAT_REACTIONS[ev.type]) seatAction(ev.uniqueId, SEAT_REACTIONS[ev.type]);
 
     if (ev.ttsText && ev.type !== 'drawFortune') {
       audio.enqueueTts(ev.ttsText, { voice: ev.ttsVoice || 'maichi' });
@@ -653,6 +795,17 @@
         } else if (msg.method === 'temple.event') {
           if (msg.params?.state) updateUIState(msg.params.state);
           if (msg.params?.event) triggerRitualVisuals(msg.params.event);
+        } else if (msg.method === 'hall.roster') {
+          renderHallRoster(msg.params?.hall || []);
+        } else if (msg.method === 'hall.action') {
+          const a = msg.params || {};
+          // Người mới: server gửi 'join' ngay nhưng roster mới tới sau (debounce 250ms) -> đợi roster rồi mới diễn.
+          // Hành động khác của người vừa vào cũng có thể tới trước roster -> thử lại 1 lần.
+          if (a.action === 'join') {
+            setTimeout(() => seatAction(a.uid, 'join'), 400);
+          } else if (!seatAction(a.uid, a.action, a.text)) {
+            setTimeout(() => seatAction(a.uid, a.action, a.text), 400);
+          }
         } else if (msg.method === 'tts.play') {
           if (msg.params?.url) {
             audio.enqueueTts(msg.params.text || 'Nam mô A Di Đà Phật', {

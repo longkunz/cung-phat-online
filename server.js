@@ -629,7 +629,8 @@ const Rituals = {
       dragon: 'Đại Lễ Kim Long Chầu Phật'
     };
     const giftName = params.giftName || giftLabels[giftType];
-    const multiplier = coins >= 100 ? 50 : coins >= 10 ? 30 : 20;
+    // Khớp bảng quy tắc README: 1–4 xu +20/xu, 5–99 xu +30/xu, ≥100 xu +50/xu
+    const multiplier = coins >= 100 ? 50 : coins >= 5 ? 30 : 20;
     const merit = Math.max(20, coins * multiplier);
 
     state.offerings[giftType] = (state.offerings[giftType] || 0) + 1;
@@ -960,9 +961,11 @@ async function connectTikTokLive(usernameOrUrl) {
   });
 
   on(WebcastEvent.MEMBER, (data) => {
-    const { user, uniqueId, avatar } = extractUserFromEvent(data);
-    recordDevotee(user, uniqueId, avatar, 1, 0, 0, 'Đã vào Chánh Điện lễ Phật');
-    broadcastNotification('temple.state', getPublicState());
+    // Chỉ cập nhật avatar cho người đã có trên bảng; KHÔNG cộng công đức / tạo mục mới cho mỗi lượt vào phòng
+    // (trước đây mỗi người xem lướt qua đều +1 CĐ, làm Bảng Vàng phình to vô hạn và sai lệch)
+    const { uniqueId, avatar } = extractUserFromEvent(data);
+    const existing = uniqueId && state.devotees[uniqueId.slice(0, 40)];
+    if (existing && avatar) existing.avatar = avatar;
   });
 
   on(WebcastEvent.CHAT, (data) => {
@@ -1180,6 +1183,24 @@ async function handleRpcCall(method, params = {}) {
 // 8. EXPRESS + WEBSOCKET SERVER
 // ============================================================================
 const app = express();
+// Chặn website lạ (mở trong trình duyệt của máy stream) gọi ngầm vào /rpc, /ws.
+// Request không có Origin (curl, TikFinity, Streamer.bot, webhook) và trang chạy trên localhost vẫn hoạt động.
+function isAllowedOrigin(origin, host) {
+  if (!origin) return true;
+  try {
+    const u = new URL(origin);
+    if (u.host === host) return true;
+    return ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin, req.headers.host)) {
+    return res.status(403).json({ error: 'Origin không được phép' });
+  }
+  next();
+});
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
@@ -1236,7 +1257,11 @@ app.get('/api/state', (_req, res) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: ({ origin, req }) => isAllowedOrigin(origin, req.headers.host)
+});
 
 function broadcastNotification(method, params) {
   const payload = JSON.stringify({

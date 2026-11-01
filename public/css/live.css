@@ -1120,3 +1120,36 @@ body.obs-mode .stage-wrapper {
   border-left: 3px solid var(--gold-main);
   color: #f3e5cf;
 }
+
+/* ==========================================================================
+   2.5D — LỚP CAMERA CẢNH & PARALLAX THEO ĐỘ SÂU (public/js/stage25d.js)
+   ========================================================================== */
+.scene-camera {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transform-origin: 50% 47%;
+  will-change: transform;
+  --plx: 0px;
+  --ply: 0px;
+  --focus: 0.35;
+}
+
+.stage-gl {
+  position: absolute;
+  inset: 0;
+  width: 1080px;
+  height: 1920px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.sanctuary-bg-img.replaced-by-gl {
+  visibility: hidden;
+}
+
+/* Mỗi lớp dịch theo (độ sâu - focus): lớp gần camera dịch nhiều, lớp xa dịch ngược chiều.
+   Dùng thuộc tính `translate` riêng nên không đè lên `transform`/animation sẵn có của phần tử. */
+.fx-25d .plx {
+  translate: calc(var(--plx) * (var(--d, 0.35) - var(--focus))) calc(var(--ply) * (var(--d, 0.35) - var(--focus)));
+}

@@ -41,6 +41,13 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
   - Chặn tự động các ký tự Cuneiform (`𒐫`), chữ Ả Rập gây lag, Braille, Zalgo, bình luận chỉ toàn dấu chấm (`...`) hoặc từ ngữ phản cảm.
   - Tự động chuẩn hóa Unicode (`NFKC` → `NFC`) chuyển tên kiểu chữ toán học về tiếng Việt sạch trước khi đọc TTS.
 
+### 🧪 Chế độ Chánh Điện 2.5D (thử nghiệm)
+- Ảnh nền được dựng chiều sâu bằng **bản đồ độ sâu** (`public/assets/amitabha_stage_depth.png`, sinh bởi `scripts/gen_depth_map.py`) và shader **Three.js** (`public/js/stage25d.js`): camera chao nhẹ liên tục, các lớp gần (thảm, Phật tử) trượt nhiều hơn lớp xa (tượng Phật).
+- Camera tự "diễn" theo sự kiện: tiến về bàn thờ khi dâng hương/cầu nguyện, tiến sát tượng Phật + hào quang khi có Đại Lễ, rung nhẹ khi thỉnh chuông/gõ mõ.
+- Trên trình duyệt (không phải `?obs=1`), di chuột để thử hiệu ứng chiều sâu.
+- Tắt bằng `?fx=2d` (ví dụ `http://localhost:3000/?obs=1&fx=2d`). Máy không có WebGL tự quay về ảnh 2D.
+- OBS: bật *Use hardware acceleration in Browser Sources* để GPU xử lý shader.
+
 ---
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy Nhanh

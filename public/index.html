@@ -16,6 +16,9 @@
          ==================================================================== -->
     <div class="stage-wrapper" id="stageWrapper">
       <div class="stage-9x16" id="stage9x16">
+        <!-- LỚP CAMERA CẢNH (2.5D): ảnh nền + mọi thứ "nằm trong" chánh điện cùng zoom/parallax.
+             --d = độ sâu của lớp (0 xa .. 1 gần), khớp với assets/amitabha_stage_depth.png -->
+        <div class="scene-camera" id="sceneCamera">
         <!-- 1. HÌNH NỀN CHÁNH ĐIỆN ĐỨC PHẬT A DI ĐÀ 8K SẮC NÉT -->
         <img
           src="/assets/amitabha_stage.png"
@@ -24,7 +27,7 @@
         />
 
         <!-- 1B. HỆ THỐNG HÀO QUANG ĐỨC PHẬT A DI ĐÀ (XOAY CHUYỂN VẠN TRƯỢNG, KHÔNG CHE MẶT PHẬT) -->
-        <div class="buddha-halo-system" id="buddhaHaloSystem">
+        <div class="buddha-halo-system plx" style="--d: 0.18" id="buddhaHaloSystem">
           <div class="halo-sunburst"></div>
           <div class="halo-counter-rays"></div>
           <div class="halo-pulse-ring ring-1"></div>
@@ -43,46 +46,19 @@
         </div>
 
         <!-- HÀO QUANG ĐÀI SEN TRÊN TAY ĐỨC PHẬT A DI ĐÀ -->
-        <div class="lotus-hand-halo" id="lotusHandHalo"></div>
+        <div class="lotus-hand-halo plx" style="--d: 0.23" id="lotusHandHalo"></div>
 
-        <!-- 2. THANH TRẠNG THÁI MỎNG TRÊN ĐỈNH (KHÔNG CHE TƯỢNG PHẬT) -->
-        <header class="minimal-top-bar">
-          <div class="live-pill" id="liveStatusPill">
-            <span class="live-dot" id="liveDot"></span>
-            <span id="liveStatusText">CHÙA LINH ỨNG • ĐỨC PHẬT A DI ĐÀ</span>
-          </div>
-          <div class="top-Right-badges">
-            <div class="mini-stat-pill">
-              🔥 <strong id="statIncense">108</strong> hương • ✨ <strong id="statMerit">1,080</strong> CĐ
-            </div>
-          </div>
-        </header>
 
         <!-- 3. CỘT SÁNG TÂM HƯƠNG & LƯ HƯƠNG TRUNG TÂM -->
-        <div class="sacred-light-beam" id="sacredLightBeam"></div>
+        <div class="sacred-light-beam plx" style="--d: 0.33" id="sacredLightBeam"></div>
 
-        <div class="incense-burner-zone" id="incenseBurnerZone" title="Bấm để Thắp Hương Dâng Phật">
+        <div class="incense-burner-zone plx" style="--d: 0.35" id="incenseBurnerZone" title="Bấm để Thắp Hương Dâng Phật">
           <div class="incense-sticks-holder" id="incenseSticksHolder"></div>
         </div>
 
-        <!-- PHÁP KHÍ TƯƠNG TÁC HAI BÊN BÀN THỜ: ĐẠI HỒNG CHUNG & MÕ GỖ & ỐNG XĂM -->
-        <div class="ritual-hotspot bell-hotspot" id="bellStation" title="Bấm để Thỉnh Đại Hồng Chung">
-          <span class="hotspot-icon">🔔</span>
-          <span class="hotspot-label">Thỉnh Chuông</span>
-        </div>
-
-        <div class="ritual-hotspot woodfish-hotspot" id="woodenFishStation" title="Bấm để Gõ Mõ Tích Công Đức">
-          <span class="hotspot-icon">🪵</span>
-          <span class="hotspot-label">Gõ Mõ (<span id="statWoodenFish">360</span>)</span>
-        </div>
-
-        <div class="ritual-hotspot fortune-hotspot" id="fortuneCylinder" title="Bấm để Xin Xăm / Gieo Quẻ">
-          <span class="hotspot-icon">🎋</span>
-          <span class="hotspot-label">Xin Xăm</span>
-        </div>
 
         <!-- 4. CHỦ LỄ ĐANG DÂNG HƯƠNG TRƯỚC LƯ HƯƠNG ĐỒNG (GIỮA CHÁNH ĐIỆN) -->
-        <div class="central-worshipper" id="centralWorshipper">
+        <div class="central-worshipper plx" style="--d: 0.45" id="centralWorshipper">
           <div class="worshipper-wish-bubble" id="centralWishBubble">
             “Cầu gia đình bình an, vạn sự cát tường như ý”
           </div>
@@ -106,7 +82,7 @@
         </div>
 
         <!-- 5. HÀNG 6 ĐỆM QUỲ VIP (TOP 6 BẢNG VÀNG CÔNG ĐỨC TRÊN BỤC GỖ) -->
-        <div class="vip-cushions-layer" id="vipCushionsLayer"></div>
+        <div class="vip-cushions-layer plx" style="--d: 0.44" id="vipCushionsLayer"></div>
 
         <!-- 6. ĐẠO TRÀNG NGƯỜI XEM QUỲ LỄ HAI BÊN THẢM ĐỎ (40 CHỖ NGỒI PHỐI CẢNH) -->
         <div class="congregation-hall" id="congregationHall"></div>
@@ -115,10 +91,41 @@
         <div class="carpet-walker-layer" id="carpetWalkerLayer"></div>
 
         <!-- 8. ĐÈN HOA ĐĂNG / SỚ CẦU NGUYỆN BAY LÊN -->
-        <div class="sky-lanterns-layer" id="skyLanternsLayer"></div>
+        <div class="sky-lanterns-layer plx" style="--d: 0.5" id="skyLanternsLayer"></div>
 
         <!-- 9. LỚP CANVAS HIỆU ỨNG KHÓI HƯƠNG, HOA SEN RƠI & SÓNG ÂM -->
-        <canvas id="templeCanvas"></canvas>
+        <canvas id="templeCanvas" class="plx" style="--d: 0.38"></canvas>
+        </div>
+        <!-- /LỚP CAMERA CẢNH -->
+
+        <!-- 2. THANH TRẠNG THÁI MỎNG TRÊN ĐỈNH (KHÔNG CHE TƯỢNG PHẬT) -->
+        <header class="minimal-top-bar">
+          <div class="live-pill" id="liveStatusPill">
+            <span class="live-dot" id="liveDot"></span>
+            <span id="liveStatusText">CHÙA LINH ỨNG • ĐỨC PHẬT A DI ĐÀ</span>
+          </div>
+          <div class="top-Right-badges">
+            <div class="mini-stat-pill">
+              🔥 <strong id="statIncense">108</strong> hương • ✨ <strong id="statMerit">1,080</strong> CĐ
+            </div>
+          </div>
+        </header>
+
+        <!-- PHÁP KHÍ TƯƠNG TÁC HAI BÊN BÀN THỜ: ĐẠI HỒNG CHUNG & MÕ GỖ & ỐNG XĂM -->
+        <div class="ritual-hotspot bell-hotspot" id="bellStation" title="Bấm để Thỉnh Đại Hồng Chung">
+          <span class="hotspot-icon">🔔</span>
+          <span class="hotspot-label">Thỉnh Chuông</span>
+        </div>
+
+        <div class="ritual-hotspot woodfish-hotspot" id="woodenFishStation" title="Bấm để Gõ Mõ Tích Công Đức">
+          <span class="hotspot-icon">🪵</span>
+          <span class="hotspot-label">Gõ Mõ (<span id="statWoodenFish">360</span>)</span>
+        </div>
+
+        <div class="ritual-hotspot fortune-hotspot" id="fortuneCylinder" title="Bấm để Xin Xăm / Gieo Quẻ">
+          <span class="hotspot-icon">🎋</span>
+          <span class="hotspot-label">Xin Xăm</span>
+        </div>
 
         <!-- 10. THANH HUD GỌN GÀNG DƯỚI ĐÁY (GIỐNG MẪU THAM CHIẾU) -->
         <footer class="bottom-hud-bar">
@@ -258,5 +265,6 @@
   <script src="/js/audio.js"></script>
   <script src="/js/particles.js"></script>
   <script src="/js/live.js"></script>
+  <script type="module" src="/js/stage25d.js"></script>
 </body>
 </html>

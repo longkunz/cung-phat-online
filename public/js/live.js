@@ -118,6 +118,9 @@
       const progress = r / (rows - 1); // 0 (xa) -> 1 (gần)
       const y = Math.round(1290 + progress * 355); // 1290 -> 1645
       const scale = +(0.76 + progress * 0.28).toFixed(2);
+      // Độ sâu 2.5D của hàng ghế, cùng công thức sàn nhà trong scripts/gen_depth_map.py
+      const floorT = Math.max(0, (y / 1920 - 0.65) / 0.35);
+      const depth = +(0.46 + 0.54 * Math.pow(floorT, 0.85)).toFixed(3);
 
       // Cánh trái thảm đỏ
       const leftInnerX = Math.round(335 - progress * 48); // mép thảm mở rộng dần
@@ -125,7 +128,7 @@
       for (let c = 0; c < colsPerSide; c++) {
         const t = c / (colsPerSide - 1);
         const x = Math.round(leftOuterX + t * (leftInnerX - leftOuterX));
-        HALL_SEAT_COORDS.push({ side: 'L', row: r, col: c, x, y, scale });
+        HALL_SEAT_COORDS.push({ side: 'L', row: r, col: c, x, y, scale, depth });
       }
 
       // Cánh phải thảm đỏ
@@ -134,7 +137,7 @@
       for (let c = 0; c < colsPerSide; c++) {
         const t = c / (colsPerSide - 1);
         const x = Math.round(rightInnerX + t * (rightOuterX - rightInnerX));
-        HALL_SEAT_COORDS.push({ side: 'R', row: r, col: c, x, y, scale });
+        HALL_SEAT_COORDS.push({ side: 'R', row: r, col: c, x, y, scale, depth });
       }
     }
   })();
@@ -177,9 +180,9 @@
 
       return `
         <div
-          class="hall-seat"
+          class="hall-seat plx"
           data-seat-idx="${idx}"
-          style="left: ${seat.x}px; top: ${seat.y}px; z-index: ${20 + seat.row * 2}; transform: translate(-50%, -100%) scale(${seat.scale});"
+          style="--d: ${seat.depth}; left: ${seat.x}px; top: ${seat.y}px; z-index: ${20 + seat.row * 2}; transform: translate(-50%, -100%) scale(${seat.scale});"
         >
           <img
             src="/assets/devotee.png"
@@ -480,8 +483,20 @@
   let fortuneTimer = null;
   let grandTimer = null;
 
+  // Camera 2.5D (public/js/stage25d.js) — no-op nếu đang ở chế độ 2D
+  const STAGE_CUES = {
+    burnIncense: 'altar',
+    sendPrayer: 'altar',
+    offerGift: 'altar',
+    grandCeremony: 'buddha',
+    drawFortune: 'fortune',
+    ringBell: 'bell',
+    strikeWoodenFish: 'fish'
+  };
+
   function triggerRitualVisuals(ev) {
     if (!ev) return;
+    if (STAGE_CUES[ev.type]) window.Stage25D?.cue(STAGE_CUES[ev.type]);
 
     if (ev.ttsText && ev.type !== 'drawFortune') {
       audio.enqueueTts(ev.ttsText, { voice: ev.ttsVoice || 'maichi' });

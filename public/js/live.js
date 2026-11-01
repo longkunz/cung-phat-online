@@ -416,6 +416,15 @@
       btnAutoSim.classList.toggle('active-toggle', Boolean(st.settings.autoSim));
     }
     if (st.settings) {
+      if (typeof st.settings.ttsEnabled === 'boolean') {
+        audio.ttsEnabled = st.settings.ttsEnabled;
+        const btnTts = document.getElementById('btnToggleTts');
+        if (btnTts) {
+          btnTts.textContent = `🎙️ Giọng Đọc: ${audio.ttsEnabled ? 'BẬT' : 'TẮT'}`;
+          btnTts.classList.toggle('active-toggle', audio.ttsEnabled);
+        }
+      }
+      if (st.settings.ttsVoice) audio.ttsVoice = st.settings.ttsVoice;
       if (typeof st.settings.musicVolume === 'number') {
         audio.setMusicVolume(st.settings.musicVolume);
         const sMus = document.getElementById('sliderMusicVol');
@@ -780,6 +789,7 @@
     const btn = e.currentTarget;
     btn.textContent = `🎙️ Giọng Đọc: ${audio.ttsEnabled ? 'BẬT' : 'TẮT'}`;
     btn.classList.toggle('active-toggle', audio.ttsEnabled);
+    callRpc('temple.updateSettings', { ttsEnabled: audio.ttsEnabled });
   });
 
   document.getElementById('btnToggleMusic')?.addEventListener('click', (e) => {

@@ -364,7 +364,7 @@ class TempleAudioEngine {
         }
       }
 
-      if (audioUrl) {
+      if (audioUrl && this.ttsEnabled) {
         this.setBgDucking(true);
         if (this.onTtsStateChange) {
           this.onTtsStateChange({ speaking: true, synthesizing: false, text: item.text });

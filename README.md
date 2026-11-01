@@ -59,6 +59,15 @@ uv venv .venv
 uv pip install --python .venv/bin/python zerotts pillow
 ```
 
+Trên Windows (PowerShell), dùng đường dẫn Python trong `Scripts`:
+
+```powershell
+uv venv .venv
+uv pip install --python .venv/Scripts/python.exe zerotts pillow
+```
+
+Server tự chọn Python trong `.venv` theo hệ điều hành. Worker giao tiếp bằng UTF-8 để giữ nguyên tiếng Việt.
+
 ### 3. Khởi chạy Server
 ```bash
 bun start

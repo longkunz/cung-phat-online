@@ -454,7 +454,6 @@ function recordDevotee(user, uniqueId, avatar, meritDelta, incenseDelta = 0, gif
 
   state.totalMerit += meritDelta;
   state.haloIntensity = Math.min(1.0, 0.35 + (state.totalMerit % 1000) / 1400);
-  hallTouch(dev.uniqueId, dev.name, dev.avatar);
   return dev;
 }
 
@@ -508,16 +507,22 @@ const Rituals = {
     state.totalIncense += count;
     state.activeIncenseSticks = Math.min(36, state.activeIncenseSticks + count);
     const devotee = recordDevotee(user, uniqueId, avatar, merit, count, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Nam mô A Di Đà Phật. Cảm tạ thí chủ ${devotee.name} đã thành tâm thắp ${count} nén hương thơm. ${wish}.`;
+      : planSpeech(
+        `Nam mô A Di Đà Phật. Cảm tạ thí chủ ${devotee.name} đã thành tâm thắp ${count} nén hương thơm. ${wish}.`,
+        0,
+        `Cảm tạ thí chủ ${devotee.name} dâng hương.`
+      );
 
     const event = pushEventLog({
       type: 'burnIncense',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       wish,
@@ -539,12 +544,14 @@ const Rituals = {
 
     state.woodenFishHits += count;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'like');
 
     const event = pushEventLog({
       type: 'strikeWoodenFish',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       ttsText: params.ttsText || ''
@@ -565,9 +572,10 @@ const Rituals = {
 
     state.bellRings += count;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts
-      ? `Thí chủ ${devotee.name} thỉnh Đại Hồng Chung cầu nguyện: ${wish}.`
+      ? planSpeech(`Thí chủ ${devotee.name} thỉnh Đại Hồng Chung cầu nguyện: ${wish}.`, 1, `Thí chủ ${devotee.name} thỉnh chuông.`)
       : '';
 
     const event = pushEventLog({
@@ -575,6 +583,7 @@ const Rituals = {
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       wish,
@@ -596,16 +605,18 @@ const Rituals = {
 
     state.lanternCount += 1;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 1, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Lời cầu nguyện của thí chủ ${devotee.name}: ${wish}. Nam mô A Di Đà Phật.`;
+      : planSpeech(`Lời cầu nguyện của thí chủ ${devotee.name}: ${wish}. Nam mô A Di Đà Phật.`, 1);
 
     const event = pushEventLog({
       type: 'sendPrayer',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       wish,
       merit,
       ttsText,
@@ -643,17 +654,24 @@ const Rituals = {
 
     const wish = params.wish || `Dâng cúng ${giftName} lên Tam Bảo`;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 3, 1, wish);
+    hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'gift');
     hallRecordGift(devotee.uniqueId, coins);
+    const hallStatus = hallStatusOf(devotee.uniqueId);
 
     const ttsText = params.readTts === false
       ? ''
-      : `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} đã phát tâm dâng cúng ${giftName}, tích thêm ${merit} điểm công đức. Nguyện cầu chư Phật gia hộ cho thí chủ vạn sự cát tường như ý.`;
+      : planSpeech(
+        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} đã phát tâm dâng cúng ${giftName}, tích thêm ${merit} điểm công đức. Nguyện cầu chư Phật gia hộ cho thí chủ vạn sự cát tường như ý.`,
+        3,
+        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} dâng ${giftName}.`
+      );
 
     const event = pushEventLog({
       type: giftType === 'dragon' ? 'grandCeremony' : 'offerGift',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       giftType,
       giftName,
       coins,
@@ -678,16 +696,22 @@ const Rituals = {
 
     state.fortuneCount += 1;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0, `Xin xăm: Quẻ số ${fortune.number} (${fortune.rank})`);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Thí chủ ${devotee.name} vừa gieo được ${fortune.ttsSummary}`;
+      : planSpeech(
+        `Thí chủ ${devotee.name} vừa gieo được ${fortune.ttsSummary}`,
+        2,
+        `Thí chủ ${devotee.name} gieo được quẻ số ${fortune.number}, ${fortune.rank}.`
+      );
 
     const event = pushEventLog({
       type: 'drawFortune',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       topic,
       fortune,
       merit,
@@ -760,6 +784,7 @@ const Rituals = {
     hall.clear();
     hallWaiting.clear();
     giftSession.clear();
+    engagement.clear();
     saveState();
     broadcastNotification('temple.state', getPublicState());
     return getPublicState();
@@ -1022,9 +1047,132 @@ function hallTick() {
 }
 setInterval(hallTick, 5000).unref?.();
 
-function hallAction(uid, action, text = '') {
-  if (!uid || (!hall.has(uid) && !hallWaiting.has(uid))) return;
-  broadcastNotification('hall.action', { uid, action, text: String(text || '').slice(0, 80) });
+function hallAction(uid, action, text = '', who = {}) {
+  if (!uid) return;
+  const member = hall.get(uid);
+  const isVip = member && member.seat >= 0 && member.seat < HALL_VIP_SEATS;
+  if (!isVip && !takeActionToken(action === 'say' ? 'say' : 'other')) return; // quá tải -> bỏ bớt
+  const status = hallStatusOf(uid);
+  const payload = { uid, action, text: String(text || '').slice(0, 80) };
+  if (status === 'guest') {
+    // Khách chưa có ghế: màn 3D hiện họ đứng ở sân trước cổng vài giây
+    Object.assign(payload, { guest: true, name: who.name || 'Thí Chủ', avatar: who.avatar || '' });
+  }
+  broadcastNotification('hall.action', payload);
+}
+
+// ----------------------------------------------------------------------------
+// QUY TẮC XUẤT HIỆN NHÂN VẬT (khi đông người)
+// ----------------------------------------------------------------------------
+// Tầng 1 — Khách xem: chỉ vào live / chỉ thả tim -> KHÔNG có nhân vật riêng.
+//          Vào live: thỉnh thoảng được chọn đi ngang sân kèm tên ('hall.arrive', tối đa 1 người / 3 giây).
+// Tầng 2 — Khách hành hương: làm nghi thức / bình luận nhưng chưa đủ điều kiện có ghế
+//          -> sự kiện mang hallStatus 'guest': màn 3D cho đi từ cổng vào làm lễ rồi đi ra (không ngồi);
+//             bình luận/lệnh của khách hiện ở sân trước cổng ('hall.action' có guest: true).
+// Tầng 3 — Phật tử Đạo Tràng (có ghế): tặng quà bất kỳ (vào ngay, ngồi đài sen) HOẶC tương tác
+//          >= 3 lần trong 5 phút (thả tim tính tối đa 1 lần / phút). Hết ghế -> hàng chờ ngoài sân.
+const SEAT_MIN_INTERACTIONS = 3;
+const SEAT_WINDOW_MS = 5 * 60 * 1000;
+const LIKE_COUNT_EVERY_MS = 60 * 1000;
+const engagement = new Map(); // uid -> { times: number[], lastLikeCountedAt }
+
+function hallStatusOf(uid) {
+  if (hall.has(uid)) return 'seated';
+  if (hallWaiting.has(uid)) return 'waiting';
+  return 'guest';
+}
+
+// kind: 'comment' | 'ritual' | 'like' | 'gift'
+function hallEngage(uid, name, avatar, kind) {
+  if (!uid) return 'guest';
+  const now = Date.now();
+  if (hall.has(uid) || hallWaiting.has(uid)) {
+    hallTouch(uid, name, avatar);
+    return hallStatusOf(uid);
+  }
+  let e = engagement.get(uid);
+  if (!e) {
+    e = { times: [], lastLikeCountedAt: 0 };
+    engagement.set(uid, e);
+    if (engagement.size > 5000) engagement.delete(engagement.keys().next().value);
+  }
+  e.times = e.times.filter((t) => now - t < SEAT_WINDOW_MS);
+  if (kind === 'like') {
+    if (now - e.lastLikeCountedAt >= LIKE_COUNT_EVERY_MS) {
+      e.lastLikeCountedAt = now;
+      e.times.push(now);
+    }
+  } else {
+    e.times.push(now);
+  }
+  if (kind === 'gift' || e.times.length >= SEAT_MIN_INTERACTIONS) {
+    engagement.delete(uid);
+    hallTouch(uid, name, avatar); // có ghế ngay, hoặc vào hàng chờ nếu đầy
+  }
+  return hallStatusOf(uid);
+}
+
+// ----------------------------------------------------------------------------
+// ĐIỀU PHỐI GIỌNG ĐỌC: không để hàng đợi TTS dồn ứ khi nhiều người tương tác liên tục.
+// Server ước lượng độ dài hàng đợi (giây); câu ưu tiên thấp được rút gọn hoặc bỏ qua khi hàng đợi dài.
+// Ưu tiên: 3 tặng quà > 2 xin xăm > 1 cầu nguyện / thỉnh chuông > 0 thắp hương.
+// ----------------------------------------------------------------------------
+const TTS_MAX_BACKLOG_SEC = [20, 28, 40, 90]; // theo ưu tiên 0..3
+let ttsBusyUntil = 0;
+
+function estimateSpeechSec(text) {
+  return 1.2 + String(text || '').length / 14;
+}
+
+// Trả về câu sẽ đọc ('' = không đọc). shortText: bản rút gọn dùng khi hàng đợi đã dài.
+function planSpeech(fullText, priority, shortText = '') {
+  if (!fullText) return '';
+  const now = Date.now();
+  const backlog = Math.max(0, (ttsBusyUntil - now) / 1000);
+  const limit = TTS_MAX_BACKLOG_SEC[priority] ?? 12;
+  for (const text of [fullText, shortText]) {
+    if (!text) continue;
+    if (backlog + estimateSpeechSec(text) <= limit) {
+      ttsBusyUntil = now + (backlog + estimateSpeechSec(text) + 0.25) * 1000;
+      return text;
+    }
+  }
+  return '';
+}
+
+// Giới hạn số bong bóng / động tác phát ra mỗi giây để màn hình không rối khi bình luận dồn dập.
+// Người ngồi hàng đầu (đã tặng quà) luôn được hiển thị.
+const ACTION_RATE = { say: 3, other: 6 }; // mỗi giây
+const actionBuckets = { say: { tokens: 3, at: Date.now() }, other: { tokens: 6, at: Date.now() } };
+function takeActionToken(kind) {
+  const b = actionBuckets[kind];
+  const rate = ACTION_RATE[kind];
+  const now = Date.now();
+  b.tokens = Math.min(rate, b.tokens + ((now - b.at) / 1000) * rate);
+  b.at = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+
+// Người vừa vào live (tầng 1): chọn mẫu tối đa 1 người / 3 giây để đi ngang sân kèm tên
+const ARRIVE_EVERY_MS = 3000;
+let lastArriveAt = 0;
+let arrivalsSinceLast = 0;
+function hallArrive(uid, name, avatar) {
+  if (!uid || hall.has(uid) || hallWaiting.has(uid)) return;
+  arrivalsSinceLast += 1;
+  const now = Date.now();
+  if (now - lastArriveAt < ARRIVE_EVERY_MS) return;
+  lastArriveAt = now;
+  broadcastNotification('hall.arrive', {
+    uid,
+    name: sanitizeUserName(name),
+    avatar: avatar || '',
+    // số người vào live kể từ lần chọn trước (để hiện "+N người vừa vào chùa")
+    count: arrivalsSinceLast
+  });
+  arrivalsSinceLast = 0;
 }
 
 // Lệnh ngắn điều khiển Phật tử của chính mình (không đọc TTS, không chiếm sân khấu chính)
@@ -1082,7 +1230,8 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     // Lệnh ngắn hoặc bình luận thường: chỉ Phật tử của người đó cử động / hiện bong bóng, +1 Công Đức
     if (!passCooldown(1200)) return null;
     const dev = recordDevotee(cleanUser, uniqueId, avatar, 1, 0, 0);
-    hallAction(dev.uniqueId, command ? command.action : 'say', cleanWish);
+    hallEngage(dev.uniqueId, dev.name, dev.avatar, 'comment');
+    hallAction(dev.uniqueId, command ? command.action : 'say', cleanWish, dev);
     saveState();
     return { hall: { uid: dev.uniqueId, action: command ? command.action : 'say', text: cleanWish } };
   }
@@ -1256,9 +1405,11 @@ async function connectTikTokLive(usernameOrUrl) {
   on(WebcastEvent.MEMBER, (data) => {
     // Chỉ cập nhật avatar cho người đã có trên bảng; KHÔNG cộng công đức / tạo mục mới cho mỗi lượt vào phòng
     // (trước đây mỗi người xem lướt qua đều +1 CĐ, làm Bảng Vàng phình to vô hạn và sai lệch)
-    const { uniqueId, avatar } = extractUserFromEvent(data);
+    const { user, uniqueId, avatar } = extractUserFromEvent(data);
     const existing = uniqueId && state.devotees[uniqueId.slice(0, 40)];
     if (existing && avatar) existing.avatar = avatar;
+    // Tầng 1: người chỉ vào xem live không có ghế; thỉnh thoảng được chọn đi ngang sân kèm tên
+    hallArrive(existing?.uniqueId || uniqueId, user, avatar);
   });
 
   on(WebcastEvent.CHAT, (data) => {

@@ -349,8 +349,11 @@
   // 6. Cập nhật toàn bộ giao diện theo State từ Server
   let hasInitializedRealLeader = false;
 
+  let serverAutoSim = false;
+
   function updateUIState(st) {
     if (!st) return;
+    if (st.settings) serverAutoSim = Boolean(st.settings.autoSim);
 
     document.getElementById('statIncense').textContent = Number(st.totalIncense || 0).toLocaleString('vi-VN');
     document.getElementById('statMerit').textContent = Number(st.totalMerit || 0).toLocaleString('vi-VN');
@@ -778,10 +781,10 @@
     callRpc('live.connect', { username });
   });
 
-  let autoSimState = false;
+  // Đảo theo trạng thái thật từ server (trước đây biến cục bộ luôn bắt đầu = false,
+  // nên khi server đang BẬT thì lần bấm đầu tiên không tắt được)
   document.getElementById('btnToggleAutoSim')?.addEventListener('click', () => {
-    autoSimState = !autoSimState;
-    callRpc('live.setAutoSim', { enabled: autoSimState });
+    callRpc('live.setAutoSim', { enabled: !serverAutoSim });
   });
 
   document.getElementById('btnToggleTts')?.addEventListener('click', (e) => {

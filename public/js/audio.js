@@ -395,27 +395,32 @@ class TempleAudioEngine {
 
   playWavUrl(url) {
     return new Promise((resolve) => {
+      let done = false;
+      let audio = null;
+      // Chốt an toàn: nếu file bị treo (không bao giờ bắn ended/error) hàng đợi TTS sẽ kẹt vĩnh viễn
+      const safetyTimer = setTimeout(() => finish(), 45000);
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(safetyTimer);
+        if (audio) {
+          try { audio.pause(); } catch (_) {}
+        }
+        if (this.currentAudio === audio) this.currentAudio = null;
+        resolve();
+      };
       try {
-        const audio = new Audio(url);
+        audio = new Audio(url);
         this.currentAudio = audio;
         audio.volume = this.ttsVolume;
-        audio.onended = () => {
-          this.currentAudio = null;
-          resolve();
-        };
-        audio.onerror = () => {
-          this.currentAudio = null;
-          resolve();
-        };
+        audio.onended = finish;
+        audio.onerror = finish;
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => {
-            this.currentAudio = null;
-            resolve();
-          });
+          playPromise.catch(finish);
         }
       } catch (_) {
-        resolve();
+        finish();
       }
     });
   }

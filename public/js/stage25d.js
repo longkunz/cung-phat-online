@@ -13,7 +13,8 @@
 import * as THREE from '/vendor/three/three.module.min.js';
 
 const params = new URLSearchParams(window.location.search);
-const FOCUS_DEPTH = 0.35; // Mặt phẳng bàn thờ/lư hương đứng yên -> hotspot DOM luôn khớp ảnh
+const FOCUS_DEPTH = 0.35; // Khi camera lắc ngang/dọc: mặt phẳng bàn thờ đứng yên, tượng Phật trượt ngược chiều thảm
+const DOLLY_FOCUS = 0.0;  // Khi camera tiến vào: tường sau giữ nguyên cỡ, càng gần càng phóng to (không lộ mép ảnh)
 const STAGE_W = 1080;
 const STAGE_H = 1920;
 
@@ -34,14 +35,19 @@ const VERT = /* glsl */ `
   }
 `;
 
-// Inverse parallax mapping bằng lặp điểm bất động (4 bước): tìm điểm nguồn p sao cho
-// p + offset * (depth(p) - focus) = uv. Rẻ, mượt, không rách ảnh nhờ depth map đã làm mờ.
+// Mô hình camera (khớp 100% với công thức CSS của lớp .plx trong live.css):
+//   điểm ảnh p ở độ sâu d hiện ra tại   c + (p - c) * s(d) + offset * (d - focus)
+//   với s(d) = 1 + dolly * (d - dollyFocus)  -> lớp gần phóng to nhanh hơn lớp xa (camera TIẾN VÀO cảnh)
+// Shader giải ngược tìm p bằng lặp điểm bất động (4 bước). Rẻ, không rách ảnh nhờ depth map đã làm mờ.
 const FRAG = /* glsl */ `
   precision mediump float;
   uniform sampler2D uImage;
   uniform sampler2D uDepth;
   uniform vec2 uOffset;
   uniform float uFocus;
+  uniform vec2 uCenter;
+  uniform float uDolly;
+  uniform float uDollyFocus;
   uniform float uGlow;
   varying vec2 vUv;
 
@@ -50,7 +56,8 @@ const FRAG = /* glsl */ `
     vec2 p = uv;
     for (int i = 0; i < 4; i++) {
       float d = texture2D(uDepth, p).r;
-      p = uv - uOffset * (d - uFocus);
+      float s = 1.0 + uDolly * (d - uDollyFocus);
+      p = uCenter + (uv - uOffset * (d - uFocus) - uCenter) / s;
     }
     p = clamp(p, vec2(0.001), vec2(0.999));
     vec3 col = texture2D(uImage, p).rgb;
@@ -125,6 +132,9 @@ async function initStage25D() {
     uDepth: { value: depthTex },
     uOffset: { value: new THREE.Vector2(0, 0) },
     uFocus: { value: FOCUS_DEPTH },
+    uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    uDolly: { value: 0 },
+    uDollyFocus: { value: DOLLY_FOCUS },
     uGlow: { value: 0 }
   };
   const scene = new THREE.Scene();
@@ -143,39 +153,41 @@ async function initStage25D() {
   // ------------------------------------------------------------------------
   // Camera choreography
   // ------------------------------------------------------------------------
-  const IDLE_AMP_X = 0.018; // biên độ dịch (đơn vị uv) cho điểm có độ sâu chênh 1.0 so với focus
-  const IDLE_AMP_Y = 0.010;
-  const BASE_ZOOM = 1.03;   // phóng nhẹ sẵn để mép ảnh không lộ khi parallax
-
-  const cam2d = {
-    x: 0, y: 0, zoom: BASE_ZOOM, cx: 0.5, cy: 0.47, glow: 0,
-    shake: 0
-  };
-  const target = { zoom: BASE_ZOOM, cx: 0.5, cy: 0.47, glow: 0, swayBoost: 1 };
-  let cueUntil = 0;
-  let pointer = { x: 0, y: 0 };
+  // Biên độ lắc (đơn vị uv cho chênh độ sâu 1.0): thảm sát đáy trượt ~30px, tượng Phật ngược chiều ~7px
+  const SWAY_X = 0.045;
+  const SWAY_Y = 0.022;
+  const BASE_ZOOM = 1.045; // phóng sẵn toàn cảnh để mép ảnh không lộ khi lắc
+  const IDLE_DOLLY = 0.07; // camera "thở" tiến/lùi nhẹ liên tục
+  const IDLE = { zoom: BASE_ZOOM, dolly: IDLE_DOLLY, cx: 0.5, cy: 0.5, glow: 0, sway: 1 };
 
   const CUES = {
-    // Phật tử bước lên dâng hương/cầu nguyện/dâng lễ: đẩy nhẹ về phía bàn thờ
-    altar: { zoom: 1.075, cx: 0.5, cy: 0.5, glow: 0.15, ms: 6500, swayBoost: 0.7 },
-    // Đại lễ: tiến sát tượng Phật + hào quang
-    buddha: { zoom: 1.16, cx: 0.5, cy: 0.27, glow: 1, ms: 7500, swayBoost: 1.4 },
-    fortune: { zoom: 1.05, cx: 0.62, cy: 0.5, glow: 0.2, ms: 5000, swayBoost: 0.8 },
+    // Phật tử bước lên dâng hương/cầu nguyện/dâng lễ: camera tiến vào về phía bàn thờ
+    altar: { zoom: 1.06, dolly: 0.32, cx: 0.5, cy: 0.5, glow: 0.15, ms: 6500, sway: 0.6 },
+    // Đại lễ: tiến sâu tới sát tượng Phật + hào quang
+    buddha: { zoom: 1.1, dolly: 0.55, cx: 0.5, cy: 0.3, glow: 1, ms: 8000, sway: 1.3 },
+    fortune: { zoom: 1.05, dolly: 0.25, cx: 0.75, cy: 0.5, glow: 0.2, ms: 5000, sway: 0.7 },
     bell: { shake: 1.0 },
-    fish: { shake: 0.35 }
+    fish: { shake: 0.4 }
   };
+
+  const cur = { ...IDLE, x: 0, y: 0, shake: 0 };
+  const target = { ...IDLE };
+  let cueUntil = 0;
+  let cueRank = 0;
+  let pointer = { x: 0, y: 0 };
 
   function cue(name) {
     const c = CUES[name];
     if (!c) return;
     if (c.shake) {
-      cam2d.shake = Math.max(cam2d.shake, c.shake);
+      cur.shake = Math.max(cur.shake, c.shake);
       return;
     }
     const now = performance.now();
     // Không để cue nhỏ cắt ngang cue lớn (Đại lễ) đang diễn ra
-    if (now < cueUntil && target.zoom > c.zoom) return;
-    Object.assign(target, { zoom: c.zoom, cx: c.cx, cy: c.cy, glow: c.glow, swayBoost: c.swayBoost });
+    if (now < cueUntil && cueRank > c.dolly) return;
+    Object.assign(target, { zoom: c.zoom, dolly: c.dolly, cx: c.cx, cy: c.cy, glow: c.glow, sway: c.sway });
+    cueRank = c.dolly;
     cueUntil = now + c.ms;
   }
 
@@ -190,6 +202,7 @@ async function initStage25D() {
   let last = performance.now();
   let lastRender = 0;
   let t = 0;
+  const camStyle = sceneCamera.style;
 
   function frame(now) {
     requestAnimationFrame(frame);
@@ -200,36 +213,40 @@ async function initStage25D() {
     t += dt;
 
     if (now > cueUntil) {
-      Object.assign(target, { zoom: BASE_ZOOM, cx: 0.5, cy: 0.47, glow: 0, swayBoost: 1 });
+      Object.assign(target, IDLE);
+      cueRank = 0;
     }
 
-    cam2d.zoom = damp(cam2d.zoom, target.zoom, 1.6, dt);
-    cam2d.cx = damp(cam2d.cx, target.cx, 1.6, dt);
-    cam2d.cy = damp(cam2d.cy, target.cy, 1.6, dt);
-    cam2d.glow = damp(cam2d.glow, target.glow, 2.2, dt);
-    cam2d.shake = damp(cam2d.shake, 0, 5.5, dt);
+    for (const k of ['zoom', 'dolly', 'cx', 'cy']) cur[k] = damp(cur[k], target[k], 1.4, dt);
+    cur.glow = damp(cur.glow, target.glow, 2.2, dt);
+    cur.sway = damp(cur.sway, target.sway, 1.5, dt);
+    cur.shake = damp(cur.shake, 0, 5.5, dt);
 
-    const sway = target.swayBoost;
-    const sx = Math.sin(t * 0.23) * IDLE_AMP_X * sway + pointer.x * 0.012;
-    const sy = Math.sin(t * 0.17 + 1.3) * IDLE_AMP_Y * sway + pointer.y * 0.008;
-    const shakeX = cam2d.shake * 0.006 * Math.sin(t * 47);
-    const shakeY = cam2d.shake * 0.004 * Math.sin(t * 61 + 0.7);
-    cam2d.x = damp(cam2d.x, sx, 3, dt);
-    cam2d.y = damp(cam2d.y, sy, 3, dt);
-    const ox = cam2d.x + shakeX;
-    const oy = cam2d.y + shakeY;
+    // Lắc theo quỹ đạo Lissajous chậm (chu kỳ ~27s x ~37s) + "thở" tiến lùi chu kỳ ~21s
+    const sx = Math.sin(t * 0.23) * SWAY_X * cur.sway + pointer.x * 0.03;
+    const sy = Math.sin(t * 0.17 + 1.3) * SWAY_Y * cur.sway + pointer.y * 0.015;
+    cur.x = damp(cur.x, sx, 3, dt);
+    cur.y = damp(cur.y, sy, 3, dt);
+    const ox = cur.x + cur.shake * 0.006 * Math.sin(t * 47);
+    const oy = cur.y + cur.shake * 0.004 * Math.sin(t * 61 + 0.7);
+    const dolly = Math.max(0, cur.dolly + Math.sin(t * 0.3) * 0.04);
 
-    // 1. Ảnh nền: offset trong uv (trục y của uv hướng lên)
+    // 1. Ảnh nền (uv: trục y hướng lên)
     uniforms.uOffset.value.set(ox, -oy);
-    uniforms.uGlow.value = cam2d.glow;
+    uniforms.uCenter.value.set(cur.cx, 1 - cur.cy);
+    uniforms.uDolly.value = dolly;
+    uniforms.uGlow.value = cur.glow;
     renderer.render(scene, cam);
 
-    // 2. Lớp DOM: cùng offset tính ra px, mỗi lớp nhân với (độ sâu - focus) qua CSS
-    sceneCamera.style.setProperty('--plx', `${(ox * STAGE_W).toFixed(2)}px`);
-    sceneCamera.style.setProperty('--ply', `${(oy * STAGE_H).toFixed(2)}px`);
-    // 3. Zoom cả cảnh (ảnh nền + DOM) bằng 1 transform GPU -> luôn khớp nhau
-    sceneCamera.style.transformOrigin = `${(cam2d.cx * 100).toFixed(2)}% ${(cam2d.cy * 100).toFixed(2)}%`;
-    sceneCamera.style.transform = `scale(${cam2d.zoom.toFixed(4)})`;
+    // 2. Lớp DOM: cùng mô hình camera qua biến CSS (xem .fx-25d .plx trong live.css)
+    camStyle.setProperty('--plx', `${(ox * STAGE_W).toFixed(2)}px`);
+    camStyle.setProperty('--ply', `${(oy * STAGE_H).toFixed(2)}px`);
+    camStyle.setProperty('--cx', (cur.cx * STAGE_W).toFixed(1));
+    camStyle.setProperty('--cy', (cur.cy * STAGE_H).toFixed(1));
+    camStyle.setProperty('--dolly', dolly.toFixed(4));
+    // 3. Phóng đều toàn cảnh (khung hình) quanh cùng tâm camera
+    camStyle.transformOrigin = `${(cur.cx * 100).toFixed(2)}% ${(cur.cy * 100).toFixed(2)}%`;
+    camStyle.transform = `scale(${cur.zoom.toFixed(4)})`;
   }
   requestAnimationFrame(frame);
 

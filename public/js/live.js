@@ -182,7 +182,7 @@
         <div
           class="hall-seat plx"
           data-seat-idx="${idx}"
-          style="--d: ${seat.depth}; left: ${seat.x}px; top: ${seat.y}px; z-index: ${20 + seat.row * 2}; transform: translate(-50%, -100%) scale(${seat.scale});"
+          style="--d: ${seat.depth}; --x: ${seat.x}; --y: ${seat.y}; left: ${seat.x}px; top: ${seat.y}px; z-index: ${20 + seat.row * 2}; transform: translate(-50%, -100%) scale(${seat.scale});"
         >
           <img
             src="/assets/devotee.png"

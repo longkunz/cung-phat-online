@@ -27,7 +27,7 @@
         />
 
         <!-- 1B. HỆ THỐNG HÀO QUANG ĐỨC PHẬT A DI ĐÀ (XOAY CHUYỂN VẠN TRƯỢNG, KHÔNG CHE MẶT PHẬT) -->
-        <div class="buddha-halo-system plx" style="--d: 0.18" id="buddhaHaloSystem">
+        <div class="buddha-halo-system plx" style="--d: 0.18; --x: 540; --y: 260" id="buddhaHaloSystem">
           <div class="halo-sunburst"></div>
           <div class="halo-counter-rays"></div>
           <div class="halo-pulse-ring ring-1"></div>
@@ -46,19 +46,19 @@
         </div>
 
         <!-- HÀO QUANG ĐÀI SEN TRÊN TAY ĐỨC PHẬT A DI ĐÀ -->
-        <div class="lotus-hand-halo plx" style="--d: 0.23" id="lotusHandHalo"></div>
+        <div class="lotus-hand-halo plx" style="--d: 0.23; --x: 540; --y: 502" id="lotusHandHalo"></div>
 
 
         <!-- 3. CỘT SÁNG TÂM HƯƠNG & LƯ HƯƠNG TRUNG TÂM -->
-        <div class="sacred-light-beam plx" style="--d: 0.33" id="sacredLightBeam"></div>
+        <div class="sacred-light-beam plx" style="--d: 0.33; --x: 540; --y: 700" id="sacredLightBeam"></div>
 
-        <div class="incense-burner-zone plx" style="--d: 0.35" id="incenseBurnerZone" title="Bấm để Thắp Hương Dâng Phật">
+        <div class="incense-burner-zone plx" style="--d: 0.35; --x: 540; --y: 900" id="incenseBurnerZone" title="Bấm để Thắp Hương Dâng Phật">
           <div class="incense-sticks-holder" id="incenseSticksHolder"></div>
         </div>
 
 
         <!-- 4. CHỦ LỄ ĐANG DÂNG HƯƠNG TRƯỚC LƯ HƯƠNG ĐỒNG (GIỮA CHÁNH ĐIỆN) -->
-        <div class="central-worshipper plx" style="--d: 0.45" id="centralWorshipper">
+        <div class="central-worshipper plx" style="--d: 0.45; --x: 540; --y: 1100" id="centralWorshipper">
           <div class="worshipper-wish-bubble" id="centralWishBubble">
             “Cầu gia đình bình an, vạn sự cát tường như ý”
           </div>
@@ -94,6 +94,22 @@
         <div class="sky-lanterns-layer plx" style="--d: 0.5" id="skyLanternsLayer"></div>
 
         <!-- 9. LỚP CANVAS HIỆU ỨNG KHÓI HƯƠNG, HOA SEN RƠI & SÓNG ÂM -->
+        <!-- PHÁP KHÍ TƯƠNG TÁC HAI BÊN BÀN THỜ: ĐẠI HỒNG CHUNG & MÕ GỖ & ỐNG XĂM -->
+        <div class="ritual-hotspot bell-hotspot plx" style="--d: 0.37; --x: 100; --y: 970" id="bellStation" title="Bấm để Thỉnh Đại Hồng Chung">
+          <span class="hotspot-icon">🔔</span>
+          <span class="hotspot-label">Thỉnh Chuông</span>
+        </div>
+
+        <div class="ritual-hotspot woodfish-hotspot plx" style="--d: 0.37; --x: 980; --y: 970" id="woodenFishStation" title="Bấm để Gõ Mõ Tích Công Đức">
+          <span class="hotspot-icon">🪵</span>
+          <span class="hotspot-label">Gõ Mõ (<span id="statWoodenFish">360</span>)</span>
+        </div>
+
+        <div class="ritual-hotspot fortune-hotspot plx" style="--d: 0.37; --x: 980; --y: 905" id="fortuneCylinder" title="Bấm để Xin Xăm / Gieo Quẻ">
+          <span class="hotspot-icon">🎋</span>
+          <span class="hotspot-label">Xin Xăm</span>
+        </div>
+
         <canvas id="templeCanvas" class="plx" style="--d: 0.38"></canvas>
         </div>
         <!-- /LỚP CAMERA CẢNH -->
@@ -111,21 +127,6 @@
           </div>
         </header>
 
-        <!-- PHÁP KHÍ TƯƠNG TÁC HAI BÊN BÀN THỜ: ĐẠI HỒNG CHUNG & MÕ GỖ & ỐNG XĂM -->
-        <div class="ritual-hotspot bell-hotspot" id="bellStation" title="Bấm để Thỉnh Đại Hồng Chung">
-          <span class="hotspot-icon">🔔</span>
-          <span class="hotspot-label">Thỉnh Chuông</span>
-        </div>
-
-        <div class="ritual-hotspot woodfish-hotspot" id="woodenFishStation" title="Bấm để Gõ Mõ Tích Công Đức">
-          <span class="hotspot-icon">🪵</span>
-          <span class="hotspot-label">Gõ Mõ (<span id="statWoodenFish">360</span>)</span>
-        </div>
-
-        <div class="ritual-hotspot fortune-hotspot" id="fortuneCylinder" title="Bấm để Xin Xăm / Gieo Quẻ">
-          <span class="hotspot-icon">🎋</span>
-          <span class="hotspot-label">Xin Xăm</span>
-        </div>
 
         <!-- 10. THANH HUD GỌN GÀNG DƯỚI ĐÁY (GIỐNG MẪU THAM CHIẾU) -->
         <footer class="bottom-hud-bar">

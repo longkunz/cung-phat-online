@@ -5,7 +5,7 @@ const fs = require('fs');
 
 const isWindows = process.platform === 'win32';
 
-// 1. Resolve Python binary
+// 1. Resolve Python binary (.exe on Windows to allow direct process invocation without shell splitting)
 function resolvePython() {
   if (process.env.PYTHON) return process.env.PYTHON;
 
@@ -19,7 +19,7 @@ function resolvePython() {
     if (fs.existsSync(venvPy)) return venvPy;
   }
 
-  return isWindows ? 'python' : 'python3';
+  return isWindows ? 'python.exe' : 'python3';
 }
 
 // 2. Resolve Gateway runner (bun or node)
@@ -27,9 +27,14 @@ function resolveGatewayCmd() {
   if (process.env.GATEWAY_RUNNER) return process.env.GATEWAY_RUNNER;
 
   try {
-    const res = spawnSync('bun', ['--version'], { stdio: 'ignore', shell: isWindows });
+    const res = spawnSync(isWindows ? 'bun.exe' : 'bun', ['--version'], { stdio: 'ignore', shell: false });
     if (res.status === 0) return 'bun';
-  } catch (_) {}
+  } catch (_) {
+    try {
+      const res = spawnSync('bun', ['--version'], { stdio: 'ignore', shell: false });
+      if (res.status === 0) return 'bun';
+    } catch (_) {}
+  }
 
   return 'node';
 }
@@ -90,7 +95,7 @@ function killProcTree(proc) {
   if (!proc || !proc.pid) return;
   try {
     if (isWindows) {
-      spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+      spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore', shell: false });
     } else {
       proc.kill('SIGTERM');
     }
@@ -108,7 +113,7 @@ function startServices(options = {}) {
   console.log(`[Live Gateway] Runner: ${gatewayRunner} (Mode: ${isDev ? 'dev/watch' : 'production'})`);
   console.log('============================================================\n');
 
-  // Spawn TTS Service
+  // Spawn TTS Service directly without shell to avoid splitting paths containing spaces on Windows
   const ttsPort = process.env.TTS_PORT || '8008';
   const ttsArgs = ['-m', 'uvicorn', 'services.tts.main:app', '--host', '0.0.0.0', '--port', ttsPort];
   if (isDev) ttsArgs.push('--reload');
@@ -116,16 +121,16 @@ function startServices(options = {}) {
   const ttsProc = spawn(pythonBin, ttsArgs, {
     cwd: path.join(__dirname, '..'),
     env: { ...process.env, PYTHONUNBUFFERED: '1' },
-    shell: isWindows
+    shell: false
   });
   pipeLogs(ttsProc, '[TTS]', '\x1b[35m');
 
-  // Spawn Gateway
+  // Spawn Gateway directly without shell
   const gatewayArgs = buildGatewayArgs(gatewayRunner, isDev);
   const gatewayProc = spawn(gatewayRunner, gatewayArgs, {
     cwd: path.join(__dirname, '..'),
     env: { ...process.env, TTS_SERVICE_URL: process.env.TTS_SERVICE_URL || `http://localhost:${ttsPort}` },
-    shell: isWindows
+    shell: false
   });
   pipeLogs(gatewayProc, '[Gateway]', '\x1b[36m');
 

@@ -4,7 +4,6 @@ const path = require('path');
 const { resolvePython, killProcTree } = require('./run-all');
 
 const isDev = process.argv.includes('--dev') || process.argv.includes('--reload');
-const isWindows = process.platform === 'win32';
 
 const pythonBin = resolvePython();
 const port = process.env.PORT || process.env.TTS_PORT || '8008';
@@ -16,7 +15,7 @@ const proc = spawn(pythonBin, args, {
   cwd: path.join(__dirname, '..'),
   env: { ...process.env, PYTHONUNBUFFERED: '1' },
   stdio: 'inherit',
-  shell: isWindows
+  shell: false
 });
 
 let isShuttingDown = false;

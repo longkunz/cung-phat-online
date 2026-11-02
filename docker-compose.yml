@@ -17,9 +17,10 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8008/ready"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 180s
+      start_interval: 5s
     networks:
       - temple-network
     restart: unless-stopped
@@ -37,14 +38,16 @@ services:
     depends_on:
       tts-service:
         condition: service_healthy
+        restart: true
     volumes:
       - ./data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ready || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
+      start_interval: 5s
     networks:
       - temple-network
     restart: unless-stopped

@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import path from "path";
+import fs from "fs";
 
 describe("Local Dev Scripts & Runner Orchestration (Seam 3)", () => {
   test("resolvePython resolves python from env or venv or system", async () => {
@@ -62,5 +63,19 @@ describe("Local Dev Scripts & Runner Orchestration (Seam 3)", () => {
     expect(collected[0]).toContain("Line 1 starts and ends here");
     expect(collected[1]).toContain("Line 2 single");
     expect(collected[2]).toContain("Line 3 without ending newline");
+  });
+
+  test("run-all.js and run-tts.js execute child processes with shell: false to support paths with spaces", async () => {
+    const runAllContent = fs.readFileSync(path.resolve(__dirname, "../scripts/run-all.js"), "utf-8");
+    const runTtsContent = fs.readFileSync(path.resolve(__dirname, "../scripts/run-tts.js"), "utf-8");
+
+    // Must not use shell: true or shell: isWindows
+    expect(runAllContent).not.toContain("shell: isWindows");
+    expect(runAllContent).not.toContain("shell: true");
+    expect(runAllContent).toContain("shell: false");
+
+    expect(runTtsContent).not.toContain("shell: isWindows");
+    expect(runTtsContent).not.toContain("shell: true");
+    expect(runTtsContent).toContain("shell: false");
   });
 });

@@ -67,7 +67,7 @@ describe("Orchestration & Health Checks (Seam 1 & 2)", () => {
     zeroTts.status = "ready";
   });
 
-  test("docker-compose.yml defines bridge network, healthchecks, and depends_on condition", () => {
+  test("docker-compose.yml defines bridge network, generous start_period, restart recovery, and healthchecks", () => {
     const projectRoot = path.resolve(__dirname, "..");
     // Validate syntax with docker compose config
     const composeConfig = execSync("docker compose config", {
@@ -81,8 +81,12 @@ describe("Orchestration & Health Checks (Seam 1 & 2)", () => {
     expect(composeConfig).toContain("tts-service:");
     // Check internal bridge network
     expect(composeConfig).toMatch(/networks:/i);
-    // Check service_healthy condition
+    // Check service_healthy condition and restart: true recovery
     expect(composeConfig).toMatch(/condition:\s*service_healthy/i);
+    expect(composeConfig).toMatch(/restart:\s*true/i);
+    // Check start_period and start_interval for slow model downloads
+    expect(composeConfig).toMatch(/start_period:\s*(?:1[2-9]\d|2\d\d|3\d\d|[2-5]m)/i);
+    expect(composeConfig).toMatch(/start_interval:\s*5s/i);
     // Check model cache volume
     expect(composeConfig).toContain("/root/.cache/zerotts-local");
   });

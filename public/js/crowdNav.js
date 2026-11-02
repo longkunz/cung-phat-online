@@ -10,7 +10,7 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const BODY_RADIUS = 0.28;       // Bán kính thân Phật tử chibi (~28cm)
-  const MIN_SEPARATION = 0.52;    // Cự ly an toàn tối thiểu giữa 2 tâm thân (chống xuyên thấu)
+  const MIN_SEPARATION = 0.54;    // Cự ly an toàn tối thiểu giữa 2 tâm thân (chống xuyên thấu)
   const SENSORY_RANGE = 2.0;      // Tầm quét nhận biết người phía trước
   const SENSORY_CORRIDOR = 0.70;  // Bán kính hành lang phát hiện cản lối
   const STRIDE = 0.45;            // Chiều dài bước chân chuẩn
@@ -26,10 +26,22 @@
     return (av.atSeat !== undefined && av.atSeat >= 0) || (av.kneel && av.kneel > 0.3) || Boolean(av.waiting);
   }
 
+  function isHeroAvatar(av) {
+    if (!av) return false;
+    return Boolean(av.heroStage || av.goldTrail || (av.vipRank && av.vipRank > 0));
+  }
+
   /**
    * Điều hướng avatar tới target kết hợp né vật cản, nhường đường và đứng chờ khi tắc.
+   * @param {Object} a - Avatar đang di chuyển
+   * @param {Object} target - Điểm đích { x, z }
+   * @param {number} baseSpeed - Tốc độ bước đi cơ bản
+   * @param {number} dt - Bước thời gian delta
+   * @param {Array} avatars - Danh sách tất cả avatar trong Chánh Điện
+   * @param {boolean} keepYaw - Nếu true: giữ nguyên góc nhìn (ví dụ bước lùi sau khi cắm nhang)
+   * @returns {boolean} true nếu đã tới đích, false nếu đang di chuyển
    */
-  function steerAvatar(a, target, baseSpeed, dt, avatars) {
+  function steerAvatar(a, target, baseSpeed, dt, avatars, keepYaw = false) {
     if (!a || !a.active) return true;
 
     const tX = target.x;
@@ -38,7 +50,7 @@
     const toTargetZ = tZ - a.pos.z;
     const distTarget = Math.hypot(toTargetX, toTargetZ);
 
-    // Đã tới đích
+    // Đã tới đích thực tế dựa trên khoảng cách
     if (distTarget <= 0.08) {
       a.pos.x = tX;
       a.pos.z = tZ;
@@ -57,6 +69,7 @@
     let avoidX = 0;
     let avoidZ = 0;
     let throttle = 1.0;
+    const aIsHero = isHeroAvatar(a);
 
     // Quét các avatar xung quanh
     if (Array.isArray(avatars)) {
@@ -80,6 +93,7 @@
         if (Math.abs(projRight) > SENSORY_CORRIDOR) continue; // Nằm ngoài hành lang đi
 
         const prox = (SENSORY_RANGE - d) / SENSORY_RANGE;
+        const bIsHero = isHeroAvatar(b);
 
         // Chọn hướng lách:
         // Nếu vật cản bên phải (projRight > 0.02) -> Lách sang trái (-right)
@@ -90,12 +104,26 @@
         else if (projRight < -0.02) steerSide = 1;
         else steerSide = a.dodgePref !== undefined ? a.dodgePref : 1;
 
-        const avoidStrength = Math.pow(prox, 1.2) * 2.8;
+        let avoidStrength = Math.pow(prox, 1.2) * 2.8;
+
+        // Ưu tiên nhường đường:
+        if (bIsHero && !aIsHero) {
+          // b là nhân vật chính làm đại lễ -> a là người thường phải né dạt ra và nhường bước
+          avoidStrength *= 2.2;
+          if (forward > 0 && d < 1.4) {
+            const yieldThrottle = Math.max(0.0, (d - 0.70) / 0.50);
+            if (yieldThrottle < throttle) throttle = yieldThrottle;
+          }
+        } else if (aIsHero && !bIsHero) {
+          // a là nhân vật chính làm đại lễ -> a có quyền ưu tiên, giữ vững tốc độ
+          avoidStrength *= 0.6;
+        }
+
         avoidX += rightX * steerSide * avoidStrength;
         avoidZ += rightZ * steerSide * avoidStrength;
 
-        // Cơ chế "Đứng chờ": chỉ hãm tốc độ nếu người trước mặt chắn kín và chưa kịp lách
-        if (d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
+        // Cơ chế "Đứng chờ": nếu có người chắn ngay sát trước mặt (< 0.75m) và khoảng né hẹp
+        if (!aIsHero && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
           const bStatic = isAvatarStatic(b);
           if (bStatic || !b.walking) {
             const decel = Math.max(0.12, (d - 0.42) / 0.33);
@@ -134,62 +162,82 @@
     const actualMoved = Math.hypot(stepDx, stepDz);
     a.phase = (a.phase || 0) + (actualMoved * Math.PI) / STRIDE;
 
-    // Xoay mặt mềm mại theo hướng chuyển động thực tế
+    // Xoay mặt mềm mại theo hướng chuyển động thực tế (trừ khi có cờ keepYaw)
     if (actualMoved > 0.001) {
-      const targetYaw = Math.atan2(-stepDx, -stepDz);
-      a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 6.0));
+      if (!keepYaw) {
+        const targetYaw = Math.atan2(-stepDx, -stepDz);
+        a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 6.0));
+      }
       a.walking = true;
     } else if (throttle <= 0.12) {
       a.walking = false;
     }
 
-    return distTarget <= 0.12;
+    return distTarget <= 0.08;
   }
 
   /**
    * Vòng đệm đàn hồi mềm (Soft Physical Relaxation):
-   * Đẩy nhẹ các avatar cọ sát nhau ra ngoài mép, bảo đảm không bao giờ lọt thỏm vào nhau.
+   * Chạy giải thuật lặp 3 vòng (3 iterations) để giải quyết triệt để va chạm liên hoàn giữa nhiều người,
+   * xử lý trường hợp trùng khít tọa độ, và ưu tiên không làm xê dịch nhân vật chính.
    */
   function relaxCollisions(avatars) {
     if (!Array.isArray(avatars) || avatars.length < 2) return;
 
     const count = avatars.length;
-    for (let i = 0; i < count; i++) {
-      const a = avatars[i];
-      if (!a || !a.active || a.fade) continue;
+    const ITERATIONS = 3;
 
-      for (let j = i + 1; j < count; j++) {
-        const b = avatars[j];
-        if (!b || !b.active || b.fade) continue;
+    for (let iter = 0; iter < ITERATIONS; iter++) {
+      for (let i = 0; i < count; i++) {
+        const a = avatars[i];
+        if (!a || !a.active || a.fade) continue;
 
-        const dx = a.pos.x - b.pos.x;
-        const dz = a.pos.z - b.pos.z;
-        const dist = Math.hypot(dx, dz);
+        for (let j = i + 1; j < count; j++) {
+          const b = avatars[j];
+          if (!b || !b.active || b.fade) continue;
 
-        if (dist >= MIN_SEPARATION || dist < 0.0001) continue;
+          const dx = a.pos.x - b.pos.x;
+          const dz = a.pos.z - b.pos.z;
+          const dist = Math.hypot(dx, dz);
 
-        const overlap = MIN_SEPARATION - dist;
-        const nx = dx / dist;
-        const nz = dz / dist;
+          if (dist >= MIN_SEPARATION) continue;
 
-        const aStatic = isAvatarStatic(a);
-        const bStatic = isAvatarStatic(b);
+          let nx, nz;
+          if (dist < 0.001) {
+            // Trùng khít tọa độ: tạo vector đẩy có góc phân kỳ rõ rệt
+            const angle = ((a.idx || i + 1) * 1.618 + iter * 0.7) * Math.PI * 2;
+            nx = Math.cos(angle);
+            nz = Math.sin(angle);
+          } else {
+            nx = dx / dist;
+            nz = dz / dist;
+          }
 
-        if (bStatic && !aStatic) {
-          // Người B ngồi yên -> Người A di chuyển chịu 100% độ đẩy dạt sang bên
-          a.pos.x += nx * overlap;
-          a.pos.z += nz * overlap;
-        } else if (aStatic && !bStatic) {
-          // Người A ngồi yên -> Người B di chuyển chịu 100% độ đẩy dạt sang bên
-          b.pos.x -= nx * overlap;
-          b.pos.z -= nz * overlap;
-        } else if (!aStatic && !bStatic) {
-          // Cả hai cùng di chuyển -> Mỗi người dạt 50%
-          const half = overlap * 0.5;
-          a.pos.x += nx * half;
-          a.pos.z += nz * half;
-          b.pos.x -= nx * half;
-          b.pos.z -= nz * half;
+          const overlap = MIN_SEPARATION - (dist < 0.001 ? 0 : dist);
+
+          const aStatic = isAvatarStatic(a);
+          const bStatic = isAvatarStatic(b);
+          const aHero = isHeroAvatar(a);
+          const bHero = isHeroAvatar(b);
+
+          // Phân loại khối lượng và quyền ưu tiên:
+          // Người ngồi tĩnh hoặc nhân vật chính làm đại lễ có "trọng lượng vô hạn", người thường phải dạt ra
+          const aImmovable = aStatic || (aHero && !bHero);
+          const bImmovable = bStatic || (bHero && !aHero);
+
+          if (bImmovable && !aImmovable) {
+            a.pos.x += nx * overlap;
+            a.pos.z += nz * overlap;
+          } else if (aImmovable && !bImmovable) {
+            b.pos.x -= nx * overlap;
+            b.pos.z -= nz * overlap;
+          } else if (!aImmovable && !bImmovable) {
+            const half = overlap * 0.5;
+            a.pos.x += nx * half;
+            a.pos.z += nz * half;
+            b.pos.x -= nx * half;
+            b.pos.z -= nz * half;
+          }
         }
       }
     }
@@ -203,6 +251,7 @@
     STRIDE,
     lerpAngle,
     isAvatarStatic,
+    isHeroAvatar,
     steerAvatar,
     relaxCollisions
   };

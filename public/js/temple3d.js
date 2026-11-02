@@ -1470,7 +1470,7 @@ scene.add(blobMesh);
 const ROBE_TONES = [0x7790a8, 0x6f879e, 0x8297ab, 0x6a8299, 0x8a9db0, 0x7a8ca0];
 const PANTS_TONES = [0x2a2e38, 0x3a4250, 0x1e2026, 0x56677a];
 const SKIN_TONES = [0xf0c49c, 0xe8b88e, 0xdba47c, 0xf4ccaa, 0xe2ad84];
-const HAIR_TONES = [0x1d1612, 0x2a1d16, 0x3a2a20, 0x1a1a1e, 0x8c8784, 0x4a3324, 0xb8b4b0];
+const HAIR_TONES = [0x1a1a1d, 0x221a15, 0x2c1f18, 0x38261c, 0x181716, 0x422f22, 0x7a7470];
 
 // Chỗ ngồi: đệm gấm thường | đài sen hồng (đã tặng quà) | đài sen vàng phát sáng (≥ 100 xu)
 const cushionGeo = mergeColored([
@@ -1644,22 +1644,70 @@ function newAvatar(i) {
     anon: false
   };
 }
-function assignTones(a) {
-  const s = toneSeed++ * 7 + Math.floor(Math.random() * 1000);
-  a.tones = {
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+const devoteeTonesCache = new Map();
+const MAX_TONES_CACHE = 2000;
+
+function getOrCreateTones(key, fallbackIdx = 0) {
+  if (key && devoteeTonesCache.has(key)) {
+    return devoteeTonesCache.get(key);
+  }
+  const s = key ? hashString(key) : Math.abs((fallbackIdx * 37 + 101) | 0);
+  const tones = {
     robe: new THREE.Color(ROBE_TONES[s % ROBE_TONES.length]),
     pants: new THREE.Color(PANTS_TONES[(s >> 2) % PANTS_TONES.length]),
     skin: new THREE.Color(SKIN_TONES[(s >> 1) % SKIN_TONES.length]),
     hair: new THREE.Color(HAIR_TONES[(s >> 3) % HAIR_TONES.length]),
-    feet: new THREE.Color(0x3a2418)
+    feet: new THREE.Color(0x3a2418),
+    hairStyle: ((s >> 4) % 7) < 3 ? 0 : ((s >> 4) % 7) < 6 ? 1 : 2
   };
-  // kiểu tóc: 0 tóc ngắn, 1 búi tóc, 2 cạo đầu (ít hơn)
-  const r = (s >> 4) % 7;
-  a.hairStyle = r < 3 ? 0 : r < 6 ? 1 : 2;
+  if (key) {
+    if (devoteeTonesCache.size >= MAX_TONES_CACHE) {
+      const oldestKey = devoteeTonesCache.keys().next().value;
+      devoteeTonesCache.delete(oldestKey);
+    }
+    devoteeTonesCache.set(key, tones);
+  }
+  return tones;
 }
 
-function setGlow(a, intensity, color = 0xffd27a) {
+function assignTones(a) {
+  const key = a.uid || (a.name && a.name !== 'Thí Chủ' ? a.name : '');
+  const toneData = getOrCreateTones(key, a.idx);
+  a.tones = {
+    robe: toneData.robe.clone(),
+    pants: toneData.pants.clone(),
+    skin: toneData.skin.clone(),
+    hair: toneData.hair.clone(),
+    feet: toneData.feet.clone()
+  };
+  a.hairStyle = toneData.hairStyle;
+}
+
+function isVipDevotee(a) {
+  if (!a) return false;
+  return Boolean(
+    (a.vipRank && a.vipRank > 0) ||
+    (a.tier && a.tier !== 'normal') ||
+    a.goldTrail ||
+    a.flashOnArrive ||
+    a.heroKind === 'gift' ||
+    a.heroKind === 'grand' ||
+    a.guestKind === 'gift' ||
+    a.guestKind === 'grand'
+  );
+}
+
+function setGlow(a, intensity, color = 0xffd27a, force = false) {
   if (!a) return;
+  if (!force && !isVipDevotee(a)) return;
   a.glow = Math.max(a.glow, intensity);
   a.glowColor.set(color);
 }
@@ -1691,7 +1739,14 @@ function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
 function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
-  const kept = keep ? { seat: keep.seat, tier: keep.tier, vipRank: keep.vipRank, flashOnArrive: keep.flashOnArrive } : {};
+  const kept = keep ? {
+    seat: keep.seat,
+    tier: keep.tier,
+    vipRank: keep.vipRank,
+    flashOnArrive: keep.flashOnArrive,
+    tones: keep.tones,
+    hairStyle: keep.hairStyle
+  } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;
   a.uid = uid;
@@ -1709,7 +1764,12 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
   a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
   a.speedMult = rand(0.92, 1.08);
-  assignTones(a);
+  if (kept.tones) {
+    a.tones = kept.tones;
+    a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
+  } else {
+    assignTones(a);
+  }
   a.anon = anon;
   if (anon) { if (a.tag) { a.tag.el.style.display = 'none'; a.tag.shown = false; } } else ensureTag(a);
   touch(a);
@@ -1733,6 +1793,7 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
   let from = null;
   let dur = 1;
   let arrived = false;
+  let elapsed = 0;
   return {
     start(a) {
       from = a.pos.clone();
@@ -1740,14 +1801,18 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
       arrived = false;
+      elapsed = 0;
     },
     get dur() { return dur; },
     isDone(a) { return arrived; },
     update(a, k, dt) {
-      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường
+      elapsed += dt;
+      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường (tôn trọng keepYaw và cự ly thực tế)
       if (typeof CrowdNav !== 'undefined') {
-        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars);
-        if (arrived || k >= 1) {
+        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars, keepYaw);
+        // Failsafe timeout: chỉ ngắt nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
+        const timedOut = elapsed > dur * 4.0 + 4.0;
+        if (arrived || timedOut) {
           a.walking = false;
           arrived = true;
         }

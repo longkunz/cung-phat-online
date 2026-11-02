@@ -1931,16 +1931,14 @@ function goToSeat(a, onArrive) {
 function onSeatArrive(av) {
   av.entering = false;
   if (av.flashOnArrive) {
+    setGlow(av, 1.8, 0xffe27a, true);
     av.flashOnArrive = false;
-    setGlow(av, 1.8, 0xffe27a);
     for (let i = 0; i < 18; i++) {
       const ang = Math.random() * Math.PI * 2;
       sparks.spawn(av.pos.x, 0.9, av.pos.z, Math.cos(ang) * rand(0.4, 1.4), rand(1.5, 3), Math.sin(ang) * rand(0.4, 1.4), rand(0.7, 1.3), i % 2 ? 0xffe27a : 0xfff4c0);
     }
     const f = makeFloater(av.vipRank ? `⭐ Hàng đầu · hạng ${av.vipRank}` : '⭐ Vào chỗ mới', 'merit', 3000);
     f.anchor = () => av.head;
-  } else {
-    setGlow(av, 1.0);
   }
 }
 
@@ -2153,7 +2151,12 @@ function walkToBurner(a, kind, ev) {
 }
 
 function ritualClimax(a, kind, ev) {
-  if (a) setGlow(a, 1.3, kind === 'gift' || kind === 'grand' ? 0xffe27a : 0xffb35a);
+  if (a) {
+    const isGiftOrGrand = kind === 'gift' || kind === 'grand';
+    if (isGiftOrGrand || isVipDevotee(a)) {
+      setGlow(a, 1.3, isGiftOrGrand ? 0xffe27a : 0xffb35a, true);
+    }
+  }
   burstIncense(kind === 'grand' ? 2 : 1);
   const f = makeFloater(ev?.merit ? `+${ev.merit} Công Đức` : '+ Công Đức', 'merit', 3200);
   const p = new THREE.Vector3(BURNER.x, BURNER_TOP + 1.4, BURNER.z);
@@ -2967,17 +2970,19 @@ function updateAvatars(dt, t) {
       bowRings.setColorAt(nr, _c);
       bowRings.setMatrixAt(nr++, _m.compose(_pos.set(a.pos.x, 0.03 + 0.17 * kc, a.pos.z), _q.identity(), _s.set(rs, 1, rs)));
     }
-    // hào quang (cộng sáng; cường độ = màu)
+    // hào quang (chỉ VIP / khách quý mới có hào quang phát sáng, người thường không có)
     a.glow = Math.max(0, a.glow - dt * 0.55);
-    const chanting = t < a.chantUntil;
-    let aura = a.glow;
-    if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
-    if (aura > 0.01) {
-      const sz = (1.5 + aura * 0.6) * s;
-      _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
-      auraMesh.setColorAt(na, _c);
-      auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
-      na++;
+    if (isVipDevotee(a)) {
+      const chanting = t < a.chantUntil;
+      let aura = a.glow;
+      if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
+      if (aura > 0.01) {
+        const sz = (1.5 + aura * 0.6) * s;
+        _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
+        auraMesh.setColorAt(na, _c);
+        auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
+        na++;
+      }
     }
   }
   for (const [name, im] of Object.entries(parts)) {
@@ -3864,7 +3869,26 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
+window.Temple3D = {
+  scene,
+  camera,
+  renderer,
+  avatars,
+  director,
+  step: stepSim,
+  clock,
+  applyHallAction,
+  handleEvent,
+  syncRoster,
+  updateStatus,
+  arrive,
+  SHOTS,
+  CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null,
+  isVipDevotee,
+  getOrCreateTones,
+  assignTones,
+  setGlow
+};
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

@@ -1778,6 +1778,12 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
 app.use('/music', express.static(MUSIC_DIR, { maxAge: '1d' }));
+// Chuẩn hóa đường dẫn: Chuyển hướng 301 từ /temple3d.html về / (View 3D chính thức)
+app.get('/temple3d.html', (req, res) => {
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, '/' + query);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
@@ -1825,6 +1831,11 @@ app.get('/ready', (_req, res) => {
       tts: ttsStatus
     }
   });
+});
+
+app.get('/temple3d.html', (req, res) => {
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, '/' + query);
 });
 
 app.get('/admin', (_req, res) => {

@@ -21,16 +21,17 @@ html, body {
   user-select: none;
 }
 
-.t3d-workspace {
+.t3d-workspace, .app-workspace {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100vw;
   height: 100vh;
   padding: 12px;
+  gap: 20px;
 }
 
-.t3d-wrapper {
+.t3d-wrapper, .stage-wrapper {
   position: relative;
   height: 96vh;
   max-width: 100%;
@@ -39,11 +40,15 @@ html, body {
   overflow: hidden;
   border: 2px solid rgba(242, 195, 91, 0.5);
   background: #140604;
+  flex: none;
 }
 
 body.obs-mode { background: transparent; }
-body.obs-mode .t3d-workspace { padding: 0; }
-body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
+body.obs-mode .t3d-workspace,
+body.obs-mode .app-workspace { padding: 0; gap: 0; }
+body.obs-mode .t3d-wrapper,
+body.obs-mode .stage-wrapper { height: 100vh; border: none; border-radius: 0; }
+body.obs-mode .quick-dock { display: none !important; }
 
 .t3d-stage {
   position: absolute;
@@ -247,22 +252,10 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
   right: 34px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: center;
   z-index: 10;
 }
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 22px 10px 16px;
-  border-radius: 40px;
-  background: rgba(40, 8, 4, 0.72);
-  border: 2px solid rgba(242, 195, 91, 0.55);
-  font-size: 25px;
-  font-weight: 700;
-  backdrop-filter: blur(4px);
-}
+.status-pill { display: none !important; }
 .status-dot {
   width: 16px;
   height: 16px;
@@ -286,34 +279,77 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
 }
 .hud-counts b { color: var(--gold-soft); }
 
-.hud-hint {
-  position: absolute;
-  top: 112px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: 1010px;
-  padding: 8px 20px;
-  border-radius: 14px;
-  background: linear-gradient(90deg, rgba(124, 25, 18, 0.88), rgba(150, 40, 20, 0.88));
-  border: 1.5px solid rgba(255, 210, 120, 0.6);
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: center;
-  color: #fff3d6;
-  z-index: 10;
-}
+.hud-hint { display: none !important; }
 
 /* Sổ Công Đức — cuộn sơn mài dọc bên trái */
-.merit-scroll {
+
+/* --------------------------------------------------------------------------
+   HƯỚNG DẪN THAM GIA (Panel bên trái - vị trí cũ của Sổ Công Đức)
+   -------------------------------------------------------------------------- */
+.guide-scroll {
   position: absolute;
   left: 22px;
   top: 190px;
-  width: 288px;
+  width: 300px;
   padding: 0 0 12px;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(92, 17, 10, 0.86), rgba(55, 10, 6, 0.86));
+  background: linear-gradient(180deg, rgba(92, 17, 10, 0.88), rgba(55, 10, 6, 0.88));
+  border: 2px solid rgba(242, 195, 91, 0.65);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+  overflow: hidden;
+}
+.guide-scroll::before, .guide-scroll::after {
+  content: '';
+  display: block;
+  height: 10px;
+  background: linear-gradient(90deg, #8a5a14, #f2c35b, #8a5a14);
+}
+.guide-scroll::after { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; }
+.guide-scroll-head {
+  text-align: center;
+  font-family: 'Noto Serif', serif;
+  font-weight: 900;
+  font-size: 24px;
+  letter-spacing: 0.5px;
+  color: var(--gold-soft);
+  padding: 8px 0 6px;
+  border-bottom: 1px solid rgba(242, 195, 91, 0.35);
+  background: linear-gradient(90deg, rgba(140, 90, 10, 0.5), rgba(200, 140, 30, 0.35), rgba(140, 90, 10, 0.5));
+}
+.guide-list {
+  list-style: none;
+  padding: 8px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.guide-list li {
+  font-size: 16.5px;
+  line-height: 1.35;
+  color: #fff3d6;
+  border-bottom: 1px dashed rgba(242, 195, 91, 0.18);
+  padding-bottom: 6px;
+}
+.guide-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.guide-list b {
+  color: var(--gold-soft);
+}
+
+/* Sổ Công Đức — Dời sang bên phải, nằm dưới Bảng Dâng Lễ */
+.merit-scroll {
+  position: absolute;
+  right: 22px;
+  left: auto;
+  top: 590px;
+  width: 300px;
+  max-height: 480px;
+  padding: 0 0 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(92, 17, 10, 0.88), rgba(55, 10, 6, 0.88));
   border: 2px solid rgba(242, 195, 91, 0.6);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
   z-index: 10;
@@ -362,13 +398,7 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
 .merit-list li:nth-child(2) .merit-rank { background: linear-gradient(135deg, #f4f4f4, #b8b8c4); }
 .merit-list li:nth-child(3) .merit-rank { background: linear-gradient(135deg, #f7c79a, #b56a32); }
 .merit-avatar {
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1.5px solid rgba(242, 195, 91, 0.7);
-  background: var(--lam);
+  display: none !important;
 }
 .merit-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .merit-val { flex: none; color: var(--gold-soft); font-weight: 800; font-size: 19px; }
@@ -451,6 +481,7 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
   right: 22px;
   top: 190px;
   width: 300px;
+  max-height: 380px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(70, 40, 6, 0.86), rgba(40, 20, 4, 0.86));
   border: 2px solid rgba(255, 210, 110, 0.7);

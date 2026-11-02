@@ -11,21 +11,17 @@
   <link rel="stylesheet" href="/css/temple3d.css" />
 </head>
 <body>
-  <div class="t3d-workspace">
-    <div class="t3d-wrapper" id="stageWrapper">
+  <div class="app-workspace">
+    <!-- KHUNG 9:16 CHÁNH ĐIỆN 3D CHUẨN TIKTOK LIVE / OBS BROWSER SOURCE (1080 x 1920) -->
+    <div class="stage-wrapper" id="stageWrapper">
       <div class="t3d-stage" id="stage9x16">
         <canvas id="t3dCanvas" class="t3d-canvas" width="1080" height="1920"></canvas>
 
         <!-- Lớp nhãn tên / bong bóng / chữ bay (định vị bằng chiếu 3D -> 2D mỗi khung hình) -->
         <div class="t3d-overlay" id="t3dOverlay"></div>
 
-        <!-- HUD -->
+        <!-- HUD ĐỈNH: Chỉ hiển thị các chỉ số tâm linh (Đã bỏ nhãn Trực tiếp @username ở góc trái) -->
         <div class="hud-top">
-          <div class="status-pill" id="statusPill">
-            <span class="status-dot"></span>
-            <span id="statusText">Đang mở cửa chùa...</span>
-            <span class="status-viewers" id="statusViewers"></span>
-          </div>
           <div class="hud-counts">
             <span title="Nén hương">🔥 <b id="cntIncense">0</b></span>
             <span title="Công đức">🪷 <b id="cntMerit">0</b></span>
@@ -34,21 +30,33 @@
           </div>
         </div>
 
-        <div class="hud-hint" id="hudHint">
-          💬 Bình luận để vào Đạo Tràng · “lạy” · “chào” · “niệm Phật” · ❤️ Thả tim: gõ mõ · 🎁 Tặng quà: dâng lễ
-        </div>
-
-        <aside class="merit-scroll" id="meritScroll">
-          <div class="merit-scroll-head">Sổ Công Đức</div>
-          <ol class="merit-list" id="meritList">
-            <li class="merit-empty">Chưa có thí chủ — hãy bình luận để ghi danh 🙏</li>
-          </ol>
+        <!-- PANEL BÊN TRÁI: Hướng Dẫn Tham Gia (Vị trí cũ của Sổ Công Đức) -->
+        <aside class="guide-scroll" id="guideScroll">
+          <div class="guide-scroll-head">📜 Hướng Dẫn Tham Gia</div>
+          <ul class="guide-list">
+            <li>💬 <b>Bình luận</b>: Ghi danh Đạo Tràng & dâng hương</li>
+            <li>🙏 <b>Gõ "lạy" / "lễ phật"</b>: Đảnh lễ Tam Bái trước Phật</li>
+            <li>🌿 <b>Gõ "chào", "niệm phật"</b>: Chào & niệm kinh</li>
+            <li>❤️ <b>Thả tim</b>: Gõ mõ tụng kinh (+1 Công Đức)</li>
+            <li>🔔 <b>Follow / Share</b>: Thỉnh Đại Hồng Chung (+10)</li>
+            <li>🎋 <b>Bình luận "xin xăm"</b>: Gieo quẻ Linh Xăm đầu năm</li>
+            <li>🎁 <b>Tặng quà</b>: Dâng lễ & an tọa hàng đầu Đài Sen</li>
+          </ul>
         </aside>
 
+        <!-- PANEL BÊN PHẢI TRÊN: Bảng Dâng Lễ -->
         <aside class="gift-board" id="giftBoard">
           <div class="gift-board-head">📜 Bảng Dâng Lễ</div>
           <ol class="gift-list" id="giftList">
             <li class="gift-empty">🎁 Tặng quà để được ngồi hàng đầu trên đài sen</li>
+          </ol>
+        </aside>
+
+        <!-- PANEL BÊN PHẢI DƯỚI: Sổ Công Đức (Nằm dưới Bảng Dâng Lễ, chỉ hiện tên/username không hiện ảnh) -->
+        <aside class="merit-scroll" id="meritScroll">
+          <div class="merit-scroll-head">Sổ Công Đức</div>
+          <ol class="merit-list" id="meritList">
+            <li class="merit-empty">Chưa có thí chủ — hãy bình luận để ghi danh 🙏</li>
           </ol>
         </aside>
 
@@ -82,6 +90,73 @@
         <div class="no-webgl" id="noWebgl" hidden>Trình duyệt chưa bật WebGL — vui lòng bật tăng tốc phần cứng (OBS: Use hardware acceleration in Browser Sources).</div>
       </div>
     </div>
+
+    <!-- BẢNG ĐIỀU KHIỂN NHANH RPC & GIẢ LẬP TRỰC TIẾP (ẨN KHI ?obs=1) -->
+    <aside class="quick-dock" id="quickDock">
+      <div class="dock-header">
+        <div class="dock-title">🎛️ Điều Khiển Live & RPC</div>
+        <a href="/admin" target="_blank" class="dock-link">Mở Admin Đầy Đủ ↗</a>
+      </div>
+
+      <div class="dock-section">
+        <div class="dock-section-title">🔊 Âm Thanh Chùa & Giọng Đọc Khấn</div>
+        <button class="dock-btn gold" id="btnUnlockAudio">
+          🔔 Bật Âm Thanh Chùa & Giọng Đọc
+        </button>
+        <div class="dock-grid-2">
+          <button class="dock-btn active-toggle" id="btnToggleTts">🎙️ Giọng Đọc: BẬT</button>
+          <button class="dock-btn active-toggle" id="btnToggleMusic">🎵 Nhạc Nền: BẬT</button>
+        </div>
+        <div class="volume-control-row">
+          <div class="volume-label-line">
+            <span>🎵 Âm lượng Nhạc nền</span>
+            <strong id="valMusicVol">65%</strong>
+          </div>
+          <input type="range" id="sliderMusicVol" class="volume-slider" min="0" max="100" value="65" />
+        </div>
+        <div class="volume-control-row">
+          <div class="volume-label-line">
+            <span>🎙️ Âm lượng Giọng đọc</span>
+            <strong id="valTtsVol">95%</strong>
+          </div>
+          <input type="range" id="sliderTtsVol" class="volume-slider" min="0" max="100" value="95" />
+        </div>
+      </div>
+
+      <div class="dock-section">
+        <div class="dock-section-title">📡 Kết Nối Phòng TikTok Live</div>
+        <div class="dock-input-row">
+          <input type="text" id="inputTikTokUser" class="dock-input" value="@zenfacts_vn" placeholder="Nhập @username hoặc link TikTok Live..." />
+          <button class="dock-btn gold" id="btnConnectTikTok">Kết Nối</button>
+        </div>
+        <button class="dock-btn" id="btnToggleAutoSim">
+          🤖 Tự động Giả lập Người Xem: TẮT
+        </button>
+      </div>
+
+      <div class="dock-section">
+        <div class="dock-section-title">🙏 Kích Hoạt Nghi Thức Tương Tác (RPC)</div>
+        <input type="text" id="inputDevoteeName" class="dock-input" value="Quỳnh_Finn" placeholder="Tên người xem / Thí chủ..." />
+        <input type="text" id="inputDevoteeWish" class="dock-input" value="Cầu cho gia đình bình an, tài lộc hanh thông, vạn sự như ý" placeholder="Lời cầu nguyện..." />
+
+        <div class="dock-grid-2">
+          <button class="dock-btn gold" id="btnRpcIncense">🔥 Thắp 3 Nén Hương</button>
+          <button class="dock-btn" id="btnRpcLantern">🏮 Thả Đèn Hoa Đăng</button>
+          <button class="dock-btn" id="btnRpcWoodenFish">🪵 Gõ Mõ (+5)</button>
+          <button class="dock-btn" id="btnRpcBell">🔔 Thỉnh Chuông Chùa</button>
+          <button class="dock-btn" id="btnRpcFortune">🎋 Xin Xăm / Gieo Quẻ</button>
+          <button class="dock-btn" id="btnRpcGiftLotus">🪷 Dâng Hoa Sen Vàng</button>
+        </div>
+        <button class="dock-btn gold" id="btnRpcGrandCeremony">
+          🐉 Đại Lễ Kim Long Chầu Phật (Quà Lớn)
+        </button>
+      </div>
+
+      <div class="dock-section">
+        <div class="dock-section-title">📜 Nhật Ký Tương Tác Gần Nhất</div>
+        <div class="event-feed" id="eventFeed"></div>
+      </div>
+    </aside>
   </div>
 
   <script src="/js/audio.js"></script>

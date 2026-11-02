@@ -149,9 +149,9 @@ Sau khi hệ thống khởi động thành công, bạn có thể truy cập cá
 
 | Mục đích sử dụng | Địa chỉ URL | Ghi chú |
 | :--- | :--- | :--- |
-| **Chánh Điện 3D Thiên Mụ** | [http://localhost:3000/temple3d.html](http://localhost:3000/temple3d.html) | Chánh Điện 3D Three.js đầy đủ tính năng |
-| **OBS Browser Source (Khung 9:16)** | [http://localhost:3000/temple3d.html?obs=1](http://localhost:3000/temple3d.html?obs=1) | Chế độ sạch cho OBS Studio (đặt kích thước `1080 × 1920`) |
-| **Màn hình Live 2D + Thử nghiệm nhanh** | [http://localhost:3000](http://localhost:3000) | Giao diện Chánh Điện 2D kèm bảng nút bấm tương tác |
+| **Chánh Điện 3D & Điều Khiển Nhanh** | [http://localhost:3000](http://localhost:3000) | Giao diện Chánh Điện 3D Three.js chuẩn 9:16 kèm Bảng Điều Khiển Nhanh (Quick Dock) |
+| **OBS Browser Source 3D (Khung 9:16 Sạch)** | [http://localhost:3000/?obs=1](http://localhost:3000/?obs=1) | Chế độ sạch cho OBS Studio / TikTok Live Studio (kích thước `1080 × 1920`) |
+| **Chánh Điện 3D URL Dự phòng** | [http://localhost:3000/temple3d.html](http://localhost:3000/temple3d.html) | Tự động chuyển hướng (HTTP 301) về `/` |
 | **Bảng Quản Trị JSON-RPC & Âm Thanh** | [http://localhost:3000/admin](http://localhost:3000/admin) | Cài đặt nhạc nền, âm lượng, danh sách phát, gieo quẻ, kết nối live |
 | **Liveness Probe (Live Gateway)** | `GET http://localhost:3000/health` | Kiểm tra Live Gateway còn hoạt động (`HTTP 200`) |
 | **Readiness Probe (Toàn hệ thống)** | `GET http://localhost:3000/ready` | Trả về `200` khi TTS Service sẵn sàng, `503` khi đang tải |

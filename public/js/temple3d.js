@@ -1572,10 +1572,12 @@ function refreshSeats() {
 refreshSeats();
 scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 
-// Chỗ đứng chờ (16 người): dồn sát ngay sau hàng ghế cuối của Đạo Tràng (z = 2.6 và 3.9)
+// Chỗ đứng chờ (24 người): bố trí tách biệt hoàn toàn thành 2 cánh ở hai bên (|x| >= 2.4)
+// Tuyệt đối không đứng ở lối đi giữa (hành lang trung tâm x = -2.0..2.0 luôn thông thoáng)
 const WAIT_SPOTS = [];
-for (const z of [2.6, 3.9]) {
-  for (const x of [-5.2, -3.8, -2.4, -1.0, 1.0, 2.4, 3.8, 5.2]) {
+for (const z of [2.2, 3.6, 5.0, 6.4]) {
+  // Cánh trái (x <= -2.4) và Cánh phải (x >= 2.4)
+  for (const x of [-5.2, -3.8, -2.4, 2.4, 3.8, 5.2]) {
     WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.06, 0.06), 0, z + rand(-0.08, 0.08)));
   }
 }
@@ -1927,8 +1929,18 @@ function walkOut(a) {
   a.vipRank = 0;
   ensureTag(a);
   const steps = [];
-  if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
-  else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
+  if (a.atSeat >= 0) {
+    steps.push(...pathFromSeat(a.atSeat));
+  } else if (a.kneel > 0.05) {
+    steps.push(kneelStep(0, 0.6));
+  } else if (a.waitSpot >= 0 || (Math.abs(a.pos.x) > 1.3 && a.pos.z < DOOR_IN.z - 0.5)) {
+    // Đang đứng ở khu vực chờ 2 bên: quay mặt về hướng cửa, bước ra làn đi bộ rồi bước ra ngoài
+    const sideX = Math.sign(a.pos.x) || 1;
+    steps.push(
+      turnStep(Math.PI, 0.4),
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, a.pos.z), WALK_SPEED)
+    );
+  }
   steps.push(...exitSteps(WALK_SPEED));
   a.seat = -1;
   runScript(a, steps);
@@ -2425,23 +2437,25 @@ function courtGuest(uid, name, action, text) {
   return a;
 }
 
-/** Tầng 1 — hall.arrive: người vừa vào live đi qua cổng, lạy vọng về chánh điện rồi ra. */
+/** Tầng 1 — hall.arrive: người vừa vào live; hiển thị thông báo và đứng vào khu vực chờ 2 bên (không đứng giữa lối đi). */
 function arrive(p) {
   const more = Number(p.count) > 1 ? ` và ${Number(p.count) - 1} người khác` : '';
   pushToast(`🙏 ${shortName(p.name || 'Thí Chủ', 18)}${more} vừa vào chùa`, 'arrive');
-  if (countGuests('arrive') >= 3) return;
-  const a = allocAvatar();
-  if (!a) return;
-  spawnAvatar(a, { uid: p.uid || '', name: p.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
-  a.guestKind = 'arrive';
-  const stop = new THREE.Vector3(rand(-0.5, 0.5), 0, 4.2);
-  runScript(a, [
-    moveStep(stop, 1.7),
-    turnStep(0, 0.4),
-    waitStep(1.5),
-    turnStep(Math.PI, 0.6),
-    ...exitSteps(1.7)
-  ]);
+  // Nếu có uid và chưa được quản lý bởi waitMap hay uidToAvatar, tự động cho đứng vào chỗ chờ 2 bên
+  if (p.uid && !waitMap.has(p.uid) && !memberAvatar(p.uid)) {
+    const emptyIdx = waitSpotTaken.indexOf(null);
+    if (emptyIdx >= 0) {
+      const a = allocAvatar();
+      if (a) {
+        waitMap.set(p.uid, a);
+        spawnAvatar(a, { uid: p.uid, name: p.name || 'Thí Chủ', member: false, at: DOOR_SPAWN.clone(), pop: true });
+        a.tier = 'normal';
+        a.waiting = true;
+        ensureTag(a);
+        sendToWaitSpot(a);
+      }
+    }
+  }
 }
 
 // Đám đông vô danh (không tên): tăng theo số lượng người xem, dồn sát vào phía sau và hai bên hàng ghế
@@ -2450,7 +2464,7 @@ function crowdTarget(n) {
   return Math.max(0, Math.min(12, n));
 }
 const CROWD_SPOTS = [
-  [-3.8, 5.2], [3.8, 5.2], [-2.4, 5.2], [2.4, 5.2], [-1.0, 5.2], [1.0, 5.2],
+  [-3.8, 7.8], [3.8, 7.8], [-2.4, 7.8], [2.4, 7.8], [-5.2, 7.8], [5.2, 7.8],
   [-6.8, -2.4], [6.8, -2.4], [-6.8, -0.6], [6.8, -0.6], [-6.8, 1.2], [6.8, 1.2]
 ];
 function syncCrowd(viewers) {
@@ -3874,6 +3888,22 @@ function initQuickDock() {
     btnAutoSim.textContent = `🤖 Tự động Giả lập Người Xem: ${isSim ? 'BẬT' : 'TẮT'}`;
     callRpc('live.setAutoSim', { enabled: isSim });
     pushEventFeed(`Giả lập người xem: ${isSim ? 'BẬT' : 'TẮT'}`);
+  });
+
+  document.getElementById('btnSimulateJoin')?.addEventListener('click', () => {
+    const randomNames = ['Minh Đức', 'Tâm An', 'Diệu Hoa', 'Phúc Lâm', 'Tuệ Tĩnh', 'Bảo Hân', 'Thanh Trúc'];
+    const name = randomNames[Math.floor(Math.random() * randomNames.length)];
+    callRpc('live.simulateJoin', { user: name });
+    pushEventFeed(`${name} vừa vào chùa (vào khu vực chờ)`);
+  });
+
+  document.getElementById('btnSimulateLeave')?.addEventListener('click', async () => {
+    const res = await callRpc('live.simulateLeave', {});
+    if (res?.ok) {
+      pushEventFeed(`1 người rời chùa (bước ra cửa)`);
+    } else {
+      pushEventFeed(res?.message || 'Không có ai để rời chùa');
+    }
   });
 
   // RPC action buttons

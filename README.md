@@ -163,7 +163,13 @@ curl -X POST http://localhost:3000/rpc \
 - `temple.ringBell`: Thỉnh Đại Hồng Chung (`user`, `count`, `wish`).
 - `temple.offerGift`: Dâng lễ vật (`user`, `giftType`: `lotus` | `fruit` | `lamp` | `dragon`, `coins`, `giftName`).
 - `temple.grandCeremony`: Kích hoạt Đại Lễ Kim Long Chầu Phật (`user`, `coins`, `giftName`).
-- `temple.updateSettings`: Cập nhật âm lượng nhạc nền (`musicVolume`), giọng đọc (`ttsVolume`), bật/tắt TTS.
+- `temple.updateSettings`: Cập nhật giọng đọc (`ttsEnabled`, `ttsVoice`, `ttsVolume`), nhạc nền (`bgMusicEnabled`, `musicVolume`, `bgPlaylist`: tối đa 3 id bài trong thư viện, phát lần lượt theo thứ tự), hiệu ứng âm thanh (`sfxEnabled`, `sfxVolume`, `sfx`: `{ bell, woodfish, chime, fortune }`).
+- Thư viện nhạc nền (HTTP): `GET /api/music` (danh sách), `POST /api/music?name=<tên>` (body = file nhạc, header `Content-Type: audio/*`), `DELETE /api/music/<id>`. File lưu ở `data/music/`, phục vụ tại `/music/...`.
+
+### 🎵 Cài đặt âm thanh ở trang Admin
+- **Nhạc nền**: bật/tắt, âm lượng, danh sách phát tối đa **3 bài** phát lần lượt theo thứ tự rồi quay lại bài 1 (đổi thứ tự bằng ▲▼, nghe thử ▶). Tải nhạc lên thư viện (mp3, m4a, aac, ogg, wav, webm, flac, tối đa 40MB, 30 bài). Nhạc tự hạ nhỏ khi có giọng đọc; bài lỗi được bỏ qua.
+- **Hiệu ứng âm thanh**: bật/tắt chung, âm lượng chung, bật/tắt riêng Đại Hồng Chung, Mõ gỗ, Chuông ngọc, Lắc ống xăm, có nút nghe thử.
+- Lưu là màn live, OBS và Chánh Điện 3D áp dụng ngay.
 - `temple.resetMerit`: Đặt lại bảng thống kê Công Đức.
 - `live.connect` / `live.disconnect`: Kết nối / Ngắt kết nối phòng TikTok Live.
 - `live.setAutoSim`: Bật/tắt tự động giả lập đông người (`enabled`).

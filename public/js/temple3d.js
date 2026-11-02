@@ -3403,12 +3403,8 @@ function updateState(st) {
     if (!giftFeedSeeded) { st.giftFeed.forEach((g) => seenGiftIds.add(g.id)); giftFeedSeeded = true; }
   }
   const s = st.settings;
-  if (s && audio) {
-    if (typeof s.ttsEnabled === 'boolean') audio.ttsEnabled = s.ttsEnabled;
-    if (s.ttsVoice) audio.ttsVoice = s.ttsVoice;
-    if (typeof s.musicVolume === 'number') audio.setMusicVolume(s.musicVolume);
-    if (typeof s.ttsVolume === 'number') audio.setTtsVolume(s.ttsVolume);
-  }
+  // Giọng đọc, nhạc nền (danh sách phát tối đa 3 bài), hiệu ứng âm thanh — cài đặt ở trang Admin
+  if (s && audio) audio.applySettings(s);
 }
 
 let tiktokInfo = { connected: false, username: '', viewerCount: 0 };

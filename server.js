@@ -12,7 +12,11 @@ const DATA_DIR = path.join(__dirname, 'data');
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
 const STATE_FILE = path.join(DATA_DIR, 'merit-state.json');
 
+const MUSIC_DIR = path.join(DATA_DIR, 'music');
+const MUSIC_LIBRARY_FILE = path.join(MUSIC_DIR, 'library.json');
+
 fs.mkdirSync(TTS_CACHE_DIR, { recursive: true });
+fs.mkdirSync(MUSIC_DIR, { recursive: true });
 
 // ============================================================================
 // 1. BỘ 18 QUẺ LINH XĂM CHÙA THIÊN MỤ (FORTUNE STICKS DECK)
@@ -297,7 +301,13 @@ const DEFAULT_STATE = {
     ttsVoice: 'maichi',
     ttsVolume: 0.95,
     bgMusicEnabled: true,
+    musicVolume: 0.65,
+    // Danh sách nhạc nền phát lần lượt (tối đa 3 bài), hết bài cuối quay lại bài đầu
+    bgPlaylist: [{ id: 'default', name: 'Nam Mô A Di Đà Phật (mặc định)', url: '/assets/bg_chant.m4a' }],
     sfxEnabled: true,
+    sfxVolume: 0.8,
+    // Bật/tắt từng hiệu ứng âm thanh pháp khí
+    sfx: { bell: true, woodfish: true, chime: true, fortune: true },
     smokeDensity: 1.0,
     autoSim: false,
     autoSimIntervalMs: 9500
@@ -321,7 +331,11 @@ function loadState() {
         ...saved,
         devotees: saved.devotees || {},
         offerings: { ...DEFAULT_STATE.offerings, ...(saved.offerings || {}) },
-        settings: { ...DEFAULT_STATE.settings, ...(saved.settings || {}) },
+        settings: {
+          ...DEFAULT_STATE.settings,
+          ...(saved.settings || {}),
+          sfx: { ...DEFAULT_STATE.settings.sfx, ...(saved.settings?.sfx || {}) }
+        },
         tiktok: { ...DEFAULT_STATE.tiktok }
       };
     }
@@ -758,12 +772,53 @@ const Rituals = {
         (typeof params.musicVolume !== 'number' || !Number.isFinite(params.musicVolume) || params.musicVolume < 0 || params.musicVolume > 1)) {
       throw new Error('Âm lượng nhạc nền phải nằm trong khoảng 0 đến 1');
     }
+    if (params.sfxVolume !== undefined &&
+        (typeof params.sfxVolume !== 'number' || !Number.isFinite(params.sfxVolume) || params.sfxVolume < 0 || params.sfxVolume > 1)) {
+      throw new Error('Âm lượng hiệu ứng phải nằm trong khoảng 0 đến 1');
+    }
+    for (const key of ['bgMusicEnabled', 'sfxEnabled']) {
+      if (params[key] !== undefined && typeof params[key] !== 'boolean') {
+        throw new Error(`Giá trị ${key} phải là true/false`);
+      }
+    }
+    if (params.sfx !== undefined) {
+      if (!params.sfx || typeof params.sfx !== 'object' || Array.isArray(params.sfx)) {
+        throw new Error('Cài đặt hiệu ứng âm thanh không hợp lệ');
+      }
+      const sfx = { ...state.settings.sfx };
+      for (const key of Object.keys(DEFAULT_STATE.settings.sfx)) {
+        if (params.sfx[key] !== undefined) {
+          if (typeof params.sfx[key] !== 'boolean') throw new Error(`Hiệu ứng ${key} phải là true/false`);
+          sfx[key] = params.sfx[key];
+        }
+      }
+      params = { ...params, sfx };
+    }
+    if (params.bgPlaylist !== undefined) {
+      // Nhận danh sách id (hoặc object có id) theo thứ tự phát; server tự tra đường dẫn từ thư viện nhạc
+      if (!Array.isArray(params.bgPlaylist)) throw new Error('Danh sách nhạc nền không hợp lệ');
+      const ids = params.bgPlaylist.map((x) => (typeof x === 'string' ? x : x?.id)).filter(Boolean);
+      if (ids.length > MAX_PLAYLIST) throw new Error(`Chỉ phát tối đa ${MAX_PLAYLIST} bài nhạc nền`);
+      if (new Set(ids).size !== ids.length) throw new Error('Một bài chỉ được chọn 1 lần trong danh sách phát');
+      const library = getMusicLibrary();
+      const resolved = ids.map((id) => {
+        const track = library.find((t) => t.id === id);
+        if (!track) throw new Error(`Không tìm thấy bài nhạc "${id}" trong thư viện`);
+        return { id: track.id, name: track.name, url: track.url };
+      });
+      params = { ...params, bgPlaylist: resolved };
+    }
     if (params.autoSimIntervalMs !== undefined &&
         (typeof params.autoSimIntervalMs !== 'number' || !Number.isFinite(params.autoSimIntervalMs) || params.autoSimIntervalMs < 2000)) {
       throw new Error('Chu kỳ giả lập phải là số mili-giây >= 2000');
     }
     // Chỉ nhận các khóa cài đặt hợp lệ, tránh client ghi đè rác vào state/merit-state.json
-    const ALLOWED_KEYS = ['ttsEnabled', 'ttsVoice', 'ttsVolume', 'musicVolume', 'bgMusicEnabled', 'sfxEnabled', 'smokeDensity', 'autoSim', 'autoSimIntervalMs'];
+    const ALLOWED_KEYS = [
+      'ttsEnabled', 'ttsVoice', 'ttsVolume',
+      'musicVolume', 'bgMusicEnabled', 'bgPlaylist',
+      'sfxEnabled', 'sfxVolume', 'sfx',
+      'smokeDensity', 'autoSim', 'autoSimIntervalMs'
+    ];
     const patch = {};
     for (const key of ALLOWED_KEYS) {
       if (params[key] !== undefined) patch[key] = params[key];
@@ -1756,6 +1811,7 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
+app.use('/music', express.static(MUSIC_DIR, { maxAge: '1d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
@@ -1764,6 +1820,121 @@ app.use('/vendor/three-addons', express.static(path.join(__dirname, 'node_module
 
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ============================================================================
+// THƯ VIỆN NHẠC NỀN (tải lên từ trang Admin, lưu ở data/music/)
+// ============================================================================
+const MAX_PLAYLIST = 3;
+const MAX_LIBRARY = 30;
+const DEFAULT_TRACK = { id: 'default', name: 'Nam Mô A Di Đà Phật (mặc định)', url: '/assets/bg_chant.m4a', builtin: true };
+const MUSIC_TYPES = {
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/m4a': 'm4a',
+  'audio/aac': 'aac',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/webm': 'webm',
+  'audio/flac': 'flac'
+};
+const MUSIC_EXTS = new Set(Object.values(MUSIC_TYPES));
+
+function readUploadedTracks() {
+  try {
+    const list = JSON.parse(fs.readFileSync(MUSIC_LIBRARY_FILE, 'utf8'));
+    return Array.isArray(list) ? list.filter((t) => t && t.id && t.file && fs.existsSync(path.join(MUSIC_DIR, t.file))) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeUploadedTracks(list) {
+  fs.writeFileSync(MUSIC_LIBRARY_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
+function getMusicLibrary() {
+  return [DEFAULT_TRACK, ...readUploadedTracks()];
+}
+
+function cleanTrackName(raw, fallback) {
+  const name = String(raw || '')
+    .normalize('NFC')
+    .replace(/[\u0000-\u001f<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  return name || fallback;
+}
+
+// Tải lên 1 file nhạc: POST /api/music?name=<tên hiển thị>, body = nội dung file (Content-Type: audio/*),
+// header X-File-Name = tên file gốc (encodeURIComponent) để đoán đuôi file khi trình duyệt không gửi đúng MIME.
+app.post('/api/music', express.raw({ type: () => true, limit: '40mb' }), (req, res) => {
+  try {
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 1024) {
+      return res.status(400).json({ ok: false, error: 'File nhạc trống hoặc quá nhỏ' });
+    }
+    const uploaded = readUploadedTracks();
+    if (uploaded.length >= MAX_LIBRARY) {
+      return res.status(400).json({ ok: false, error: `Thư viện đã đủ ${MAX_LIBRARY} bài, hãy xóa bớt trước khi tải thêm` });
+    }
+    let originalName = '';
+    try {
+      originalName = decodeURIComponent(String(req.headers['x-file-name'] || ''));
+    } catch (_) {}
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    let ext = MUSIC_TYPES[mime];
+    if (!ext) {
+      const fromName = path.extname(originalName).slice(1).toLowerCase();
+      ext = MUSIC_EXTS.has(fromName) ? fromName : fromName === 'mp4' ? 'm4a' : '';
+    }
+    if (!ext) {
+      return res.status(400).json({ ok: false, error: 'Chỉ nhận file âm thanh mp3, m4a, aac, ogg, wav, webm, flac' });
+    }
+    const id = `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const file = `${id}.${ext}`;
+    fs.writeFileSync(path.join(MUSIC_DIR, file), body);
+    const track = {
+      id,
+      name: cleanTrackName(req.query?.name, cleanTrackName(path.basename(originalName, path.extname(originalName)), 'Nhạc nền')),
+      file,
+      url: `/music/${file}`,
+      size: body.length,
+      uploadedAt: new Date().toISOString()
+    };
+    writeUploadedTracks([...uploaded, track]);
+    res.json({ ok: true, track, library: getMusicLibrary() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || 'Không lưu được file nhạc' });
+  }
+});
+
+app.get('/api/music', (_req, res) => {
+  res.json({ ok: true, library: getMusicLibrary(), maxPlaylist: MAX_PLAYLIST });
+});
+
+// Xóa 1 bài khỏi thư viện (bài mặc định không xóa được); nếu đang nằm trong danh sách phát thì gỡ ra luôn
+app.delete('/api/music/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  const uploaded = readUploadedTracks();
+  const track = uploaded.find((t) => t.id === id);
+  if (!track) return res.status(404).json({ ok: false, error: 'Không tìm thấy bài nhạc' });
+  try {
+    fs.unlinkSync(path.join(MUSIC_DIR, track.file));
+  } catch (_) {}
+  writeUploadedTracks(uploaded.filter((t) => t.id !== id));
+  const playlist = (state.settings.bgPlaylist || []).filter((t) => t.id !== id);
+  if (playlist.length !== (state.settings.bgPlaylist || []).length) {
+    state.settings = { ...state.settings, bgPlaylist: playlist };
+    saveState();
+    broadcastNotification('temple.state', getPublicState());
+  }
+  res.json({ ok: true, library: getMusicLibrary(), settings: state.settings });
 });
 
 // HTTP JSON-RPC 2.0 Endpoint

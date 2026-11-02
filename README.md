@@ -1,4 +1,4 @@
-# 🪷 Chùa Thiên Mụ Online — TikTok Live RPC (9:16 Interactive Buddhist Sanctuary)
+# 🪷 Chùa Thiên Mụ — TikTok Live RPC (9:16 Interactive Buddhist Sanctuary)
 
 Hệ thống phát trực tiếp tương tác (**Interactive TikTok Live Stream & JSON-RPC 2.0**) chuẩn khung dọc **9:16 (`1080×1920`)** dành cho **OBS Studio / TikTok Live Studio**, chạy siêu nhẹ trên **Bun.js** và tích hợp giọng đọc AI tiếng Việt **ZeroTTS (`zeroweight-ai/ZeroTTS`)**.
 
@@ -59,8 +59,8 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
 
 ## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
-Hệ thống Chùa Online gồm hai dịch vụ phối hợp nhịp nhàng:
-- **Live Gateway** (Node.js/Bun, cổng `3000`): Điều phối Chánh Điện 3D, tiếp nhận JSON-RPC 2.0, kết nối TikTok Live và broadcast sự kiện qua WebSocket.
+Hệ thống **Chùa Thiên Mụ** gồm hai dịch vụ phối hợp nhịp nhàng:
+- **Live Gateway** (Bun.js, cổng `3000`): Điều phối Chánh Điện 3D, tiếp nhận JSON-RPC 2.0, kết nối TikTok Live và broadcast sự kiện qua WebSocket.
 - **TTS Service** (Python FastAPI ZeroTTS, cổng `8008`): Tổng hợp giọng đọc tâm linh tiếng Việt hoàn toàn trong bộ nhớ (in-memory Base64 Data URI).
 
 Tùy theo nhu cầu, bạn có thể chọn **Cách 1 (Khuyên dùng cho máy cá nhân / Local Dev)** hoặc **Cách 2 (Khuyên dùng cho Production / VPS Linux qua Docker Compose)**.
@@ -69,18 +69,16 @@ Tùy theo nhu cầu, bạn có thể chọn **Cách 1 (Khuyên dùng cho máy c�
 
 ### 🟢 Cách 1: Khởi chạy Cục bộ (Local Dev — Khuyên dùng)
 
-Cách này chạy trực tiếp trên máy (Windows, macOS hoặc Linux) không cần Docker. Script điều phối sẽ tự động phát hiện môi trường Python ảo (`.venv`), tự chọn runtime (`bun` hoặc `node`), chạy song song cả Live Gateway và TTS Service với log gộp có mã màu riêng biệt (`[Gateway]` xanh lam, `[TTS]` tím hoa sen), đệm dòng chống xé chữ, và tự dọn dẹp sạch tiến trình con khi nhấn `Ctrl+C`.
+Chạy trực tiếp trên Bun.js (Windows, macOS hoặc Linux) không cần Docker. Script điều phối sẽ tự động phát hiện môi trường Python ảo (`.venv`), chạy song song cả Live Gateway và TTS Service với log gộp có mã màu riêng biệt (`[Gateway]` xanh lam, `[TTS]` tím hoa sen), đệm dòng chống xé chữ, và tự dọn dẹp sạch tiến trình con khi nhấn `Ctrl+C`.
 
 #### Bước 1: Yêu cầu chuẩn bị
-- **Node.js** (`>= 18.0`) hoặc **Bun.js** (`>= 1.1`)
-- **Python** `3.10+` (khuyên dùng kèm công cụ [`uv`](https://github.com/astral-sh/uv) để cài nhanh)
+- **[Bun.js](https://bun.sh/)** (`>= 1.1`)
+- **Python** `3.10+` kèm công cụ **[`uv`](https://github.com/astral-sh/uv)**
 
 #### Bước 2: Cài đặt thư viện (Chỉ thực hiện lần đầu)
 
 **1. Cài đặt dependencies cho Live Gateway:**
 ```bash
-npm install
-# Hoặc nếu bạn cài Bun:
 bun install
 ```
 
@@ -89,33 +87,27 @@ bun install
   ```bash
   uv venv .venv
   uv pip install --python .venv/bin/python -r services/tts/requirements.txt
-  # (Cách truyền thống không dùng uv: python3 -m venv .venv && source .venv/bin/activate && pip install -r services/tts/requirements.txt)
   ```
 
 - Trên **Windows (PowerShell)**:
   ```powershell
   uv venv .venv
   uv pip install --python .venv/Scripts/python.exe -r services/tts/requirements.txt
-  # (Cách truyền thống không dùng uv: python -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r services/tts/requirements.txt)
   ```
 
 #### Bước 3: Một lệnh khởi chạy đồng thời cả hai dịch vụ
 
 ```bash
 # Chế độ Live Dev (tự động reload khi sửa mã nguồn Live Gateway hoặc TTS Service):
-npm run dev
-# Hoặc nếu dùng Bun:
 bun run dev
 
 # Chế độ Production Process:
-npm start
-# Hoặc nếu dùng Bun:
 bun start
 ```
 
 > **Mẹo chạy riêng lẻ từng dịch vụ (nếu cần gỡ lỗi):**
-> - Chỉ chạy Live Gateway: `npm run dev:gateway` (hoặc `npm run start:gateway`)
-> - Chỉ chạy TTS Service: `npm run dev:tts` (hoặc `npm run start:tts`)
+> - Chỉ chạy Live Gateway: `bun run dev:gateway` (hoặc `bun run start:gateway`)
+> - Chỉ chạy TTS Service: `bun run dev:tts` (hoặc `bun run start:tts`)
 
 ---
 
@@ -143,7 +135,7 @@ docker compose down
 ```
 
 **Cơ chế hoạt động của Docker Compose:**
-- **Mạng cầu nối nội bộ (`temple-network`)**: Live Gateway giao tiếp trực tiếp với TTS Service qua DNS nội bộ `http://tts-service:8008`.
+- **Mạng cầu nối nội bộ (`temple-network` / `chua-online-network`)**: Live Gateway giao tiếp trực tiếp với TTS Service qua DNS nội bộ `http://tts-service:8008`.
 - **Bộ đệm Model Weights (`zerotts-cache`)**: Mount vào thư mục `/root/.cache/zerotts-local` trong container, giúp lưu vĩnh viễn trọng số ZeroTTS sau lần tải đầu tiên, không phải tải lại khi rebuild container.
 - **Tự động chờ & Phục hồi (`service_healthy` + `restart: true`)**:
   - `tts-service` có `start_period: 180s` và `start_interval: 5s`, dành đủ thời gian cho lần tải trọng số đầu tiên từ Hugging Face mà không bị báo lỗi sớm.

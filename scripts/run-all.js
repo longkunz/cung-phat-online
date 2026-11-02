@@ -108,7 +108,7 @@ function startServices(options = {}) {
   const gatewayRunner = resolveGatewayCmd();
 
   console.log('============================================================');
-  console.log('🪷 KHỞI ĐỘNG HỆ THỐNG CHÙA ONLINE (GATEWAY + TTS SERVICE)');
+  console.log('🪷 KHỞI ĐỘNG HỆ THỐNG CHÙA THIÊN MỤ (GATEWAY + TTS SERVICE)');
   console.log(`[TTS Service]  Python: ${pythonBin}`);
   console.log(`[Live Gateway] Runner: ${gatewayRunner} (Mode: ${isDev ? 'dev/watch' : 'production'})`);
   console.log('============================================================\n');

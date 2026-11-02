@@ -1,15 +1,15 @@
 {
-  "name": "tiktok-live-temple-rpc",
+  "name": "chua-thien-mu-live-rpc",
   "version": "1.0.0",
-  "description": "TikTok Live RPC Interactive Buddhist Temple (Bun.js + ZeroTTS giọng Mai Chi)",
+  "description": "Chùa Thiên Mụ — TikTok Live RPC Interactive Buddhist Sanctuary (Bun.js + ZeroTTS giọng Mai Chi)",
   "main": "server.js",
   "scripts": {
-    "start": "node scripts/run-all.js",
-    "dev": "node scripts/run-all.js --dev",
-    "start:gateway": "node server.js",
-    "start:tts": "node scripts/run-tts.js",
-    "dev:gateway": "node --watch server.js",
-    "dev:tts": "node scripts/run-tts.js --dev",
+    "start": "bun run scripts/run-all.js",
+    "dev": "bun run scripts/run-all.js --dev",
+    "start:gateway": "bun run server.js",
+    "start:tts": "bun run scripts/run-tts.js",
+    "dev:gateway": "bun --watch server.js",
+    "dev:tts": "bun run scripts/run-tts.js --dev",
     "test": "bun test",
     "test:tts": "python -m pytest tests"
   },

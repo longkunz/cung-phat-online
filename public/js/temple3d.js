@@ -1407,6 +1407,7 @@ const partGeos = {
   ])
 };
 const PAIRED = { upperArm: true, foreArm: true, hand: true, foot: true };
+partGeos.heldIncense.scale(1.25, 1.2, 1.25);
 const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
 const headMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, metalness: 0 });
 const parts = {};
@@ -1523,9 +1524,9 @@ function refreshSeats() {
     const kind = vip && !occupied ? 'goldDim' : !occupied ? 'empty' : tier === 'goldLotus' ? 'gold' : tier === 'lotus' ? 'pink' : 'cushion';
     if (kind === 'empty') putC(p, [0.78, 0.6], false);
     else if (kind === 'cushion') putC(p, [1, 1], true);
-    else if (kind === 'pink') pinkThrones.setMatrixAt(np++, _m.makeTranslation(p.x, 0, p.z));
+    else if (kind === 'pink') pinkThrones.setMatrixAt(np++, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.85, 0.8, 0.85)));
     else {
-      goldThrones.setMatrixAt(ng, _m.makeTranslation(p.x, 0, p.z));
+      goldThrones.setMatrixAt(ng, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.82, 0.75, 0.82)));
       goldThrones.setColorAt(ng++, kind === 'goldDim' ? _c.setRGB(0.45, 0.38, 0.3) : _c.setRGB(1, 1, 1));
       if (kind === 'gold') throneGlow.setMatrixAt(nl++, _m.makeTranslation(p.x, 0.03, p.z));
     }
@@ -1935,7 +1936,7 @@ function walkToBurner(a, kind, ev) {
     moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9)),
     moveStep(tableSpot, 1.0),
     turnStep(0, 0.45),
-    waitStep(0.01, (av) => { av.heroStage = 'bow'; }),
+    waitStep(0.01, (av) => { av.heroStage = 'take'; }),
     // lấy nhang
     poseStep('reach', 0.75),
     waitStep(0.2, (av) => { av.sticks = 1; }),
@@ -1949,11 +1950,13 @@ function walkToBurner(a, kind, ev) {
     }),
     poseStep('hold', 0.5),
     // tới trước lư hương, nâng nhang lên trán, vái 3 vái
+    waitStep(0.01, (av) => { av.heroStage = 'raise'; }),
     moveStep(spot.clone(), 0.9),
     turnStep(0, 0.4),
     poseStep('forehead', 0.65),
     waitStep(BOW_STAND_DUR * 3 + 0.1, (av) => { av.bowAt = clock.elapsed; av.bowCount = 3; }),
     // bước lên cắm nhang
+    waitStep(0.01, (av) => { av.heroStage = 'plant'; }),
     poseStep('hold', 0.35),
     moveStep(plantSpot, 0.6, true),
     poseStep('plant', 0.7),
@@ -1966,9 +1969,10 @@ function walkToBurner(a, kind, ev) {
     poseStep('hold', 0.3),
     moveStep(spot.clone(), 0.55, true),
     // chắp tay, vái nhẹ
+    waitStep(0.01, (av) => { av.heroStage = 'pray'; }),
     poseStep('pray', 0.55),
     waitStep(BOW_STAND_DUR + 0.15, (av) => { av.bowAt = clock.elapsed; av.bowCount = 1; }),
-    waitStep(0.05, (av) => { av.bowSpot = -1; av.heroStage = 'done'; av.handPose = null; }),
+    waitStep(0.05, (av) => { av.bowSpot = -1; av.heroStage = 'back'; av.handPose = null; }),
     turnStep(Math.PI, 0.6),
     moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9))
   );
@@ -2527,7 +2531,7 @@ function renderGiftBoard(feed) {
 const HAND_POSES = {
   hang: [0.27, 0.04, 0.01],
   pray: [0.034, 0.2, -0.27],
-  forehead: [0.04, 0.47, -0.35],
+  forehead: [0.04, 0.52, -0.3],
   floor: [0.3, 0.5, -0.18],
   reach: [0.07, 0.03, -0.37],
   candle: [0.05, 0.15, -0.39],
@@ -2644,6 +2648,21 @@ function limbMatrix(out, base, A, B) {
   return out.copy(base).multiply(_m.compose(A, _qa, _one));
 }
 
+/** Nhân vật a có nằm sát đường ngắm từ máy quay tới nhân vật chính (hoặc sát máy quay) không. */
+function isOccluder(a) {
+  const h = director.heroA;
+  if (!h || a === h || director.name !== 'hero') return false;
+  const cx = camera.position.x;
+  const cz = camera.position.z;
+  const dx = h.pos.x - cx;
+  const dz = h.pos.z - cz;
+  const L2 = dx * dx + dz * dz || 1;
+  const u = ((a.pos.x - cx) * dx + (a.pos.z - cz) * dz) / L2;
+  if (u < -0.15 || u > 0.92) return false;
+  const px = cx + dx * clamp01(u) - a.pos.x;
+  const pz = cz + dz * clamp01(u) - a.pos.z;
+  return px * px + pz * pz < 0.6 * 0.6;
+}
 let fishBobAt = -10;
 const _white = new THREE.Color(1, 1, 1);
 function updateAvatars(dt, t) {
@@ -2677,6 +2696,9 @@ function updateAvatars(dt, t) {
       a.glow = Math.max(a.glow, 0.7);
     }
     updatePose(a, t, dt);
+    // cảnh chính: ẩn người đứng/ngồi chắn giữa máy quay và nhân vật chính
+    a.camHidden = isOccluder(a);
+    if (a.camHidden) continue;
 
     const T = a.tones;
     const s = Math.max(0.0001, a.scale);
@@ -2741,7 +2763,7 @@ function updateAvatars(dt, t) {
       put('heldIncense', _j1, _white);
       if (a.sticks > 1) {
         const glowS = 1 + Math.sin(t * 9 + a.idx) * 0.2 + (a.stickFlare || 0);
-        for (const [x, y] of [[-0.06, 0.555], [0, 0.57], [0.06, 0.555]]) {
+        for (const [x, y] of [[-0.075, 0.665], [0, 0.685], [0.075, 0.665]]) {
           _pos.set(x, y, 0).applyMatrix4(_j1);
           heldTips.setMatrixAt(nt++, _m.compose(_pos, _camQ, _s.set(glowS, glowS, glowS)));
           if (Math.random() < dt * 0.9) smoke.spawn(_pos.x, _pos.y + 0.02, _pos.z, rand(-0.04, 0.04), rand(0.3, 0.5), rand(-0.04, 0.04), rand(2, 3), 0x4a443e);
@@ -2798,26 +2820,43 @@ const SHOTS = {
   side: (u) => ({ pos: [8.4, 4.4, -7.2 + Math.min(u, 15) * 0.08], look: [-1.2, 0.5, -0.8] }),
   buddha: (u) => ({ pos: [Math.sin(u * 0.2) * 0.5, 6.4, -5.5 - Math.min(u, 12) * 0.22], look: [0, 6.6, -16.4] }),
   // cảnh chính: chọn góc theo giai đoạn của người được quay
+  // cảnh chính: chọn góc theo nhịp của người được quay (máy ở phía trước / bên, không quay sau lưng)
   hero: (u, a) => {
     if (!a || !a.active) return SHOTS.hall(u);
     const p = a.pos;
-    if (a.heroStage === 'bow' || (a.heroStage === 'walk' && p.z < VIP_Z + 0.4)) {
-      // góc thấp 3/4 phía sau-bên: người thắp nhang ở tiền cảnh (thấy nghiêng mặt và tay cầm nhang),
-      // tượng Phật nằm trên trục nhìn phía sau/trên; đẩy vào rất chậm khi đang vái
-      const sg = a.heroSide || 1;
-      const push = 1 - Math.min(0.15, (a.heroBowT || 0) * 0.01);
-      // (khung dọc 9:16 hẹp ngang: máy đặt chéo sau-bên ~35° để người và tượng Phật cùng lọt khung)
-      const lx = lerp(p.x, 0, 0.12);
-      const lz = lerp(p.z, -16.4, 0.12);
-      return { pos: [p.x + sg * 1.45 * push, 0.9, p.z + 2.4 * push], look: [lx, 1.5, lz] };
+    const out = a.heroSide || 1; // phía bàn nhang (ngoài thảm)
+    const st = a.heroStage;
+    if (st === 'take') {
+      // lấy & châm nhang: cận nghiêng (gần 90°) ngang ngực từ phía ngoài, hơi chéo trước — thấy tay, nhang, ngọn nến
+      return { pos: [p.x - out * 1.9, 1.0, p.z - 0.95], look: [p.x + out * 0.12, 0.72, p.z - 0.35] };
     }
-    if (p.z > HALL_FRONT - 3.5) {
-      // vừa bước qua cửa: máy đứng trong điện, nhìn ra cửa thấy người đi vào trong vùng sáng
-      return { pos: [1.7, 1.75, HALL_FRONT - 7], look: [p.x * 0.5, 1.3, p.z] };
+    if (st === 'raise' || st === 'pray') {
+      // nâng nhang lên trán + vái: 3/4 chính diện từ phía tượng Phật nhìn lại, trung cảnh (đầu tới gấu áo), đẩy vào chậm
+      // máy đặt chéo trước-bên, tránh lư hương nằm giữa (lư ở x=0, z=-10.2)
+      const sd = p.x < -0.05 ? -1 : 1;
+      const push = 1 - Math.min(0.14, (a.heroBowT || 0) * 0.025);
+      return { pos: [p.x + sd * 2.1 * push, 1.25, p.z - 1.6 * push], look: [p.x, 0.95, p.z] };
     }
-    // bám theo sau lưng, lệch bên, ngang tầm mắt, không xuyên tường / người ngồi
-    const bx = Math.max(-1.05, Math.min(1.05, p.x + 0.9));
-    return { pos: [bx, 1.85, Math.min(HALL_FRONT - 1, p.z + 3.1)], look: [p.x * 0.6, 1.1, p.z - 3.5] };
+    if (st === 'plant') {
+      // cắm nhang: cận nghiêng, thấy tay đặt nhang vào lư và khói bốc lên
+      const sd = p.x < -0.05 ? -1 : 1;
+      return { pos: [p.x + sd * 2.3, 1.75, p.z - 0.75], look: [p.x - sd * 0.15, 0.95, p.z - 0.6] };
+    }
+    if (st === 'back' || !st) {
+      // về chỗ: trung cảnh nhìn chéo từ phía bàn thờ; khi đã quỳ lạy: cao hơn, chéo trước (đài sen ở dưới khung)
+      if (a.kneel > 0.9) {
+        const sd = p.x < 0 ? 1 : -1; // máy ở phía lối đi
+        return { pos: [p.x + sd * 1.6, 2.0, p.z - 2.3], look: [p.x, 0.4, p.z - 0.15] };
+      }
+      return { pos: [p.x * 0.5 + out * 0.6, 2.6, p.z - 4.2], look: [p.x, 0.7, p.z] };
+    }
+    // đi tới: máy đi trước, chéo bên, nhìn lại người đang bước (thấy mặt + phía lư hương)
+    if (p.z > HALL_FRONT - 3.5) return { pos: [1.2, 1.45, HALL_FRONT - 6.5], look: [p.x * 0.5, 1.0, p.z] };
+    // máy lùi trước người đi, trên thảm (lối trống), hơi cao để vượt qua đầu người ngồi
+    const cz = Math.max(-8.0, p.z - 3.6);
+    const cx = -out * 0.25;
+    const inRows = Math.abs(p.x) > LANE_X + 0.3; // còn đang len giữa các hàng: nhìn từ cao hơn
+    return { pos: [cx, inRows ? 2.9 : 2.1, cz], look: [p.x, 0.7, p.z + 0.2] };
   }
 };
 const director = {
@@ -2868,6 +2907,7 @@ const director = {
     this.heroPrio = prio;
     this.heroStart = clock.elapsed;
     a.heroBowT = 0;
+    a.heroEndAt = 0;
     this.name = 'hero';
     const t = clock.elapsed;
     this.blendFrom.pos.copy(camera.position);
@@ -2889,12 +2929,14 @@ const director = {
     // cảnh chính
     const h = this.heroA;
     if (h) {
-      if (!h.active || h.heroStage === 'done' || !h.heroStage || t - this.heroStart > 45) this.endHero();
-      else if (h.heroStage === 'bow') h.heroBowT = (h.heroBowT || 0) + dt;
+      // kết thúc: đã về chỗ (hoặc ra về) — giữ thêm 1.5 giây khung trung cảnh rồi lùi về toàn cảnh
+      if (!h.heroStage && !h.heroEndAt) h.heroEndAt = t;
+      if (!h.active || (h.heroEndAt && t - h.heroEndAt > 1.5) || t - this.heroStart > 60) this.endHero();
+      else if (h.heroStage === 'raise') h.heroBowT = (h.heroBowT || 0) + dt;
     }
     if (!this.heroA && !CAM_LOCK) {
       // bỏ ứng viên đã lạy xong / đã rời đi; quà đợi ngắn hơn
-      this.heroQueue = this.heroQueue.filter((q) => q.a.active && (q.a.heroStage === 'walk' || q.a.heroStage === 'bow'));
+      this.heroQueue = this.heroQueue.filter((q) => q.a.active && q.a.heroStage && q.a.heroStage !== 'back');
       const next = this.heroQueue[0];
       if (next && (t - this.heroStart >= HERO_GAP || next.prio >= 3)) {
         this.heroQueue.shift();
@@ -3073,7 +3115,7 @@ function updateOverlay() {
   tagCands.length = 0;
   for (const a of avatars) {
     if (!a.tag) continue;
-    if (!a.active || a.scale < 0.15 || a.anon) {
+    if (!a.active || a.scale < 0.15 || a.anon || a.camHidden) {
       if (a.tag.shown) { a.tag.el.style.display = 'none'; a.tag.shown = false; }
       continue;
     }

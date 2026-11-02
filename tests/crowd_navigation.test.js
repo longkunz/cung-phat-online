@@ -235,4 +235,112 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(h.pos.z).toBe(0);
     expect(Math.hypot(n.pos.x - h.pos.x, n.pos.z - h.pos.z)).toBeGreaterThanOrEqual(0.50);
   });
+
+  test("[Finding P1 Fix] Hero vs Seated Devotees: Seated state takes strict precedence and maintains >= 0.50m", () => {
+    // Hero attempting to walk past two seated devotees at (-0.4, 4) and (0.4, 4)
+    const hero = createAvatar(1, 0, 0, { walking: true, heroStage: 'walk', goldTrail: true, vipRank: 1 });
+    const seatedLeft = createAvatar(2, -0.4, 4, { walking: false, kneel: 1, atSeat: 1 });
+    const seatedRight = createAvatar(3, 0.4, 4, { walking: false, kneel: 1, atSeat: 2 });
+    const avatars = [hero, seatedLeft, seatedRight];
+
+    const target = { x: 0, z: 8 };
+    const dt = 1 / 30;
+    let minHeroDist = 999;
+
+    for (let step = 0; step < 240; step++) {
+      CrowdNav.steerAvatar(hero, target, 1.8, dt, avatars);
+      CrowdNav.relaxCollisions(avatars);
+
+      const d1 = Math.hypot(hero.pos.x - seatedLeft.pos.x, hero.pos.z - seatedLeft.pos.z);
+      const d2 = Math.hypot(hero.pos.x - seatedRight.pos.x, hero.pos.z - seatedRight.pos.z);
+      minHeroDist = Math.min(minHeroDist, d1, d2);
+    }
+
+    // Seated devotees must remain firmly anchored to their prayer cushions
+    expect(seatedLeft.pos.x).toBe(-0.4);
+    expect(seatedLeft.pos.z).toBe(4);
+    expect(seatedRight.pos.x).toBe(0.4);
+    expect(seatedRight.pos.z).toBe(4);
+
+    // Hero must maintain at least 0.50m clearance and not penetrate between them
+    expect(minHeroDist).toBeGreaterThanOrEqual(0.50);
+
+    // Direct collision relaxation check: hero overlapping seated devotee
+    const hOverlap = createAvatar(10, 0, 3.8, { walking: true, heroStage: 'walk' });
+    const sAnchored = createAvatar(11, 0, 4.0, { walking: false, kneel: 1, atSeat: 3 });
+    CrowdNav.relaxCollisions([hOverlap, sAnchored]);
+    expect(sAnchored.pos.z).toBe(4.0);
+    expect(Math.hypot(hOverlap.pos.x - sAnchored.pos.x, hOverlap.pos.z - sAnchored.pos.z)).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("[Finding P1 Fix] Robust Multi-Agent Relaxation: 5 collinear avatars and 6 coincident avatars strictly satisfy >= 0.50m", () => {
+    // 5 collinear avatars at x = [0, 0.4, 0.8, 1.2, 1.6]
+    const line5 = [
+      createAvatar(1, 0.0, 0, { walking: true }),
+      createAvatar(2, 0.4, 0, { walking: true }),
+      createAvatar(3, 0.8, 0, { walking: true }),
+      createAvatar(4, 1.2, 0, { walking: true }),
+      createAvatar(5, 1.6, 0, { walking: true }),
+    ];
+    CrowdNav.relaxCollisions(line5);
+    for (let i = 0; i < line5.length; i++) {
+      for (let j = i + 1; j < line5.length; j++) {
+        const d = Math.hypot(line5[i].pos.x - line5[j].pos.x, line5[i].pos.z - line5[j].pos.z);
+        expect(d).toBeGreaterThanOrEqual(0.50);
+      }
+    }
+
+    // 6 coincident avatars spawned at the exact same point (0, 0)
+    const coincident6 = [
+      createAvatar(11, 0, 0, { walking: true }),
+      createAvatar(12, 0, 0, { walking: true }),
+      createAvatar(13, 0, 0, { walking: true }),
+      createAvatar(14, 0, 0, { walking: true }),
+      createAvatar(15, 0, 0, { walking: true }),
+      createAvatar(16, 0, 0, { walking: true }),
+    ];
+    CrowdNav.relaxCollisions(coincident6);
+    for (let i = 0; i < coincident6.length; i++) {
+      for (let j = i + 1; j < coincident6.length; j++) {
+        const d = Math.hypot(coincident6[i].pos.x - coincident6[j].pos.x, coincident6[i].pos.z - coincident6[j].pos.z);
+        expect(d).toBeGreaterThanOrEqual(0.50);
+      }
+    }
+  });
+
+  test("[Finding P1 Fix] Script Runner Timeout Stuck Guard: Trapped avatar does not report false arrival or trigger onDone", () => {
+    let onDoneCalled = false;
+    const walker = createAvatar(1, 0, 0, { walking: false });
+    const seatedLeft = createAvatar(2, -0.4, 4, { walking: false, kneel: 1, atSeat: 1 });
+    const seatedRight = createAvatar(3, 0.4, 4, { walking: false, kneel: 1, atSeat: 2 });
+    const avatars = [walker, seatedLeft, seatedRight];
+
+    const target = { x: 0, z: 8 };
+    const step = CrowdNav.createMoveStep(target, 1.8, false, avatars);
+
+    CrowdNav.runScript(walker, [step], (av) => {
+      onDoneCalled = true;
+    });
+
+    const dt = 1 / 30;
+    // Step duration = 8 / 1.8 = 4.44s. Timeout = 4.44 * 4 + 4 = 21.77s.
+    // Run simulation for 23s (690 frames)
+    for (let f = 0; f < 690; f++) {
+      CrowdNav.tickScript(walker, dt, avatars);
+      CrowdNav.relaxCollisions(avatars);
+    }
+
+    // Must not call onDone because walker is trapped and never arrived
+    expect(onDoneCalled).toBe(false);
+
+    // Avatar must be marked as stuck and stop walking
+    expect(walker.stuck).toBe(true);
+    expect(walker.walking).toBe(false);
+    expect(walker.script).toBeNull();
+    expect(walker.busy).toBe(false);
+
+    // Walker is still trapped before the seated devotees, ~4.36m away from target
+    const distToTarget = Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z);
+    expect(distToTarget).toBeGreaterThan(4.0);
+  });
 });

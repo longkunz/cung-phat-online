@@ -1793,6 +1793,7 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
   let from = null;
   let dur = 1;
   let arrived = false;
+  let failed = false;
   let elapsed = 0;
   return {
     start(a) {
@@ -1801,20 +1802,26 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
       arrived = false;
+      failed = false;
       elapsed = 0;
     },
     get dur() { return dur; },
     isDone(a) { return arrived; },
+    isFailed(a) { return failed; },
     update(a, k, dt) {
       elapsed += dt;
       // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường (tôn trọng keepYaw và cự ly thực tế)
       if (typeof CrowdNav !== 'undefined') {
         arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars, keepYaw);
-        // Failsafe timeout: chỉ ngắt nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
+        // Failsafe timeout: nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
         const timedOut = elapsed > dur * 4.0 + 4.0;
-        if (arrived || timedOut) {
+        if (arrived) {
           a.walking = false;
-          arrived = true;
+        } else if (timedOut) {
+          // Bị mắc kẹt hoặc không thể tới đích: đánh dấu thất bại, không báo đã tới đích
+          a.walking = false;
+          a.stuck = true;
+          failed = true;
         }
       } else {
         const px = a.pos.x;
@@ -1886,6 +1893,14 @@ function tickScript(a, dt) {
   s.t += dt;
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
+  if (step.isFailed ? step.isFailed(a) : false) {
+    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, không gọi s.onDone
+    a.script = null;
+    a.busy = false;
+    a.walking = false;
+    a.stuck = true;
+    return;
+  }
   const done = step.isDone ? step.isDone(a) : (k >= 1);
   if (done) nextStep(a);
 }
@@ -3884,7 +3899,11 @@ async function callRpc(method, params = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    return await res.json();
+    const data = await res.json();
+    if (data?.result?.rateLimited) {
+      pushEventFeed(`⏳ ${data.result.error}`);
+    }
+    return data;
   } catch (err) {
     console.warn('[RPC Error]', method, err);
   }
@@ -3905,6 +3924,25 @@ function pushEventFeed(text) {
   item.textContent = `${new Date().toLocaleTimeString('vi-VN')} • ${text}`;
   feed.prepend(item);
   while (feed.children.length > 25) feed.removeChild(feed.lastChild);
+}
+
+function attachDebouncedAction(btnId, cooldownMs, actionFn) {
+  const btn = typeof document !== 'undefined' ? document.getElementById(btnId) : null;
+  if (!btn) return;
+  let locked = false;
+  btn.addEventListener('click', (e) => {
+    if (locked) {
+      if (typeof e?.preventDefault === 'function') e.preventDefault();
+      return;
+    }
+    locked = true;
+    btn.classList.add('btn-locked');
+    setTimeout(() => {
+      locked = false;
+      btn.classList.remove('btn-locked');
+    }, cooldownMs);
+    actionFn();
+  });
 }
 
 function initQuickDock() {
@@ -3996,32 +4034,32 @@ function initQuickDock() {
     }
   });
 
-  // RPC action buttons
-  document.getElementById('btnRpcIncense')?.addEventListener('click', () => {
+  // RPC action buttons with client-side interaction debouncing
+  attachDebouncedAction('btnRpcIncense', 1500, () => {
     callRpc('temple.burnIncense', { user: getDevoteeName(), wish: getDevoteeWish(), count: 3 });
     pushEventFeed(`${getDevoteeName()} dâng 3 nén hương`);
   });
-  document.getElementById('btnRpcLantern')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcLantern', 1500, () => {
     callRpc('temple.sendPrayer', { user: getDevoteeName(), wish: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} thả đèn hoa đăng cầu nguyện`);
   });
-  document.getElementById('btnRpcWoodenFish')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcWoodenFish', 250, () => {
     callRpc('temple.strikeWoodenFish', { user: getDevoteeName(), count: 5 });
     pushEventFeed(`${getDevoteeName()} gõ mõ tích công đức`);
   });
-  document.getElementById('btnRpcBell')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcBell', 2500, () => {
     callRpc('temple.ringBell', { user: getDevoteeName(), count: 1, wish: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} thỉnh Đại Hồng Chung`);
   });
-  document.getElementById('btnRpcFortune')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcFortune', 3000, () => {
     callRpc('temple.drawFortune', { user: getDevoteeName(), topic: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} gieo quẻ Linh Xăm`);
   });
-  document.getElementById('btnRpcGiftLotus')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcGiftLotus', 400, () => {
     callRpc('temple.offerGift', { user: getDevoteeName(), giftType: 'lotus', coins: 15, giftName: 'Hoa Sen Vàng' });
     pushEventFeed(`${getDevoteeName()} dâng Hoa Sen Vàng`);
   });
-  document.getElementById('btnRpcGrandCeremony')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcGrandCeremony', 600, () => {
     callRpc('temple.grandCeremony', { user: getDevoteeName(), coins: 100, giftName: 'Kim Long Chầu Phật' });
     pushEventFeed(`Đại Lễ Kim Long Chầu Phật kích hoạt!`);
   });

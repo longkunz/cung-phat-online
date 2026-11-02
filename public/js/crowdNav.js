@@ -94,6 +94,7 @@
 
         const prox = (SENSORY_RANGE - d) / SENSORY_RANGE;
         const bIsHero = isHeroAvatar(b);
+        const bStatic = isAvatarStatic(b);
 
         // Chọn hướng lách:
         // Nếu vật cản bên phải (projRight > 0.02) -> Lách sang trái (-right)
@@ -106,8 +107,15 @@
 
         let avoidStrength = Math.pow(prox, 1.2) * 2.8;
 
-        // Ưu tiên nhường đường:
-        if (bIsHero && !aIsHero) {
+        // Ưu tiên nhường đường và xử lý chướng ngại vật:
+        if (bStatic) {
+          // Người ngồi cố định trên bồ đoàn: kể cả hero cũng phải né với toàn bộ lực né
+          // Giảm tốc khi gặp người ngồi ngay sát phía trước trong hành lang hẹp
+          if (d < 0.75 && Math.abs(projRight) < 0.25 && forward > 0) {
+            const decel = Math.max(0.12, (d - 0.45) / 0.30);
+            if (decel < throttle) throttle = decel;
+          }
+        } else if (bIsHero && !aIsHero) {
           // b là nhân vật chính làm đại lễ -> a là người thường phải né dạt ra và nhường bước
           avoidStrength *= 2.2;
           if (forward > 0 && d < 1.4) {
@@ -115,7 +123,7 @@
             if (yieldThrottle < throttle) throttle = yieldThrottle;
           }
         } else if (aIsHero && !bIsHero) {
-          // a là nhân vật chính làm đại lễ -> a có quyền ưu tiên, giữ vững tốc độ
+          // a là nhân vật chính làm đại lễ, b là người thường đang di chuyển -> a có quyền ưu tiên
           avoidStrength *= 0.6;
         }
 
@@ -123,9 +131,8 @@
         avoidZ += rightZ * steerSide * avoidStrength;
 
         // Cơ chế "Đứng chờ": nếu có người chắn ngay sát trước mặt (< 0.75m) và khoảng né hẹp
-        if (!aIsHero && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
-          const bStatic = isAvatarStatic(b);
-          if (bStatic || !b.walking) {
+        if (!aIsHero && !bStatic && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
+          if (!b.walking) {
             const decel = Math.max(0.12, (d - 0.42) / 0.33);
             if (decel < throttle) throttle = decel;
           }
@@ -178,16 +185,42 @@
 
   /**
    * Vòng đệm đàn hồi mềm (Soft Physical Relaxation):
-   * Chạy giải thuật lặp 3 vòng (3 iterations) để giải quyết triệt để va chạm liên hoàn giữa nhiều người,
-   * xử lý trường hợp trùng khít tọa độ, và ưu tiên không làm xê dịch nhân vật chính.
+   * Chạy giải thuật lặp 8 vòng (8 iterations) để giải quyết triệt để va chạm liên hoàn giữa nhiều người,
+   * phân kỳ sơ bộ trường hợp trùng khít tọa độ hoàn toàn (coincident spawns),
+   * và ưu tiên tuyệt đối trạng thái tĩnh của người ngồi niệm Phật trên bồ đoàn.
    */
   function relaxCollisions(avatars) {
     if (!Array.isArray(avatars) || avatars.length < 2) return;
 
     const count = avatars.length;
-    const ITERATIONS = 3;
+    const ITERATIONS = 8;
+
+    // Phân kỳ sơ bộ các avatar trùng khít tọa độ hoàn toàn (coincident spawns)
+    for (let i = 0; i < count; i++) {
+      const a = avatars[i];
+      if (!a || !a.active || a.fade) continue;
+      for (let j = i + 1; j < count; j++) {
+        const b = avatars[j];
+        if (!b || !b.active || b.fade) continue;
+        const dx = a.pos.x - b.pos.x;
+        const dz = a.pos.z - b.pos.z;
+        if (Math.hypot(dx, dz) < 0.001) {
+          const angI = ((a.idx !== undefined ? a.idx : i) * 2 * Math.PI) / count;
+          const angJ = ((b.idx !== undefined ? b.idx : j) * 2 * Math.PI) / count + 0.35;
+          if (!isAvatarStatic(a)) {
+            a.pos.x += Math.cos(angI) * 0.04;
+            a.pos.z += Math.sin(angI) * 0.04;
+          }
+          if (!isAvatarStatic(b)) {
+            b.pos.x += Math.cos(angJ) * 0.04;
+            b.pos.z += Math.sin(angJ) * 0.04;
+          }
+        }
+      }
+    }
 
     for (let iter = 0; iter < ITERATIONS; iter++) {
+      let maxOverlap = 0;
       for (let i = 0; i < count; i++) {
         const a = avatars[i];
         if (!a || !a.active || a.fade) continue;
@@ -204,8 +237,7 @@
 
           let nx, nz;
           if (dist < 0.001) {
-            // Trùng khít tọa độ: tạo vector đẩy có góc phân kỳ rõ rệt
-            const angle = ((a.idx || i + 1) * 1.618 + iter * 0.7) * Math.PI * 2;
+            const angle = (((a.idx !== undefined ? a.idx : i) + 1) * 1.618 + (j + 1) * 2.718 + iter * 0.7) * Math.PI * 2;
             nx = Math.cos(angle);
             nz = Math.sin(angle);
           } else {
@@ -214,24 +246,35 @@
           }
 
           const overlap = MIN_SEPARATION - (dist < 0.001 ? 0 : dist);
+          if (overlap > maxOverlap) maxOverlap = overlap;
 
           const aStatic = isAvatarStatic(a);
           const bStatic = isAvatarStatic(b);
           const aHero = isHeroAvatar(a);
           const bHero = isHeroAvatar(b);
 
-          // Phân loại khối lượng và quyền ưu tiên:
-          // Người ngồi tĩnh hoặc nhân vật chính làm đại lễ có "trọng lượng vô hạn", người thường phải dạt ra
-          const aImmovable = aStatic || (aHero && !bHero);
-          const bImmovable = bStatic || (bHero && !aHero);
+          // Trạng thái tĩnh (người ngồi/quỳ trên bồ đoàn) có ưu tiên tuyệt đối cao nhất (vật cố định):
+          // 1. Cả 2 đều tĩnh: không ai dịch chuyển
+          // 2. Một bên tĩnh: bên còn lại (kể cả hero) phải dạt ra 100%
+          // 3. Cả 2 đều di chuyển: xét quyền ưu tiên của hero (hero đẩy người thường)
+          // 4. Cùng thứ bậc: chia đều lực đẩy 50/50
+          if (aStatic && bStatic) {
+            continue;
+          }
 
-          if (bImmovable && !aImmovable) {
-            a.pos.x += nx * overlap;
-            a.pos.z += nz * overlap;
-          } else if (aImmovable && !bImmovable) {
+          if (aStatic) {
             b.pos.x -= nx * overlap;
             b.pos.z -= nz * overlap;
-          } else if (!aImmovable && !bImmovable) {
+          } else if (bStatic) {
+            a.pos.x += nx * overlap;
+            a.pos.z += nz * overlap;
+          } else if (aHero && !bHero) {
+            b.pos.x -= nx * overlap;
+            b.pos.z -= nz * overlap;
+          } else if (bHero && !aHero) {
+            a.pos.x += nx * overlap;
+            a.pos.z += nz * overlap;
+          } else {
             const half = overlap * 0.5;
             a.pos.x += nx * half;
             a.pos.z += nz * half;
@@ -240,7 +283,98 @@
           }
         }
       }
+      if (maxOverlap < 0.001) break;
     }
+  }
+
+  /**
+   * Tạo bước di chuyển kết hợp né đám đông và failsafe timeout không báo đã tới khi kẹt.
+   */
+  function createMoveStep(target, speed = 1.9, keepYaw = false, avatarsRef = null) {
+    let from = null;
+    let dur = 1;
+    let arrived = false;
+    let failed = false;
+    let elapsed = 0;
+    return {
+      start(a) {
+        from = a.pos ? { x: a.pos.x, y: 0, z: a.pos.z } : { x: 0, y: 0, z: 0 };
+        dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
+        a.walking = true;
+        arrived = false;
+        failed = false;
+        elapsed = 0;
+      },
+      get dur() { return dur; },
+      isDone(a) { return arrived; },
+      isFailed(a) { return failed; },
+      update(a, k, dt, avatarsList) {
+        elapsed += dt;
+        const list = avatarsList || avatarsRef || [];
+        arrived = steerAvatar(a, target, speed, dt, list, keepYaw);
+        const timedOut = elapsed > dur * 4.0 + 4.0;
+        if (arrived) {
+          a.walking = false;
+        } else if (timedOut) {
+          // Bị mắc kẹt hoặc không thể tới đích: đánh dấu thất bại, không báo tới đích
+          a.walking = false;
+          a.stuck = true;
+          failed = true;
+        }
+      }
+    };
+  }
+
+  function runScript(a, steps, onDone) {
+    a.script = { steps: steps.slice(), i: -1, t: 0, onDone };
+    a.busy = true;
+    nextScriptStep(a);
+  }
+
+  function nextScriptStep(a) {
+    const s = a.script;
+    if (!s) return;
+    for (;;) {
+      s.i += 1;
+      s.t = 0;
+      if (s.i >= s.steps.length) {
+        a.script = null;
+        a.busy = false;
+        a.walking = false;
+        s.onDone?.(a);
+        return;
+      }
+      const st = s.steps[s.i];
+      if (st.dynamic) {
+        const more = st.dynamic(a);
+        if (more === 'wait') { s.i -= 1; s.waiting = true; return; }
+        if (Array.isArray(more)) s.steps.splice(s.i + 1, 0, ...more);
+        continue;
+      }
+      s.waiting = false;
+      st.start?.(a);
+      return;
+    }
+  }
+
+  function tickScript(a, dt, avatarsList) {
+    const s = a.script;
+    if (!s) return;
+    if (s.waiting) { nextScriptStep(a); return; }
+    const step = s.steps[s.i];
+    if (!step) return;
+    s.t += dt;
+    const k = step.dur > 0 ? Math.min(1, s.t / step.dur) : 1;
+    step.update?.(a, k, dt, avatarsList);
+    if (step.isFailed ? step.isFailed(a) : false) {
+      a.script = null;
+      a.busy = false;
+      a.walking = false;
+      a.stuck = true;
+      return;
+    }
+    const done = step.isDone ? step.isDone(a) : (k >= 1);
+    if (done) nextScriptStep(a);
   }
 
   return {
@@ -253,6 +387,9 @@
     isAvatarStatic,
     isHeroAvatar,
     steerAvatar,
-    relaxCollisions
+    relaxCollisions,
+    createMoveStep,
+    runScript,
+    tickScript
   };
 });

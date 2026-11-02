@@ -101,7 +101,7 @@ uv pip install --python .venv/Scripts/python.exe -r services/tts/requirements.tx
 Không cần Docker, script điều phối sẽ tự động phát hiện Python ảo (`.venv`), tự chọn runtime (`bun` hoặc `node`), chạy song song cả **TTS Service (cổng 8008)** và **Live Gateway (cổng 3000)** với log màu riêng biệt (`[Gateway]` xanh lam, `[TTS]` tím hoa sen), đệm dòng chống xé chữ, và tự dọn dẹp sạch tiến trình con khi nhấn `Ctrl+C`:
 
 ```bash
-# Chế độ Live Dev (tự động reload khi sửa code server hoặc Python):
+# Chế độ Live Dev (tự động reload khi sửa code Live Gateway hoặc TTS Service):
 npm run dev
 # (hoặc: bun run dev)
 

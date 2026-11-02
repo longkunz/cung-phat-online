@@ -1784,8 +1784,14 @@ app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'th
 // Addons của Three.js (RoomEnvironment...) cho trang Chánh Điện 3D — nạp qua importmap "three"
 app.use('/vendor/three-addons', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'), { maxAge: '7d' }));
 
+function getTtsDependencyStatus() {
+  return (typeof zeroTts !== 'undefined' && zeroTts)
+    ? zeroTts.getStatus()
+    : { ready: false, status: 'uninitialized' };
+}
+
 app.get('/health', (_req, res) => {
-  const ttsStatus = (typeof zeroTts !== 'undefined' && zeroTts) ? zeroTts.getStatus() : { ready: false, status: 'uninitialized' };
+  const ttsStatus = getTtsDependencyStatus();
   res.status(200).json({
     status: 'ok',
     service: 'live-gateway',
@@ -1799,9 +1805,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/ready', (_req, res) => {
-  const ttsStatus = (typeof zeroTts !== 'undefined' && zeroTts) ? zeroTts.getStatus() : { ready: false, status: 'uninitialized' };
-  const isReady = Boolean(zeroTts && zeroTts.ready);
-  if (isReady) {
+  const ttsStatus = getTtsDependencyStatus();
+  if (ttsStatus.ready) {
     return res.status(200).json({
       status: 'ready',
       service: 'live-gateway',

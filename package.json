@@ -10,8 +10,6 @@
     "start:tts": "node scripts/run-tts.js",
     "dev:gateway": "node --watch server.js",
     "dev:tts": "node scripts/run-tts.js --dev",
-    "start:bun": "bun run scripts/run-all.js",
-    "dev:bun": "bun run scripts/run-all.js --dev",
     "test": "bun test",
     "test:tts": "python -m pytest tests"
   },

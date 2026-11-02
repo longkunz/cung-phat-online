@@ -1,38 +1,10 @@
 #!/usr/bin/env node
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
+const { resolvePython, killProcTree } = require('./run-all');
 
 const isDev = process.argv.includes('--dev') || process.argv.includes('--reload');
 const isWindows = process.platform === 'win32';
-
-function resolvePython() {
-  if (process.env.PYTHON) return process.env.PYTHON;
-
-  const candidateDirs = [
-    path.join(__dirname, '..', '.venv'),
-    path.join(process.cwd(), '.venv'),
-    path.join(__dirname, '..', '..', '.venv')
-  ];
-
-  for (const venvDir of candidateDirs) {
-    const venvPy = path.join(venvDir, isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python');
-    if (fs.existsSync(venvPy)) return venvPy;
-  }
-
-  return isWindows ? 'python' : 'python3';
-}
-
-function killProcTree(proc) {
-  if (!proc || !proc.pid) return;
-  try {
-    if (isWindows) {
-      spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      proc.kill('SIGTERM');
-    }
-  } catch (_) {}
-}
 
 const pythonBin = resolvePython();
 const port = process.env.PORT || process.env.TTS_PORT || '8008';
@@ -59,4 +31,4 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 proc.on('exit', (code) => process.exit(code || 0));
 
-module.exports = { resolvePython, killProcTree };
+module.exports = { proc, shutdown };

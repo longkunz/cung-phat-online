@@ -11,8 +11,7 @@ function resolvePython() {
 
   const candidateDirs = [
     path.join(__dirname, '..', '.venv'),
-    path.join(process.cwd(), '.venv'),
-    path.join(__dirname, '..', '..', '.venv')
+    path.join(process.cwd(), '.venv')
   ];
 
   for (const venvDir of candidateDirs) {

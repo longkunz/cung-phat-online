@@ -244,15 +244,33 @@ class VoicesResponse(BaseModel):
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(strict: bool = False):
     uptime = round(time.time() - START_TIME, 2)
-    return HealthResponse(
-        status=SERVICE_STATUS,
-        voices=VOICES,
-        model=MODEL_SOURCE,
-        sampleRate=SAMPLE_RATE,
-        uptimeSec=uptime,
-    )
+    payload = {
+        "status": SERVICE_STATUS,
+        "voices": VOICES,
+        "model": MODEL_SOURCE,
+        "sampleRate": SAMPLE_RATE,
+        "uptimeSec": uptime,
+    }
+    if strict and SERVICE_STATUS != "ready":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+    return HealthResponse(**payload)
+
+
+@app.get("/ready", response_model=HealthResponse)
+async def ready():
+    uptime = round(time.time() - START_TIME, 2)
+    payload = {
+        "status": SERVICE_STATUS,
+        "voices": VOICES,
+        "model": MODEL_SOURCE,
+        "sampleRate": SAMPLE_RATE,
+        "uptimeSec": uptime,
+    }
+    if SERVICE_STATUS != "ready":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+    return HealthResponse(**payload)
 
 
 @app.get("/voices", response_model=VoicesResponse)

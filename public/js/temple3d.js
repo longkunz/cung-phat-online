@@ -1511,12 +1511,15 @@ for (const m of [pinkThrones, goldThrones, throneGlow]) {
 // Bố trí: ghế 0..7 = HÀNG ĐẦU GIỮ CHỖ (sát lư hương/bàn thờ) cho top 8 người tặng quà:
 //   ghế 0 chính giữa, 1..7 xen kẽ trái/phải ra ngoài.
 // Ghế 8..39 = chỗ thường 4 hàng × 8; ghế 8 = hàng gần camera "hall" nhất, lấp dần về bàn thờ.
+// Bố trí: 8 ghế VIP hàng đầu đối xứng hai bên mép thảm (không đặt ghế giữa lối đi)
+// Ghế 0..7: xen kẽ phải/trái mép thảm ra ngoài, thảm đỏ trung tâm (x = -1.15..1.15) hoàn toàn thông thoáng
 const VIP_SEATS = 8;
 const VIP_Z = -6.0;
-const VIP_X = [0, -1.75, 1.75, -3.05, 3.05, -4.35, 4.35, -5.65];
-const ROW_Z = [0.9, -0.8, -2.5, -4.2];
-const COL_X = [1.6, 2.6, 3.6, 4.6];
-const LANE_X = 0.95; // làn đi bộ hai bên mép thảm
+const VIP_X = [1.85, -1.85, 3.15, -3.15, 4.45, -4.45, 5.75, -5.75];
+// Ghế thường: 4 hàng x 8 chỗ, dãn cách rộng rãi (COL_X bước 1.3m, ROW_Z bước 1.8m) không bị dí sát
+const ROW_Z = [1.2, -0.6, -2.4, -4.2];
+const COL_X = [1.85, 3.15, 4.45, 5.75];
+const LANE_X = 1.1; // làn đi bộ hai bên mép thảm
 const seatPos = [];
 for (let i = 0; i < SEATS; i++) {
   if (i < VIP_SEATS) {
@@ -1528,10 +1531,9 @@ for (let i = 0; i < SEATS; i++) {
   const k = j % 8;
   const side = k % 2 === 0 ? -1 : 1;
   const col = Math.floor(k / 2);
-  const spread = 0.82 + row * 0.05;
-  seatPos.push(new THREE.Vector3(side * (COL_X[0] + (COL_X[col] - COL_X[0]) * spread), 0, ROW_Z[row]));
+  seatPos.push(new THREE.Vector3(side * COL_X[col], 0, ROW_Z[row]));
 }
-const ROW_GAP = 0.875; // lối đi giữa 2 hàng (phía cửa)
+const ROW_GAP = 0.9; // lối đi giữa 2 hàng (phía cửa)
 const seatState = Array.from({ length: SEATS }, () => ({ occupied: false, tier: 'normal' }));
 /** Vẽ lại toàn bộ chỗ ngồi (gọi khi roster đổi). Gói các instance đang dùng liền nhau -> không tốn đỉnh cho chỗ ẩn. */
 function refreshSeats() {
@@ -1570,10 +1572,15 @@ function refreshSeats() {
 refreshSeats();
 scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 
-// Chỗ đứng chờ ngoài sân (16 người, hai bên lối đi giữa đèn đá và cổng Tam Quan)
-// Chỗ đứng chờ (16 người): dọc tường cửa chính phía trong điện, hai bên cửa
+// Chỗ đứng chờ (24 người): bố trí tách biệt hoàn toàn thành 2 cánh ở hai bên (|x| >= 2.4)
+// Tuyệt đối không đứng ở lối đi giữa (hành lang trung tâm x = -2.0..2.0 luôn thông thoáng)
 const WAIT_SPOTS = [];
-for (const z of [HALL_FRONT - 1.0, HALL_FRONT - 2.1]) for (const x of [-3.3, 3.3, -4.4, 4.4, -5.5, 5.5, -6.6, 6.6]) WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.1, 0.1), 0, z + rand(-0.15, 0.15)));
+for (const z of [2.2, 3.6, 5.0, 6.4]) {
+  // Cánh trái (x <= -2.4) và Cánh phải (x >= 2.4)
+  for (const x of [-5.2, -3.8, -2.4, 2.4, 3.8, 5.2]) {
+    WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.06, 0.06), 0, z + rand(-0.08, 0.08)));
+  }
+}
 
 // ----------------------------------------------------------------------------
 // Trạng thái Phật tử
@@ -1922,8 +1929,18 @@ function walkOut(a) {
   a.vipRank = 0;
   ensureTag(a);
   const steps = [];
-  if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
-  else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
+  if (a.atSeat >= 0) {
+    steps.push(...pathFromSeat(a.atSeat));
+  } else if (a.kneel > 0.05) {
+    steps.push(kneelStep(0, 0.6));
+  } else if (a.waitSpot >= 0 || (Math.abs(a.pos.x) > 1.3 && a.pos.z < DOOR_IN.z - 0.5)) {
+    // Đang đứng ở khu vực chờ 2 bên: quay mặt về hướng cửa, bước ra làn đi bộ rồi bước ra ngoài
+    const sideX = Math.sign(a.pos.x) || 1;
+    steps.push(
+      turnStep(Math.PI, 0.4),
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, a.pos.z), WALK_SPEED)
+    );
+  }
   steps.push(...exitSteps(WALK_SPEED));
   a.seat = -1;
   runScript(a, steps);
@@ -1956,7 +1973,44 @@ function walkToBurner(a, kind, ev) {
   a.heroStage = 'walk';
   a.heroKind = kind;
   a.heroSide = sideX;
-  // từ cửa: đi giữa thảm đỏ tới trước hàng đầu, rồi tách sang làn bên cạnh ghế hạng 1
+
+  // Lạy thuần túy: vào thẳng lư hương đảnh lễ, KHÔNG cần animation thắp nhang
+  if (kind === 'bow') {
+    if (a.pos.z > -3.5 && Math.abs(a.pos.x) < 1.3 && !(a.member && a.atSeat >= 0)) steps.push(moveStep(new THREE.Vector3(0, 0, -4.3)));
+    steps.push(
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9)),
+      moveStep(spot.clone(), 1.0),
+      turnStep(0, 0.4),
+      waitStep(0.01, (av) => { av.heroStage = 'pray'; }),
+      poseStep('pray', 0.5),
+      waitStep(BOW_STAND_DUR * 3 + 0.2, (av) => { av.bowAt = clock.elapsed; av.bowCount = 3; }),
+      waitStep(0.1, (av) => {
+        av.bowSpot = -1;
+        av.heroStage = 'back';
+        av.handPose = null;
+        ritualClimax(av, 'bow', ev);
+      }),
+      turnStep(Math.PI, 0.6),
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9))
+    );
+    steps.push(dynStep((av) => {
+      if (!av.member) return afterGuestRitual(av);
+      if (av.seat < 0 || av.leaving) return [];
+      return pathToSeat(av.seat);
+    }));
+    runScript(a, steps, (av) => {
+      av.bowSpot = -1;
+      av.goldTrail = false;
+      av.heroStage = '';
+      av.handPose = null;
+      av.sticks = 0;
+      if (av.member) onSeatArrive(av);
+    });
+    director.hero(a, 2);
+    return;
+  }
+
+  // từ cửa: đi giữa thảm đỏ tới trước hàng đầu, rồi tách sang làn bên cạnh
   if (a.pos.z > -3.5 && Math.abs(a.pos.x) < 1.3 && !(a.member && a.atSeat >= 0)) steps.push(moveStep(new THREE.Vector3(0, 0, -4.3)));
   const bows = kind !== 'join' && kind !== 'promote';
   steps.push(
@@ -2264,12 +2318,18 @@ function applyHallAction(uid, action, text) {
 function applyActionTo(a, action, text) {
   touch(a);
   const t = clock.elapsed;
-  const idle = (!a.busy && a.kneel > 0.95) || (a.waiting && !a.walking);
+  const isKneeling = (!a.busy && a.kneel > 0.95);
   switch (action) {
     case 'bow':
-      if (idle) { a.bowAt = t; a.bowCount = 3; }
-      else if (a.guestKind === 'court') { a.bowAt = t + 2; a.bowCount = 1; }
-      setGlow(a, 0.6, 0xffe6a0);
+      if (isKneeling || (a.member && a.atSeat >= 0)) {
+        // Ngồi tại chỗ lạy: quỳ đảnh lễ 3 lạy ngay trên đệm
+        a.bowAt = t;
+        a.bowCount = 3;
+        setGlow(a, 0.7, 0xffe6a0);
+      } else if (!a.busy && !a.leaving) {
+        // Chưa có chỗ ngồi: đi thẳng vào chỗ lư hương phía trong để lạy (không đứng ở ngoài lạy)
+        walkToBurner(a, 'bow', { user: a.name });
+      }
       break;
     case 'greet':
       a.nodAt = t;
@@ -2377,33 +2437,36 @@ function courtGuest(uid, name, action, text) {
   return a;
 }
 
-/** Tầng 1 — hall.arrive: người vừa vào live đi qua cổng, lạy vọng về chánh điện rồi ra. */
+/** Tầng 1 — hall.arrive: người vừa vào live; hiển thị thông báo và đứng vào khu vực chờ 2 bên (không đứng giữa lối đi). */
 function arrive(p) {
   const more = Number(p.count) > 1 ? ` và ${Number(p.count) - 1} người khác` : '';
   pushToast(`🙏 ${shortName(p.name || 'Thí Chủ', 18)}${more} vừa vào chùa`, 'arrive');
-  if (countGuests('arrive') >= 3) return;
-  const a = allocAvatar();
-  if (!a) return;
-  spawnAvatar(a, { uid: p.uid || '', name: p.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
-  a.guestKind = 'arrive';
-  const stop = new THREE.Vector3(rand(-0.5, 0.5), 0, HALL_FRONT - 3.2);
-  runScript(a, [
-    moveStep(stop, 1.7),
-    turnStep(0, 0.4),
-    waitStep(0.1, (av) => { av.bowAt = clock.elapsed; av.bowCount = 1; }),
-    waitStep(2.3),
-    turnStep(Math.PI, 0.6),
-    ...exitSteps(1.7)
-  ]);
+  // Nếu có uid và chưa được quản lý bởi waitMap hay uidToAvatar, tự động cho đứng vào chỗ chờ 2 bên
+  if (p.uid && !waitMap.has(p.uid) && !memberAvatar(p.uid)) {
+    const emptyIdx = waitSpotTaken.indexOf(null);
+    if (emptyIdx >= 0) {
+      const a = allocAvatar();
+      if (a) {
+        waitMap.set(p.uid, a);
+        spawnAvatar(a, { uid: p.uid, name: p.name || 'Thí Chủ', member: false, at: DOOR_SPAWN.clone(), pop: true });
+        a.tier = 'normal';
+        a.waiting = true;
+        ensureTag(a);
+        sendToWaitSpot(a);
+      }
+    }
+  }
 }
 
-// Đám đông vô danh ngoài sân (không tên): min(12, ceil(người xem / 25)), đi dạo / đứng ngắm tháp
+// Đám đông vô danh (không tên): tăng theo số lượng người xem, dồn sát vào phía sau và hai bên hàng ghế
 const crowd = [];
 function crowdTarget(n) {
-  return Math.max(0, Math.min(6, n));
+  return Math.max(0, Math.min(12, n));
 }
-// đứng lặng dọc hai bên phía sau điện (giữa cột và tường), không đi lại
-const CROWD_SPOTS = [[-8.2, 9.6], [8.2, 9.6], [-8.2, 7.2], [8.2, 7.2], [-8.3, 4.8], [8.3, 4.8]];
+const CROWD_SPOTS = [
+  [-3.8, 7.8], [3.8, 7.8], [-2.4, 7.8], [2.4, 7.8], [-5.2, 7.8], [5.2, 7.8],
+  [-6.8, -2.4], [6.8, -2.4], [-6.8, -0.6], [6.8, -0.6], [-6.8, 1.2], [6.8, 1.2]
+];
 function syncCrowd(viewers) {
   const want = crowdTarget(Math.ceil((Number(viewers) || 0) / 40));
   while (crowd.length < want) {
@@ -3584,26 +3647,60 @@ function updateState(st) {
   const s = st.settings;
   // Giọng đọc, nhạc nền (danh sách phát tối đa 3 bài), hiệu ứng âm thanh — cài đặt ở trang Admin
   if (s && audio) audio.applySettings(s);
+  if (s) {
+    const btnMusic = document.getElementById('btnToggleMusic');
+    if (btnMusic && audio) {
+      btnMusic.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;
+      btnMusic.classList.toggle('active-toggle', audio.bgMusicEnabled);
+    }
+    const btnTts = document.getElementById('btnToggleTts');
+    if (btnTts && audio) {
+      btnTts.textContent = `🎙️ Giọng Đọc: ${audio.ttsEnabled ? 'BẬT' : 'TẮT'}`;
+      btnTts.classList.toggle('active-toggle', audio.ttsEnabled);
+    }
+    const sMus = document.getElementById('sliderMusicVol');
+    const vMus = document.getElementById('valMusicVol');
+    if (sMus && vMus && typeof s.musicVolume === 'number') {
+      const pct = Math.round(s.musicVolume * 100);
+      sMus.value = String(pct);
+      vMus.textContent = `${pct}%`;
+    }
+    const sTts = document.getElementById('sliderTtsVol');
+    const vTts = document.getElementById('valTtsVol');
+    if (sTts && vTts && typeof s.ttsVolume === 'number') {
+      const pct = Math.round(s.ttsVolume * 100);
+      sTts.value = String(pct);
+      vTts.textContent = `${pct}%`;
+    }
+  }
 }
 
 let tiktokInfo = { connected: false, username: '', viewerCount: 0 };
 function updateStatus(tt) {
   tiktokInfo = { ...tiktokInfo, ...tt };
   syncCrowd(tiktokInfo.viewerCount);
-  document.getElementById('statusPill').classList.toggle('live', Boolean(tiktokInfo.connected));
-  document.getElementById('statusText').textContent = tiktokInfo.connected
-    ? `TRỰC TIẾP${tiktokInfo.username ? ` · @${tiktokInfo.username}` : ''}`
-    : 'Chùa Thiên Mụ';
-  document.getElementById('statusViewers').textContent = tiktokInfo.viewerCount > 0 ? `👁 ${Number(tiktokInfo.viewerCount).toLocaleString('vi-VN')}` : '';
+  const pill = document.getElementById('statusPill');
+  if (pill) pill.classList.toggle('live', Boolean(tiktokInfo.connected));
+  const textEl = document.getElementById('statusText');
+  if (textEl) {
+    textEl.textContent = tiktokInfo.connected
+      ? `TRỰC TIẾP${tiktokInfo.username ? ` · @${tiktokInfo.username}` : ''}`
+      : 'Chùa Thiên Mụ';
+  }
+  const viewEl = document.getElementById('statusViewers');
+  if (viewEl) {
+    viewEl.textContent = tiktokInfo.viewerCount > 0 ? `👁 ${Number(tiktokInfo.viewerCount).toLocaleString('vi-VN')}` : '';
+  }
 }
 
 let lastBoardKey = '';
 function renderLeaderboard(lb) {
-  const top = lb.slice(0, 5);
+  const top = (lb || []).slice(0, 5);
   const key = top.map((d) => `${d.uniqueId}:${d.merit}:${d.name}`).join('|');
   if (key === lastBoardKey) return;
   lastBoardKey = key;
   const list = document.getElementById('meritList');
+  if (!list) return;
   list.textContent = '';
   if (!top.length) {
     const li = document.createElement('li');
@@ -3618,18 +3715,10 @@ function renderLeaderboard(lb) {
     rank.className = 'merit-rank';
     rank.textContent = String(i + 1);
     li.appendChild(rank);
-    if (d.avatar) {
-      const img = document.createElement('img');
-      img.className = 'merit-avatar';
-      img.src = d.avatar;
-      img.alt = '';
-      img.referrerPolicy = 'no-referrer';
-      img.onerror = () => img.remove();
-      li.appendChild(img);
-    }
+    // Yêu cầu: chỉ hiển thị name / username, không hiển thị ảnh đại diện
     const name = document.createElement('span');
     name.className = 'merit-name';
-    name.textContent = d.name || 'Thí Chủ';
+    name.textContent = d.name || d.uniqueId || 'Thí Chủ';
     const val = document.createElement('span');
     val.className = 'merit-val';
     val.textContent = Number(d.merit || 0).toLocaleString('vi-VN');
@@ -3686,3 +3775,169 @@ connect();
 
 // Gỡ lỗi / kiểm thử từ console
 window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS };
+
+// ============================================================================
+// 17. QUICK DOCK & INTERACTION CONTROLS
+// ============================================================================
+let rpcId = 1;
+async function callRpc(method, params = {}) {
+  audio?.ensureContext();
+  const payload = {
+    jsonrpc: '2.0',
+    id: rpcId++,
+    method,
+    params
+  };
+  try {
+    const res = await fetch('/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn('[RPC Error]', method, err);
+  }
+}
+
+function getDevoteeName() {
+  return document.getElementById('inputDevoteeName')?.value?.trim() || 'Thí Chủ Minh Tâm';
+}
+function getDevoteeWish() {
+  return document.getElementById('inputDevoteeWish')?.value?.trim() || 'Cầu gia đình bình an, vạn sự cát tường';
+}
+
+function pushEventFeed(text) {
+  const feed = document.getElementById('eventFeed');
+  if (!feed) return;
+  const item = document.createElement('div');
+  item.className = 'event-feed-item';
+  item.textContent = `${new Date().toLocaleTimeString('vi-VN')} • ${text}`;
+  feed.prepend(item);
+  while (feed.children.length > 25) feed.removeChild(feed.lastChild);
+}
+
+function initQuickDock() {
+  const btnUnlock = document.getElementById('btnUnlockAudio');
+  btnUnlock?.addEventListener('click', () => {
+    audio?.ensureContext();
+    btnUnlock.textContent = '🔔 Âm Thanh Đã Mở Khóa';
+    btnUnlock.classList.add('active-toggle');
+    pushEventFeed('Đã mở khóa âm thanh Chánh Điện');
+  });
+
+  const btnTts = document.getElementById('btnToggleTts');
+  btnTts?.addEventListener('click', () => {
+    if (!audio) return;
+    audio.ttsEnabled = !audio.ttsEnabled;
+    btnTts.textContent = `🎙️ Giọng Đọc: ${audio.ttsEnabled ? 'BẬT' : 'TẮT'}`;
+    btnTts.classList.toggle('active-toggle', audio.ttsEnabled);
+    callRpc('temple.updateSettings', { ttsEnabled: audio.ttsEnabled });
+    pushEventFeed(`Giọng đọc: ${audio.ttsEnabled ? 'BẬT' : 'TẮT'}`);
+  });
+
+  const btnMusic = document.getElementById('btnToggleMusic');
+  btnMusic?.addEventListener('click', () => {
+    if (!audio) return;
+    audio.setMusicEnabled(!audio.bgMusicEnabled);
+    btnMusic.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;
+    btnMusic.classList.toggle('active-toggle', audio.bgMusicEnabled);
+    callRpc('temple.updateSettings', { bgMusicEnabled: audio.bgMusicEnabled });
+    pushEventFeed(`Nhạc nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`);
+  });
+
+  const sMus = document.getElementById('sliderMusicVol');
+  const vMus = document.getElementById('valMusicVol');
+  if (sMus && vMus) {
+    sMus.addEventListener('input', (e) => {
+      const pct = Number(e.target.value);
+      vMus.textContent = `${pct}%`;
+      audio?.ensureContext();
+      audio?.setMusicVolume(pct / 100);
+    });
+    sMus.addEventListener('change', (e) => {
+      callRpc('temple.updateSettings', { musicVolume: Number(e.target.value) / 100 });
+    });
+  }
+
+  const sTts = document.getElementById('sliderTtsVol');
+  const vTts = document.getElementById('valTtsVol');
+  if (sTts && vTts) {
+    sTts.addEventListener('input', (e) => {
+      const pct = Number(e.target.value);
+      vTts.textContent = `${pct}%`;
+      audio?.setTtsVolume(pct / 100);
+    });
+    sTts.addEventListener('change', (e) => {
+      callRpc('temple.updateSettings', { ttsVolume: Number(e.target.value) / 100 });
+    });
+  }
+
+  // TikTok Live connect
+  document.getElementById('btnConnectTikTok')?.addEventListener('click', () => {
+    const user = document.getElementById('inputTikTokUser')?.value?.trim();
+    if (user) {
+      callRpc('live.connect', { username: user });
+      pushEventFeed(`Đang kết nối TikTok Live: ${user}...`);
+    }
+  });
+
+  const btnAutoSim = document.getElementById('btnToggleAutoSim');
+  btnAutoSim?.addEventListener('click', () => {
+    const isSim = btnAutoSim.classList.toggle('active-toggle');
+    btnAutoSim.textContent = `🤖 Tự động Giả lập Người Xem: ${isSim ? 'BẬT' : 'TẮT'}`;
+    callRpc('live.setAutoSim', { enabled: isSim });
+    pushEventFeed(`Giả lập người xem: ${isSim ? 'BẬT' : 'TẮT'}`);
+  });
+
+  document.getElementById('btnSimulateJoin')?.addEventListener('click', () => {
+    const randomNames = ['Minh Đức', 'Tâm An', 'Diệu Hoa', 'Phúc Lâm', 'Tuệ Tĩnh', 'Bảo Hân', 'Thanh Trúc'];
+    const name = randomNames[Math.floor(Math.random() * randomNames.length)];
+    callRpc('live.simulateJoin', { user: name });
+    pushEventFeed(`${name} vừa vào chùa (vào khu vực chờ)`);
+  });
+
+  document.getElementById('btnSimulateLeave')?.addEventListener('click', async () => {
+    const res = await callRpc('live.simulateLeave', {});
+    if (res?.ok) {
+      pushEventFeed(`1 người rời chùa (bước ra cửa)`);
+    } else {
+      pushEventFeed(res?.message || 'Không có ai để rời chùa');
+    }
+  });
+
+  // RPC action buttons
+  document.getElementById('btnRpcIncense')?.addEventListener('click', () => {
+    callRpc('temple.burnIncense', { user: getDevoteeName(), wish: getDevoteeWish(), count: 3 });
+    pushEventFeed(`${getDevoteeName()} dâng 3 nén hương`);
+  });
+  document.getElementById('btnRpcLantern')?.addEventListener('click', () => {
+    callRpc('temple.sendPrayer', { user: getDevoteeName(), wish: getDevoteeWish() });
+    pushEventFeed(`${getDevoteeName()} thả đèn hoa đăng cầu nguyện`);
+  });
+  document.getElementById('btnRpcWoodenFish')?.addEventListener('click', () => {
+    callRpc('temple.strikeWoodenFish', { user: getDevoteeName(), count: 5 });
+    pushEventFeed(`${getDevoteeName()} gõ mõ tích công đức`);
+  });
+  document.getElementById('btnRpcBell')?.addEventListener('click', () => {
+    callRpc('temple.ringBell', { user: getDevoteeName(), count: 1, wish: getDevoteeWish() });
+    pushEventFeed(`${getDevoteeName()} thỉnh Đại Hồng Chung`);
+  });
+  document.getElementById('btnRpcFortune')?.addEventListener('click', () => {
+    callRpc('temple.drawFortune', { user: getDevoteeName(), topic: getDevoteeWish() });
+    pushEventFeed(`${getDevoteeName()} gieo quẻ Linh Xăm`);
+  });
+  document.getElementById('btnRpcGiftLotus')?.addEventListener('click', () => {
+    callRpc('temple.offerGift', { user: getDevoteeName(), giftType: 'lotus', coins: 15, giftName: 'Hoa Sen Vàng' });
+    pushEventFeed(`${getDevoteeName()} dâng Hoa Sen Vàng`);
+  });
+  document.getElementById('btnRpcGrandCeremony')?.addEventListener('click', () => {
+    callRpc('temple.grandCeremony', { user: getDevoteeName(), coins: 100, giftName: 'Kim Long Chầu Phật' });
+    pushEventFeed(`Đại Lễ Kim Long Chầu Phật kích hoạt!`);
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initQuickDock);
+} else {
+  initQuickDock();
+}

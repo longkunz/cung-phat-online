@@ -1111,7 +1111,9 @@ function hallTick() {
     if (!isVipSeat(m.seat) && now - m.lastActive > HALL_IDLE_MS) { hall.delete(uid); changed = true; }
   }
   for (const [uid, w] of hallWaiting) {
-    if (now - w.lastActive > HALL_WAIT_IDLE_MS) { hallWaiting.delete(uid); changed = true; }
+    // Người giả lập sim_join_ rời chùa sau 45s nếu không tương tác để luân phiên người ra người vào
+    const timeout = uid.startsWith('sim_join_') ? 45000 : HALL_WAIT_IDLE_MS;
+    if (now - w.lastActive > timeout) { hallWaiting.delete(uid); changed = true; }
   }
   // Mời người chờ vào (người vừa tương tác gần nhất trước), tối đa vài người mỗi lượt cho mượt
   // Người tặng quà được mời vào trước, sau đó tới người vừa tương tác gần nhất
@@ -1259,6 +1261,9 @@ function hallArrive(uid, name, avatar) {
   const now = Date.now();
   if (now - lastArriveAt < ARRIVE_EVERY_MS) return;
   lastArriveAt = now;
+  // Người mới vào live được xếp vào khu vực đứng chờ 2 bên Đạo Tràng
+  addToWaiting(uid, sanitizeUserName(name), avatar || '', now);
+  scheduleHallBroadcast();
   broadcastNotification('hall.arrive', {
     uid,
     name: sanitizeUserName(name),
@@ -1742,6 +1747,29 @@ async function handleRpcCall(method, params = {}) {
       // Giả lập 1 người xem vừa vào live (sự kiện MEMBER của TikTok) để thử hall.arrive
       hallArrive(params.uniqueId || `sim_join_${Date.now().toString(36)}`, params.user || 'Thí Chủ', params.avatar || '');
       return { ok: true };
+    case 'live.simulateLeave': {
+      // Cho 1 người trong hàng chờ hoặc đạo tràng ra về (bước ra cửa)
+      let targetUid = params.uniqueId;
+      if (!targetUid && hallWaiting.size > 0) {
+        targetUid = hallWaiting.keys().next().value;
+      }
+      if (targetUid && hallWaiting.has(targetUid)) {
+        hallWaiting.delete(targetUid);
+        scheduleHallBroadcast();
+        return { ok: true, uid: targetUid, from: 'waiting' };
+      }
+      if (!targetUid && hall.size > 0) {
+        for (const [uid, m] of hall) {
+          if (!isVipSeat(m.seat)) { targetUid = uid; break; }
+        }
+      }
+      if (targetUid && hall.has(targetUid)) {
+        hall.delete(targetUid);
+        scheduleHallBroadcast();
+        return { ok: true, uid: targetUid, from: 'hall' };
+      }
+      return { ok: false, message: 'Không có ai để rời chùa' };
+    }
     case 'live.setAutoSim':
       configureAutoSim(Boolean(params.enabled));
       saveState();
@@ -1778,6 +1806,12 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
 app.use('/music', express.static(MUSIC_DIR, { maxAge: '1d' }));
+// Chuẩn hóa đường dẫn: Chuyển hướng 301 từ /temple3d.html về / (View 3D chính thức)
+app.get('/temple3d.html', (req, res) => {
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, '/' + query);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
@@ -1825,6 +1859,11 @@ app.get('/ready', (_req, res) => {
       tts: ttsStatus
     }
   });
+});
+
+app.get('/temple3d.html', (req, res) => {
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, '/' + query);
 });
 
 app.get('/admin', (_req, res) => {

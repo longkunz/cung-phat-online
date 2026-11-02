@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bảng Điều Khiển JSON-RPC 2.0 — Chùa Linh Ứng TikTok Live</title>
+  <title>Bảng Điều Khiển JSON-RPC 2.0 — Chùa Thiên Mụ TikTok Live</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Noto+Serif:wght@700;900&display=swap" rel="stylesheet">
@@ -114,9 +114,25 @@
     .tts-form fieldset { border: 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
     .btn:disabled { cursor: wait; opacity: 0.6; }
     .log-card { grid-column: 1 / -1; }
+    .audio-card { grid-column: 1 / -1; }
+    .audio-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .audio-cols h3 { margin: 0 0 12px; font-size: 16px; color: var(--gold-light); }
+    .audio-form, .audio-form fieldset { display: flex; flex-direction: column; gap: 14px; border: 0; padding: 0; margin: 0; min-width: 0; }
+    .playlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .playlist li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(244, 193, 80, 0.25); }
+    .playlist .slot-no { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(244, 193, 80, 0.18); color: var(--gold-light); font-weight: 800; font-size: 13px; }
+    .playlist select { flex: 1; min-width: 0; }
+    .icon-btn { padding: 6px 9px; min-width: 0; }
+    .library { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow: auto; }
+    .library li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .library .lib-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .library .lib-meta { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+    .sfx-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; }
+    .now-playing { font-size: 13px; color: var(--gold-light); }
     @media (max-width: 800px) {
       body { padding: 16px; }
       .grid { grid-template-columns: minmax(0, 1fr); }
+      .audio-cols { grid-template-columns: minmax(0, 1fr); }
       .top-bar { flex-direction: column; align-items: stretch; gap: 16px; }
       .top-title { font-size: 21px; }
       .top-links, .row { flex-wrap: wrap; }
@@ -159,6 +175,7 @@
       <div class="top-links">
         <a class="btn" href="/?obs=1" target="_blank">📺 Mở Màn Hình OBS 9:16 Sạch (?obs=1)</a>
         <a class="btn gold" href="/" target="_blank">🪷 Mở Màn Hình Live Chính</a>
+        <a class="btn" href="/temple3d.html?obs=1" target="_blank">🛕 Chánh Điện 3D (?obs=1)</a>
       </div>
     </header>
 
@@ -195,7 +212,7 @@
         </form>
         <div class="field">
           <label for="ttsDirectText">Nội dung đọc thử</label>
-          <textarea id="ttsDirectText" rows="3" maxlength="160">Nam mô A Di Đà Phật. Chùa Linh Ứng Online xin kính chào quý thí chủ thập phương.</textarea>
+          <textarea id="ttsDirectText" rows="3" maxlength="160">Nam mô A Di Đà Phật. Chùa Thiên Mụ Online xin kính chào quý thí chủ thập phương.</textarea>
         </div>
         <button class="btn" id="btnPreviewTts" disabled>▶ Nghe thử giọng đã chọn</button>
         <p class="help">Nghe thử ngay tại admin bằng giọng và âm lượng đang chọn.</p>
@@ -203,8 +220,68 @@
         <audio id="adminAudioPreview" aria-label="Nghe thử giọng TTS" controls style="width: 100%; height: 38px;"></audio>
       </section>
 
+      <section class="card audio-card">
+        <h2>🎵 3. Âm Thanh &amp; Nhạc Nền</h2>
+        <form class="audio-form" id="audioSettingsForm">
+          <fieldset id="audioSettingsFields">
+            <div class="audio-cols">
+              <div class="audio-form">
+                <h3>Nhạc nền</h3>
+                <label class="toggle-label" for="bgMusicEnabled">
+                  <input type="checkbox" id="bgMusicEnabled" checked /> Bật nhạc nền trên màn live
+                </label>
+                <div class="field">
+                  <label for="musicVolume">Âm lượng nhạc nền: <output id="musicVolumeValue" for="musicVolume">65%</output></label>
+                  <input type="range" id="musicVolume" min="0" max="100" step="1" value="65" />
+                </div>
+                <div class="field">
+                  <label>Danh sách phát (tối đa 3 bài, phát lần lượt theo thứ tự rồi quay lại bài 1)</label>
+                  <ul class="playlist" id="playlistSlots"></ul>
+                </div>
+                <p class="help">Nhạc tự hạ nhỏ khi có giọng đọc. Một bài thì phát lặp lại; bài nào lỗi sẽ được bỏ qua.</p>
+              </div>
+              <div class="audio-form">
+                <h3>Hiệu ứng âm thanh (pháp khí)</h3>
+                <label class="toggle-label" for="sfxEnabled">
+                  <input type="checkbox" id="sfxEnabled" checked /> Bật hiệu ứng âm thanh
+                </label>
+                <div class="field">
+                  <label for="sfxVolume">Âm lượng hiệu ứng: <output id="sfxVolumeValue" for="sfxVolume">80%</output></label>
+                  <input type="range" id="sfxVolume" min="0" max="100" step="1" value="80" />
+                </div>
+                <div class="sfx-grid" id="sfxToggles"></div>
+                <p class="help">Bấm "Nghe thử" để nghe ngay tại trang admin với âm lượng đang chọn.</p>
+              </div>
+            </div>
+            <button class="btn gold" type="submit" id="btnSaveAudio">Lưu cài đặt âm thanh</button>
+          </fieldset>
+          <p class="feedback" id="audioSettingsMessage" role="status"></p>
+        </form>
+
+        <div class="audio-cols" style="margin-top: 18px;">
+          <div class="audio-form">
+            <h3>Thư viện nhạc</h3>
+            <ul class="library" id="musicLibrary"></ul>
+            <audio id="musicPreview" controls preload="none" aria-label="Nghe thử nhạc nền" style="width: 100%; height: 38px;"></audio>
+          </div>
+          <div class="audio-form">
+            <h3>Tải nhạc lên</h3>
+            <div class="field">
+              <label for="musicFile">File nhạc (mp3, m4a, aac, ogg, wav, webm, flac — tối đa 40MB)</label>
+              <input type="file" id="musicFile" accept="audio/*,.mp3,.m4a,.aac,.ogg,.wav,.webm,.flac" />
+            </div>
+            <div class="field">
+              <label for="musicName">Tên hiển thị (để trống = tên file)</label>
+              <input type="text" id="musicName" maxlength="60" placeholder="Ví dụ: Chú Đại Bi" />
+            </div>
+            <button class="btn" id="btnUploadMusic" type="button">⬆ Tải lên thư viện</button>
+            <p class="feedback" id="musicUploadMessage" role="status"></p>
+          </div>
+        </div>
+      </section>
+
       <section class="card">
-        <h2>🙏 3. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
+        <h2>🙏 4. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
         <div class="row">
           <input type="text" id="rpcUser" value="Đại Thí Chủ Minh Tâm" placeholder="Tên người xem..." />
           <input type="text" id="rpcWish" value="Cầu gia đạo bình an, tài lộc vượng phát" placeholder="Lời cầu nguyện..." />
@@ -222,7 +299,7 @@
       </section>
 
       <section class="card">
-        <h2>💬 4. Giả Lập Bình Luận Người Xem TikTok</h2>
+        <h2>💬 5. Giả Lập Bình Luận Người Xem TikTok</h2>
         <div class="row">
           <input type="text" id="simComment" value="Con xin gieo quẻ cầu tài lộc đầu tháng ạ" placeholder="Nhập nội dung bình luận TikTok..." />
           <button class="btn gold" id="btnSendComment">Gửi Comment</button>
@@ -233,12 +310,13 @@
       </section>
 
       <section class="card log-card">
-        <h2>🔌 5. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
+        <h2>🔌 6. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
         <pre id="rpcOutput">{ "status": "Sẵn sàng nhận lệnh JSON-RPC 2.0" }</pre>
       </section>
     </div>
   </div>
 
+  <script src="/js/audio.js"></script>
   <script>
     const voiceLabels = {
       baotrang: 'Bảo Trang', giahuy: 'Gia Huy', hamy: 'Hà My', huuduc: 'Hữu Đức',
@@ -375,6 +453,247 @@
       }
     };
 
+    // ------------------------------------------------------------------
+    // ÂM THANH & NHẠC NỀN
+    // ------------------------------------------------------------------
+    const MAX_PLAYLIST = 3;
+    const SFX_LIST = [
+      { key: 'bell', label: '🔔 Đại Hồng Chung (thỉnh chuông, dâng lễ)', play: (a) => a.playTempleBell(1) },
+      { key: 'woodfish', label: '🪵 Mõ gỗ (thả tim)', play: (a) => a.playWoodenFish() },
+      { key: 'chime', label: '✨ Chuông ngọc (thắp hương, cầu nguyện)', play: (a) => a.playIncenseChime() },
+      { key: 'fortune', label: '🎋 Lắc ống xăm (xin xăm)', play: (a) => a.playFortuneShake() }
+    ];
+    // Bộ máy âm thanh riêng của trang admin chỉ để nghe thử hiệu ứng (không phát nhạc nền)
+    const previewAudio = new TempleAudioEngine();
+    previewAudio.setMusicEnabled(false);
+    previewAudio.setPlaylist([]);
+
+    let musicLibrary = [];
+    let audioDirty = false;
+    let audioSaving = false;
+    let playlistDraft = [];
+
+    (function buildSfxToggles() {
+      document.getElementById('sfxToggles').innerHTML = SFX_LIST.map((s) => `
+        <label class="toggle-label" for="sfx_${s.key}"><input type="checkbox" id="sfx_${s.key}" checked /> ${s.label}</label>
+        <button class="btn icon-btn" type="button" data-sfx-test="${s.key}">▶ Nghe thử</button>`).join('');
+      document.querySelectorAll('[data-sfx-test]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const item = SFX_LIST.find((s) => s.key === btn.dataset.sfxTest);
+          previewAudio.ensureContext();
+          previewAudio.sfxEnabled = true;
+          previewAudio.sfxToggles[item.key] = true;
+          previewAudio.setSfxVolume(Number(document.getElementById('sfxVolume').value) / 100);
+          item.play(previewAudio);
+        });
+      });
+    })();
+
+    function escapeText(str) {
+      return String(str ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    function formatSize(bytes) {
+      if (!bytes) return '';
+      return bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+    }
+
+    function renderPlaylistSlots() {
+      const options = (selected) => ['<option value="">— Trống —</option>']
+        .concat(musicLibrary.map((t) => `<option value="${escapeText(t.id)}"${t.id === selected ? ' selected' : ''}>${escapeText(t.name)}</option>`))
+        .join('');
+      const slots = [];
+      for (let i = 0; i < MAX_PLAYLIST; i++) {
+        const id = playlistDraft[i] || '';
+        slots.push(`
+          <li>
+            <span class="slot-no">${i + 1}</span>
+            <select data-slot="${i}" aria-label="Bài ${i + 1}">${options(id)}</select>
+            <button class="btn icon-btn" type="button" data-move="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Lên">▲</button>
+            <button class="btn icon-btn" type="button" data-move="${i}" data-dir="1" ${i === MAX_PLAYLIST - 1 ? 'disabled' : ''} aria-label="Xuống">▼</button>
+            <button class="btn icon-btn" type="button" data-listen="${escapeText(id)}" ${id ? '' : 'disabled'} aria-label="Nghe thử">▶</button>
+          </li>`);
+      }
+      const ul = document.getElementById('playlistSlots');
+      ul.innerHTML = slots.join('');
+      ul.querySelectorAll('select[data-slot]').forEach((sel) => sel.addEventListener('change', () => {
+        const draft = playlistDraft.slice();
+        while (draft.length < MAX_PLAYLIST) draft.push('');
+        draft[Number(sel.dataset.slot)] = sel.value;
+        playlistDraft = draft;
+        markAudioDirty();
+        renderPlaylistSlots();
+      }));
+      ul.querySelectorAll('[data-move]').forEach((btn) => btn.addEventListener('click', () => {
+        const i = Number(btn.dataset.move);
+        const j = i + Number(btn.dataset.dir);
+        const draft = playlistDraft.slice();
+        while (draft.length < MAX_PLAYLIST) draft.push('');
+        [draft[i], draft[j]] = [draft[j], draft[i]];
+        playlistDraft = draft;
+        markAudioDirty();
+        renderPlaylistSlots();
+      }));
+      ul.querySelectorAll('[data-listen]').forEach((btn) => btn.addEventListener('click', () => listenTrack(btn.dataset.listen)));
+    }
+
+    function listenTrack(id) {
+      const track = musicLibrary.find((t) => t.id === id);
+      if (!track) return;
+      const player = document.getElementById('musicPreview');
+      player.src = track.url;
+      player.volume = Number(document.getElementById('musicVolume').value) / 100;
+      player.play().catch(() => {});
+    }
+
+    function renderLibrary() {
+      const inPlaylist = new Set(playlistDraft.filter(Boolean));
+      document.getElementById('musicLibrary').innerHTML = musicLibrary.map((t) => `
+        <li>
+          <span class="lib-name" title="${escapeText(t.name)}">${inPlaylist.has(t.id) ? '🎶 ' : ''}${escapeText(t.name)}</span>
+          <span class="lib-meta">${t.builtin ? 'mặc định' : formatSize(t.size)}</span>
+          <button class="btn icon-btn" type="button" data-lib-listen="${escapeText(t.id)}" aria-label="Nghe thử">▶</button>
+          ${t.builtin ? '' : `<button class="btn icon-btn" type="button" data-lib-delete="${escapeText(t.id)}" aria-label="Xóa">🗑</button>`}
+        </li>`).join('');
+      document.querySelectorAll('[data-lib-listen]').forEach((btn) => btn.addEventListener('click', () => listenTrack(btn.dataset.libListen)));
+      document.querySelectorAll('[data-lib-delete]').forEach((btn) => btn.addEventListener('click', () => deleteTrack(btn.dataset.libDelete)));
+    }
+
+    async function loadMusicLibrary() {
+      try {
+        const res = await fetch('/api/music');
+        const data = await res.json();
+        if (data.ok) musicLibrary = data.library;
+      } catch (_) {}
+      renderPlaylistSlots();
+      renderLibrary();
+    }
+
+    function markAudioDirty() {
+      audioDirty = true;
+      showFeedback('audioSettingsMessage', 'Có thay đổi chưa lưu.');
+    }
+
+    function renderAudioSettings(st) {
+      const s = st.settings || {};
+      if (audioDirty || audioSaving) return;
+      document.getElementById('bgMusicEnabled').checked = s.bgMusicEnabled !== false;
+      const mv = Math.round((s.musicVolume ?? 0.65) * 100);
+      document.getElementById('musicVolume').value = String(mv);
+      document.getElementById('musicVolumeValue').textContent = `${mv}%`;
+      document.getElementById('sfxEnabled').checked = s.sfxEnabled !== false;
+      const sv = Math.round((s.sfxVolume ?? 0.8) * 100);
+      document.getElementById('sfxVolume').value = String(sv);
+      document.getElementById('sfxVolumeValue').textContent = `${sv}%`;
+      SFX_LIST.forEach((x) => {
+        document.getElementById(`sfx_${x.key}`).checked = s.sfx?.[x.key] !== false;
+      });
+      const ids = (s.bgPlaylist || []).map((t) => t.id);
+      if (JSON.stringify(ids) !== JSON.stringify(playlistDraft.filter(Boolean))) {
+        playlistDraft = ids;
+        renderPlaylistSlots();
+        renderLibrary();
+      }
+    }
+
+    document.getElementById('audioSettingsForm').addEventListener('input', (e) => {
+      if (e.target.matches('select[data-slot]')) return; // đã xử lý riêng
+      document.getElementById('musicVolumeValue').textContent = `${document.getElementById('musicVolume').value}%`;
+      document.getElementById('sfxVolumeValue').textContent = `${document.getElementById('sfxVolume').value}%`;
+      document.getElementById('musicPreview').volume = Number(document.getElementById('musicVolume').value) / 100;
+      markAudioDirty();
+    });
+
+    document.getElementById('audioSettingsForm').onsubmit = async (event) => {
+      event.preventDefault();
+      audioSaving = true;
+      document.getElementById('audioSettingsFields').disabled = true;
+      showFeedback('audioSettingsMessage', 'Đang lưu cài đặt âm thanh...');
+      try {
+        const sfx = {};
+        SFX_LIST.forEach((x) => { sfx[x.key] = document.getElementById(`sfx_${x.key}`).checked; });
+        const data = await sendRpc('temple.updateSettings', {
+          bgMusicEnabled: document.getElementById('bgMusicEnabled').checked,
+          musicVolume: Number(document.getElementById('musicVolume').value) / 100,
+          bgPlaylist: playlistDraft.filter(Boolean),
+          sfxEnabled: document.getElementById('sfxEnabled').checked,
+          sfxVolume: Number(document.getElementById('sfxVolume').value) / 100,
+          sfx
+        });
+        if (data.error) throw new Error(data.error.message);
+        audioDirty = false;
+        audioSaving = false;
+        renderAudioSettings(data.result);
+        showFeedback('audioSettingsMessage', 'Đã lưu. Màn live và OBS áp dụng ngay.');
+      } catch (err) {
+        showFeedback('audioSettingsMessage', err.message || 'Không lưu được cài đặt âm thanh.', true);
+      } finally {
+        audioSaving = false;
+        document.getElementById('audioSettingsFields').disabled = false;
+      }
+    };
+
+    document.getElementById('btnUploadMusic').onclick = async () => {
+      const input = document.getElementById('musicFile');
+      const file = input.files && input.files[0];
+      if (!file) {
+        showFeedback('musicUploadMessage', 'Chọn 1 file nhạc trước.', true);
+        return;
+      }
+      if (file.size > 40 * 1024 * 1024) {
+        showFeedback('musicUploadMessage', 'File lớn hơn 40MB.', true);
+        return;
+      }
+      const btn = document.getElementById('btnUploadMusic');
+      btn.disabled = true;
+      showFeedback('musicUploadMessage', `Đang tải lên "${file.name}"...`);
+      try {
+        const name = document.getElementById('musicName').value.trim();
+        const res = await fetch(`/api/music?name=${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+          body: file
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Tải lên thất bại.');
+        musicLibrary = data.library;
+        input.value = '';
+        document.getElementById('musicName').value = '';
+        // Còn chỗ trong danh sách phát thì tự thêm bài vừa tải vào cuối (chưa lưu)
+        const filled = playlistDraft.filter(Boolean);
+        if (filled.length < MAX_PLAYLIST) {
+          playlistDraft = [...filled, data.track.id];
+          markAudioDirty();
+        }
+        renderPlaylistSlots();
+        renderLibrary();
+        showFeedback('musicUploadMessage', `Đã tải lên "${data.track.name}". Bấm "Lưu cài đặt âm thanh" để áp dụng.`);
+      } catch (err) {
+        showFeedback('musicUploadMessage', err.message || 'Tải lên thất bại.', true);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    async function deleteTrack(id) {
+      const track = musicLibrary.find((t) => t.id === id);
+      if (!track || !confirm(`Xóa "${track.name}" khỏi thư viện?`)) return;
+      try {
+        const res = await fetch(`/api/music/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Không xóa được.');
+        musicLibrary = data.library;
+        playlistDraft = playlistDraft.filter((x) => x && x !== id);
+        renderPlaylistSlots();
+        renderLibrary();
+        showFeedback('musicUploadMessage', `Đã xóa "${track.name}".`);
+      } catch (err) {
+        showFeedback('musicUploadMessage', err.message, true);
+      }
+    }
+
+    loadMusicLibrary();
+
     async function refreshStatus() {
       try {
         const res = await fetch('/api/state');
@@ -383,6 +702,7 @@
         document.getElementById('statusBanner').textContent =
           `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | Giọng đọc: ${voiceLabels[st.tts?.voice] || st.tts?.voice || 'Mai Chi'}`;
         renderTtsSettings(st);
+        renderAudioSettings(st);
       } catch (_) {
         ttsReady = false;
         document.getElementById('ttsServiceStatus').textContent = 'Không kết nối được dịch vụ TTS. Đang thử lại...';

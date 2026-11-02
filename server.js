@@ -12,10 +12,14 @@ const DATA_DIR = path.join(__dirname, 'data');
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
 const STATE_FILE = path.join(DATA_DIR, 'merit-state.json');
 
+const MUSIC_DIR = path.join(DATA_DIR, 'music');
+const MUSIC_LIBRARY_FILE = path.join(MUSIC_DIR, 'library.json');
+
 fs.mkdirSync(TTS_CACHE_DIR, { recursive: true });
+fs.mkdirSync(MUSIC_DIR, { recursive: true });
 
 // ============================================================================
-// 1. BỘ 18 QUẺ LINH XĂM CHÙA LINH ỨNG (FORTUNE STICKS DECK)
+// 1. BỘ 18 QUẺ LINH XĂM CHÙA THIÊN MỤ (FORTUNE STICKS DECK)
 // ============================================================================
 const FORTUNE_DECK = [
   {
@@ -297,7 +301,13 @@ const DEFAULT_STATE = {
     ttsVoice: 'maichi',
     ttsVolume: 0.95,
     bgMusicEnabled: true,
+    musicVolume: 0.65,
+    // Danh sách nhạc nền phát lần lượt (tối đa 3 bài), hết bài cuối quay lại bài đầu
+    bgPlaylist: [{ id: 'default', name: 'Nam Mô A Di Đà Phật (mặc định)', url: '/assets/bg_chant.m4a' }],
     sfxEnabled: true,
+    sfxVolume: 0.8,
+    // Bật/tắt từng hiệu ứng âm thanh pháp khí
+    sfx: { bell: true, woodfish: true, chime: true, fortune: true },
     smokeDensity: 1.0,
     autoSim: false,
     autoSimIntervalMs: 9500
@@ -321,7 +331,11 @@ function loadState() {
         ...saved,
         devotees: saved.devotees || {},
         offerings: { ...DEFAULT_STATE.offerings, ...(saved.offerings || {}) },
-        settings: { ...DEFAULT_STATE.settings, ...(saved.settings || {}) },
+        settings: {
+          ...DEFAULT_STATE.settings,
+          ...(saved.settings || {}),
+          sfx: { ...DEFAULT_STATE.settings.sfx, ...(saved.settings?.sfx || {}) }
+        },
         tiktok: { ...DEFAULT_STATE.tiktok }
       };
     }
@@ -485,6 +499,10 @@ function getPublicState() {
     recentEvents: state.recentEvents.slice(0, 15),
     settings: state.settings,
     tiktok: state.tiktok,
+    hall: getHallRoster(),
+    hallWaiting: getHallWaiting(),
+    hallWaitingCount: hallWaiting.size,
+    giftFeed,
     tts: zeroTts ? zeroTts.getStatus() : { ready: false, status: 'init', voice: 'maichi' }
   };
 }
@@ -504,16 +522,23 @@ const Rituals = {
     state.totalIncense += count;
     state.activeIncenseSticks = Math.min(36, state.activeIncenseSticks + count);
     const devotee = recordDevotee(user, uniqueId, avatar, merit, count, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Nam mô A Di Đà Phật. Cảm tạ thí chủ ${devotee.name} đã thành tâm thắp ${count} nén hương thơm. ${wish}.`;
+      : planSpeech(
+        `Nam mô A Di Đà Phật. Cảm tạ thí chủ ${devotee.name} đã thành tâm thắp ${count} nén hương thơm. ${wish}.`,
+        0,
+        `Cảm tạ thí chủ ${devotee.name} dâng hương.`
+      );
 
     const event = pushEventLog({
       type: 'burnIncense',
+      ttsPriority: 0,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       wish,
@@ -535,12 +560,14 @@ const Rituals = {
 
     state.woodenFishHits += count;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'like');
 
     const event = pushEventLog({
       type: 'strikeWoodenFish',
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       ttsText: params.ttsText || ''
@@ -561,16 +588,19 @@ const Rituals = {
 
     state.bellRings += count;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts
-      ? `Thí chủ ${devotee.name} thỉnh Đại Hồng Chung cầu nguyện: ${wish}.`
+      ? planSpeech(`Thí chủ ${devotee.name} thỉnh Đại Hồng Chung cầu nguyện: ${wish}.`, 1, `Thí chủ ${devotee.name} thỉnh chuông.`)
       : '';
 
     const event = pushEventLog({
       type: 'ringBell',
+      ttsPriority: 1,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       count,
       merit,
       wish,
@@ -592,16 +622,19 @@ const Rituals = {
 
     state.lanternCount += 1;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 1, 0, wish);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Lời cầu nguyện của thí chủ ${devotee.name}: ${wish}. Nam mô A Di Đà Phật.`;
+      : planSpeech(`Lời cầu nguyện của thí chủ ${devotee.name}: ${wish}. Nam mô A Di Đà Phật.`, 1);
 
     const event = pushEventLog({
       type: 'sendPrayer',
+      ttsPriority: 1,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       wish,
       merit,
       ttsText,
@@ -639,16 +672,29 @@ const Rituals = {
 
     const wish = params.wish || `Dâng cúng ${giftName} lên Tam Bảo`;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 3, 1, wish);
+    hallRecordGift(devotee.uniqueId, coins);
+    hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'gift');
+    const hallStatus = hallStatusOf(devotee.uniqueId);
+    const giftEntry = pushGiftFeed(devotee, giftName, coins, merit, giftType);
 
     const ttsText = params.readTts === false
       ? ''
-      : `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} đã phát tâm dâng cúng ${giftName}, tích thêm ${merit} điểm công đức. Nguyện cầu chư Phật gia hộ cho thí chủ vạn sự cát tường như ý.`;
+      : planSpeech(
+        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} đã phát tâm dâng cúng ${giftName}, tích thêm ${merit} điểm công đức. Nguyện cầu chư Phật gia hộ cho thí chủ vạn sự cát tường như ý.`,
+        3,
+        `Công đức vô lượng! Cảm tạ thí chủ ${devotee.name} dâng ${giftName}.`,
+        { jump: true }
+      );
 
     const event = pushEventLog({
       type: giftType === 'dragon' ? 'grandCeremony' : 'offerGift',
+      ttsPriority: 3,
+      ttsJump: true,
+      giftAnnounce: giftEntry,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       giftType,
       giftName,
       coins,
@@ -673,16 +719,23 @@ const Rituals = {
 
     state.fortuneCount += 1;
     const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0, `Xin xăm: Quẻ số ${fortune.number} (${fortune.rank})`);
+    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'ritual');
 
     const ttsText = params.readTts === false
       ? ''
-      : `Thí chủ ${devotee.name} vừa gieo được ${fortune.ttsSummary}`;
+      : planSpeech(
+        `Thí chủ ${devotee.name} vừa gieo được ${fortune.ttsSummary}`,
+        2,
+        `Thí chủ ${devotee.name} gieo được quẻ số ${fortune.number}, ${fortune.rank}.`
+      );
 
     const event = pushEventLog({
       type: 'drawFortune',
+      ttsPriority: 2,
       user: devotee.name,
       uniqueId: devotee.uniqueId,
       avatar: devotee.avatar,
+      hallStatus,
       topic,
       fortune,
       merit,
@@ -719,12 +772,53 @@ const Rituals = {
         (typeof params.musicVolume !== 'number' || !Number.isFinite(params.musicVolume) || params.musicVolume < 0 || params.musicVolume > 1)) {
       throw new Error('Âm lượng nhạc nền phải nằm trong khoảng 0 đến 1');
     }
+    if (params.sfxVolume !== undefined &&
+        (typeof params.sfxVolume !== 'number' || !Number.isFinite(params.sfxVolume) || params.sfxVolume < 0 || params.sfxVolume > 1)) {
+      throw new Error('Âm lượng hiệu ứng phải nằm trong khoảng 0 đến 1');
+    }
+    for (const key of ['bgMusicEnabled', 'sfxEnabled']) {
+      if (params[key] !== undefined && typeof params[key] !== 'boolean') {
+        throw new Error(`Giá trị ${key} phải là true/false`);
+      }
+    }
+    if (params.sfx !== undefined) {
+      if (!params.sfx || typeof params.sfx !== 'object' || Array.isArray(params.sfx)) {
+        throw new Error('Cài đặt hiệu ứng âm thanh không hợp lệ');
+      }
+      const sfx = { ...state.settings.sfx };
+      for (const key of Object.keys(DEFAULT_STATE.settings.sfx)) {
+        if (params.sfx[key] !== undefined) {
+          if (typeof params.sfx[key] !== 'boolean') throw new Error(`Hiệu ứng ${key} phải là true/false`);
+          sfx[key] = params.sfx[key];
+        }
+      }
+      params = { ...params, sfx };
+    }
+    if (params.bgPlaylist !== undefined) {
+      // Nhận danh sách id (hoặc object có id) theo thứ tự phát; server tự tra đường dẫn từ thư viện nhạc
+      if (!Array.isArray(params.bgPlaylist)) throw new Error('Danh sách nhạc nền không hợp lệ');
+      const ids = params.bgPlaylist.map((x) => (typeof x === 'string' ? x : x?.id)).filter(Boolean);
+      if (ids.length > MAX_PLAYLIST) throw new Error(`Chỉ phát tối đa ${MAX_PLAYLIST} bài nhạc nền`);
+      if (new Set(ids).size !== ids.length) throw new Error('Một bài chỉ được chọn 1 lần trong danh sách phát');
+      const library = getMusicLibrary();
+      const resolved = ids.map((id) => {
+        const track = library.find((t) => t.id === id);
+        if (!track) throw new Error(`Không tìm thấy bài nhạc "${id}" trong thư viện`);
+        return { id: track.id, name: track.name, url: track.url };
+      });
+      params = { ...params, bgPlaylist: resolved };
+    }
     if (params.autoSimIntervalMs !== undefined &&
         (typeof params.autoSimIntervalMs !== 'number' || !Number.isFinite(params.autoSimIntervalMs) || params.autoSimIntervalMs < 2000)) {
       throw new Error('Chu kỳ giả lập phải là số mili-giây >= 2000');
     }
     // Chỉ nhận các khóa cài đặt hợp lệ, tránh client ghi đè rác vào state/merit-state.json
-    const ALLOWED_KEYS = ['ttsEnabled', 'ttsVoice', 'ttsVolume', 'musicVolume', 'bgMusicEnabled', 'sfxEnabled', 'smokeDensity', 'autoSim', 'autoSimIntervalMs'];
+    const ALLOWED_KEYS = [
+      'ttsEnabled', 'ttsVoice', 'ttsVolume',
+      'musicVolume', 'bgMusicEnabled', 'bgPlaylist',
+      'sfxEnabled', 'sfxVolume', 'sfx',
+      'smokeDensity', 'autoSim', 'autoSimIntervalMs'
+    ];
     const patch = {};
     for (const key of ALLOWED_KEYS) {
       if (params[key] !== undefined) patch[key] = params[key];
@@ -752,11 +846,481 @@ const Rituals = {
     state.offerings = { lotus: 1, fruit: 1, lamp: 1, dragon: 0 };
     state.devotees = {};
     state.recentEvents = [];
+    hall.clear();
+    hallWaiting.clear();
+    giftSession.clear();
+    engagement.clear();
+    giftFeed.length = 0;
     saveState();
     broadcastNotification('temple.state', getPublicState());
     return getPublicState();
   }
 };
+
+// ============================================================================
+// 4B. ĐẠO TRÀNG — MỖI NGƯỜI XEM TƯƠNG TÁC CÓ 1 PHẬT TỬ RIÊNG TRONG CHÁNH ĐIỆN
+// ============================================================================
+// Ai bình luận / thả tim / tặng quà / follow sẽ được "mời vào" đạo tràng và ngồi 1 chỗ có tên.
+// Không lưu xuống đĩa (chỉ sống trong phiên live).
+//
+// Sơ đồ ghế (dùng chung cho màn 2.5D và 3D):
+//   - Ghế 0..7  : HÀNG ĐẦU GIỮ CHỖ cho top 8 người tặng quà nhiều xu nhất trong buổi live.
+//                 Ghế 0 = chính giữa sát bàn thờ (hạng 1), càng lớn càng ra xa. Không bị mời ra khi im lặng/đầy chỗ.
+//   - Ghế 8..39 : chỗ thường, ghế 8 là chỗ dễ thấy nhất; im quá 10 phút tự rời.
+// Khi đông người (> 40):
+//   - Người mới chỉ được thay chỗ của người thường đã ngồi >= 90 giây VÀ im lặng >= 60 giây (ít tương tác nhất).
+//   - Không ai nhường được -> vào HÀNG CHỜ ngoài sân (không đá người đang tích cực).
+//   - Mỗi 5 giây mời tối đa 3 người chờ vào chỗ trống, ưu tiên người vừa tương tác gần nhất;
+//     chờ quá 3 phút không tương tác thì rời hàng chờ.
+// Hạng đài: 'normal' (đệm thường) | 'lotus' (đã tặng quà) | 'goldLotus' (tặng >= 100 xu trong buổi).
+const HALL_SEATS = 40;
+const HALL_VIP_SEATS = 8;
+const HALL_IDLE_MS = 10 * 60 * 1000;
+const GOLD_LOTUS_COINS = 100;
+const HALL_MIN_STAY_MS = 90 * 1000;
+const HALL_ACTIVE_GRACE_MS = 60 * 1000;
+const HALL_WAIT_IDLE_MS = 3 * 60 * 1000;
+const HALL_WAITING_MAX = 300;
+const HALL_WAITING_SHOWN = 16;
+const HALL_SEATINGS_PER_TICK = 3;
+const hall = new Map(); // uid -> { uid, name, avatar, seat, joinedAt, lastActive }
+const hallWaiting = new Map(); // uid -> { uid, name, avatar, since, lastActive } — hàng chờ ngoài sân
+const giftSession = new Map(); // uid -> { coins, firstGiftAt } — tổng xu đã tặng trong buổi live
+
+function hallTier(uid) {
+  const coins = giftSession.get(uid)?.coins || 0;
+  if (coins >= GOLD_LOTUS_COINS) return 'goldLotus';
+  if (coins > 0) return 'lotus';
+  return 'normal';
+}
+
+function getHallRoster() {
+  return Array.from(hall.values()).map(({ uid, name, avatar, seat }) => ({
+    uid,
+    name,
+    avatar,
+    seat,
+    tier: hallTier(uid),
+    giftCoins: giftSession.get(uid)?.coins || 0,
+    vipRank: seat < HALL_VIP_SEATS ? seat + 1 : 0
+  }));
+}
+
+// Hàng chờ hiển thị: những người vừa tương tác gần nhất (màn 3D cho họ đứng ngoài sân)
+function getHallWaiting() {
+  return Array.from(hallWaiting.values())
+    .sort((a, b) => b.lastActive - a.lastActive)
+    .slice(0, HALL_WAITING_SHOWN)
+    .map(({ uid, name, avatar }) => ({ uid, name, avatar, tier: hallTier(uid) }));
+}
+
+function getHallPayload() {
+  return { hall: getHallRoster(), waiting: getHallWaiting(), waitingCount: hallWaiting.size };
+}
+
+let hallBroadcastTimer = null;
+function scheduleHallBroadcast() {
+  if (hallBroadcastTimer) return;
+  hallBroadcastTimer = setTimeout(() => {
+    hallBroadcastTimer = null;
+    broadcastNotification('hall.roster', getHallPayload());
+  }, 250);
+}
+
+const isVipSeat = (seat) => seat >= 0 && seat < HALL_VIP_SEATS;
+
+// Tìm 1 chỗ thường: ưu tiên ghế trống; hết ghế thì mời 1 người thường đã ngồi đủ lâu và đang im lặng ra.
+// Không bao giờ đụng hàng giữ chỗ, không đá người vừa vào hoặc đang tích cực. Trả về -1 nếu không có chỗ.
+// CHEN HÀNG (force = người tặng quà): nếu vẫn không có chỗ, người CHƯA tặng quà im lặng lâu nhất
+// nhường ghế (bất kể vừa vào hay đang tích cực) và ra hàng chờ ngoài sân — không bị mất hẳn.
+function takeRegularSeat(exceptUid, { force = false } = {}) {
+  const taken = new Set(Array.from(hall.values(), (m) => m.seat));
+  for (let i = HALL_VIP_SEATS; i < HALL_SEATS; i++) {
+    if (!taken.has(i)) return i;
+  }
+  const now = Date.now();
+  let quietest = null;
+  for (const m of hall.values()) {
+    if (m.uid === exceptUid || isVipSeat(m.seat)) continue;
+    if (now - m.joinedAt < HALL_MIN_STAY_MS || now - m.lastActive < HALL_ACTIVE_GRACE_MS) continue;
+    if (!quietest || m.lastActive < quietest.lastActive) quietest = m;
+  }
+  if (quietest) {
+    hall.delete(quietest.uid);
+    return quietest.seat;
+  }
+  if (!force) return -1;
+  let bumped = null;
+  for (const m of hall.values()) {
+    if (m.uid === exceptUid || isVipSeat(m.seat) || giftSession.has(m.uid)) continue;
+    if (!bumped || m.lastActive < bumped.lastActive) bumped = m;
+  }
+  if (!bumped) return -1; // cả 32 chỗ thường đều là người đã tặng quà
+  hall.delete(bumped.uid);
+  addToWaiting(bumped.uid, bumped.name, bumped.avatar, bumped.lastActive);
+  return bumped.seat;
+}
+
+const isGifter = (uid) => giftSession.has(uid);
+
+function addToWaiting(uid, name, avatar, lastActive = Date.now()) {
+  const w = hallWaiting.get(uid);
+  if (w) {
+    w.lastActive = lastActive;
+    if (name) w.name = name;
+    if (avatar) w.avatar = avatar;
+    return w;
+  }
+  const entry = { uid, name: name || 'Thí Chủ', avatar: avatar || '', since: Date.now(), lastActive };
+  hallWaiting.set(uid, entry);
+  if (hallWaiting.size > HALL_WAITING_MAX) {
+    // Bỏ người chờ im lặng lâu nhất
+    let quietest = null;
+    for (const x of hallWaiting.values()) if (!quietest || x.lastActive < quietest.lastActive) quietest = x;
+    hallWaiting.delete(quietest.uid);
+  }
+  return entry;
+}
+
+function seatMember(uid, name, avatar, seat, lastActive = Date.now()) {
+  hallWaiting.delete(uid);
+  const member = { uid, name: name || 'Thí Chủ', avatar: avatar || '', seat, joinedAt: Date.now(), lastActive };
+  hall.set(uid, member);
+  scheduleHallBroadcast();
+  broadcastNotification('hall.action', { uid, action: 'join' });
+  return member;
+}
+
+// Xếp lại hàng đầu theo tổng xu tặng trong buổi: top 8 có mặt trong đạo tràng ngồi ghế 0..7
+function rebalanceVipSeats() {
+  // Người tặng quà đang ở hàng chờ cũng được xét: đủ hạng thì vào thẳng hàng đầu
+  for (const w of Array.from(hallWaiting.values())) {
+    if ((giftSession.get(w.uid)?.coins || 0) > 0) {
+      hall.set(w.uid, { uid: w.uid, name: w.name, avatar: w.avatar, seat: -3, joinedAt: Date.now(), lastActive: w.lastActive });
+    }
+  }
+  const ranked = Array.from(hall.values())
+    .filter((m) => (giftSession.get(m.uid)?.coins || 0) > 0)
+    .sort((a, b) => {
+      const ga = giftSession.get(a.uid);
+      const gb = giftSession.get(b.uid);
+      return gb.coins - ga.coins || ga.firstGiftAt - gb.firstGiftAt;
+    })
+    .slice(0, HALL_VIP_SEATS);
+  const vipUids = new Set(ranked.map((m) => m.uid));
+  let changed = false;
+
+  // 1. Ai rơi khỏi top 8 thì xuống chỗ thường
+  for (const m of hall.values()) {
+    if (isVipSeat(m.seat) && !vipUids.has(m.uid)) {
+      m.seat = -1;
+      changed = true;
+    }
+  }
+  // 2. Top 8 vào đúng ghế theo hạng (tạm bỏ ghế cũ trước để không trùng chỗ)
+  const promoted = [];
+  ranked.forEach((m, rank) => {
+    if (m.seat !== rank) {
+      if (!isVipSeat(m.seat)) promoted.push(m.uid);
+      m.seat = -2;
+      changed = true;
+    }
+  });
+  ranked.forEach((m, rank) => {
+    if (m.seat === -2) m.seat = rank;
+  });
+  // Người chờ tặng quà nhưng chưa đủ hạng hàng đầu -> trở lại hàng chờ (seat -3 chưa được xếp)
+  for (const m of Array.from(hall.values())) {
+    if (m.seat === -3) {
+      hall.delete(m.uid);
+    } else if (vipUids.has(m.uid) && hallWaiting.has(m.uid)) {
+      hallWaiting.delete(m.uid);
+      broadcastNotification('hall.action', { uid: m.uid, action: 'join' });
+    }
+  }
+  // 3. Người vừa rời hàng đầu nhận chỗ thường; hết chỗ thì ra hàng chờ (không mất hẳn)
+  for (const m of Array.from(hall.values())) {
+    if (m.seat === -1) {
+      const seat = takeRegularSeat(m.uid, { force: true }); // người rời top 8 cũng là người đã tặng quà
+      if (seat === -1) {
+        hall.delete(m.uid);
+        addToWaiting(m.uid, m.name, m.avatar, m.lastActive);
+      } else {
+        m.seat = seat;
+      }
+    }
+  }
+  if (changed) scheduleHallBroadcast();
+  for (const uid of promoted) {
+    broadcastNotification('hall.action', { uid, action: 'promote', text: '' });
+  }
+}
+
+function hallTouch(uid, name, avatar) {
+  if (!uid) return null;
+  const now = Date.now();
+  const existing = hall.get(uid);
+  if (!existing && hallWaiting.has(uid)) {
+    // Đang chờ: chỉ cập nhật lần tương tác (để được ưu tiên mời vào); thử lấy chỗ ngay nếu có
+    addToWaiting(uid, name, avatar, now);
+    const seat = takeRegularSeat(uid, { force: isGifter(uid) });
+    if (seat !== -1) {
+      const member = seatMember(uid, name || hallWaiting.get(uid)?.name, avatar, seat, now);
+      if (isGifter(uid)) rebalanceVipSeats();
+      return member;
+    }
+    return null;
+  }
+  if (existing) {
+    existing.lastActive = now;
+    let changed = false;
+    if (name && existing.name !== name) { existing.name = name; changed = true; }
+    if (avatar && existing.avatar !== avatar) { existing.avatar = avatar; changed = true; }
+    if (changed) scheduleHallBroadcast();
+    return existing;
+  }
+
+  const seat = takeRegularSeat(uid, { force: isGifter(uid) });
+  if (seat === -1) {
+    // Đạo tràng đầy người đang tích cực -> xếp hàng chờ ngoài sân
+    const isNew = !hallWaiting.has(uid);
+    addToWaiting(uid, name, avatar, now);
+    if (giftSession.has(uid)) rebalanceVipSeats();
+    if (isNew) scheduleHallBroadcast();
+    return null;
+  }
+  const member = seatMember(uid, name, avatar, seat, now);
+  // Người từng tặng quà trong buổi quay lại -> lấy lại hàng đầu nếu đủ hạng
+  if (giftSession.has(uid)) rebalanceVipSeats();
+  return member;
+}
+
+// ----------------------------------------------------------------------------
+// BẢNG THÔNG BÁO DÂNG LỄ: các món quà gần nhất trong buổi live (màn 3D hiện bảng + băng rôn,
+// thông báo quà luôn chen trước các thông báo khác). Không lưu xuống đĩa.
+// ----------------------------------------------------------------------------
+const GIFT_FEED_MAX = 8;
+const giftFeed = [];
+function pushGiftFeed(devotee, giftName, coins, merit, giftType) {
+  const entry = {
+    id: `gift_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    at: Date.now(),
+    uid: devotee.uniqueId,
+    user: devotee.name,
+    avatar: devotee.avatar || '',
+    giftName,
+    giftType,
+    coins,
+    merit,
+    sessionCoins: giftSession.get(devotee.uniqueId)?.coins || coins,
+    tier: hallTier(devotee.uniqueId),
+    vipRank: (() => {
+      const m = hall.get(devotee.uniqueId);
+      return m && m.seat < HALL_VIP_SEATS ? m.seat + 1 : 0;
+    })(),
+    // big = quà lớn (>= 100 xu): băng rôn to + thời gian hiện lâu hơn
+    big: coins >= GOLD_LOTUS_COINS
+  };
+  giftFeed.unshift(entry);
+  if (giftFeed.length > GIFT_FEED_MAX) giftFeed.length = GIFT_FEED_MAX;
+  return entry;
+}
+
+// Gọi sau mỗi lần tặng quà (Rituals.offerGift)
+function hallRecordGift(uid, coins) {
+  if (!uid || !(coins > 0)) return;
+  const entry = giftSession.get(uid) || { coins: 0, firstGiftAt: Date.now() };
+  const before = hallTier(uid);
+  entry.coins += coins;
+  giftSession.set(uid, entry);
+  if (giftSession.size > 2000) giftSession.delete(giftSession.keys().next().value);
+  rebalanceVipSeats();
+  if (hallTier(uid) !== before) scheduleHallBroadcast(); // đổi đệm -> đài sen / đài sen vàng
+}
+
+function hallTick() {
+  const now = Date.now();
+  let changed = false;
+  for (const [uid, m] of hall) {
+    // Người đang giữ chỗ hàng đầu không bị mời ra dù im lặng
+    if (!isVipSeat(m.seat) && now - m.lastActive > HALL_IDLE_MS) { hall.delete(uid); changed = true; }
+  }
+  for (const [uid, w] of hallWaiting) {
+    if (now - w.lastActive > HALL_WAIT_IDLE_MS) { hallWaiting.delete(uid); changed = true; }
+  }
+  // Mời người chờ vào (người vừa tương tác gần nhất trước), tối đa vài người mỗi lượt cho mượt
+  // Người tặng quà được mời vào trước, sau đó tới người vừa tương tác gần nhất
+  const queue = Array.from(hallWaiting.values())
+    .sort((a, b) => (isGifter(b.uid) - isGifter(a.uid)) || (b.lastActive - a.lastActive));
+  let seated = 0;
+  for (const w of queue) {
+    if (seated >= HALL_SEATINGS_PER_TICK) break;
+    const seat = takeRegularSeat(w.uid, { force: isGifter(w.uid) });
+    if (seat === -1) {
+      if (isGifter(w.uid)) continue;
+      break;
+    }
+    seatMember(w.uid, w.name, w.avatar, seat, w.lastActive);
+    seated += 1;
+    changed = true;
+  }
+  if (changed) scheduleHallBroadcast();
+}
+setInterval(hallTick, 5000).unref?.();
+
+function hallAction(uid, action, text = '', who = {}) {
+  if (!uid) return;
+  const member = hall.get(uid);
+  const isVip = member && member.seat >= 0 && member.seat < HALL_VIP_SEATS;
+  if (!isVip && !takeActionToken(action === 'say' ? 'say' : 'other')) return; // quá tải -> bỏ bớt
+  const status = hallStatusOf(uid);
+  const payload = { uid, action, text: String(text || '').slice(0, 80) };
+  if (status === 'guest') {
+    // Khách chưa có ghế: màn 3D hiện họ đứng ở sân trước cổng vài giây
+    Object.assign(payload, { guest: true, name: who.name || 'Thí Chủ', avatar: who.avatar || '' });
+  }
+  broadcastNotification('hall.action', payload);
+}
+
+// ----------------------------------------------------------------------------
+// QUY TẮC XUẤT HIỆN NHÂN VẬT (khi đông người)
+// ----------------------------------------------------------------------------
+// Tầng 1 — Khách xem: chỉ vào live / chỉ thả tim -> KHÔNG có nhân vật riêng.
+//          Vào live: thỉnh thoảng được chọn đi ngang sân kèm tên ('hall.arrive', tối đa 1 người / 3 giây).
+// Tầng 2 — Khách hành hương: làm nghi thức / bình luận nhưng chưa đủ điều kiện có ghế
+//          -> sự kiện mang hallStatus 'guest': màn 3D cho đi từ cổng vào làm lễ rồi đi ra (không ngồi);
+//             bình luận/lệnh của khách hiện ở sân trước cổng ('hall.action' có guest: true).
+// Tầng 3 — Phật tử Đạo Tràng (có ghế): tặng quà bất kỳ (vào ngay, ngồi đài sen) HOẶC tương tác
+//          >= 3 lần trong 5 phút (thả tim tính tối đa 1 lần / phút). Hết ghế -> hàng chờ ngoài sân.
+const SEAT_MIN_INTERACTIONS = 3;
+const SEAT_WINDOW_MS = 5 * 60 * 1000;
+const LIKE_COUNT_EVERY_MS = 60 * 1000;
+const engagement = new Map(); // uid -> { times: number[], lastLikeCountedAt }
+
+function hallStatusOf(uid) {
+  if (hall.has(uid)) return 'seated';
+  if (hallWaiting.has(uid)) return 'waiting';
+  return 'guest';
+}
+
+// kind: 'comment' | 'ritual' | 'like' | 'gift'
+function hallEngage(uid, name, avatar, kind) {
+  if (!uid) return 'guest';
+  const now = Date.now();
+  if (hall.has(uid) || hallWaiting.has(uid)) {
+    hallTouch(uid, name, avatar);
+    return hallStatusOf(uid);
+  }
+  let e = engagement.get(uid);
+  if (!e) {
+    e = { times: [], lastLikeCountedAt: 0 };
+    engagement.set(uid, e);
+    if (engagement.size > 5000) engagement.delete(engagement.keys().next().value);
+  }
+  e.times = e.times.filter((t) => now - t < SEAT_WINDOW_MS);
+  if (kind === 'like') {
+    if (now - e.lastLikeCountedAt >= LIKE_COUNT_EVERY_MS) {
+      e.lastLikeCountedAt = now;
+      e.times.push(now);
+    }
+  } else {
+    e.times.push(now);
+  }
+  if (kind === 'gift' || e.times.length >= SEAT_MIN_INTERACTIONS) {
+    engagement.delete(uid);
+    hallTouch(uid, name, avatar); // có ghế ngay, hoặc vào hàng chờ nếu đầy
+  }
+  return hallStatusOf(uid);
+}
+
+// ----------------------------------------------------------------------------
+// ĐIỀU PHỐI GIỌNG ĐỌC: không để hàng đợi TTS dồn ứ khi nhiều người tương tác liên tục.
+// Server ước lượng độ dài hàng đợi (giây); câu ưu tiên thấp được rút gọn hoặc bỏ qua khi hàng đợi dài.
+// Ưu tiên: 3 tặng quà > 2 xin xăm > 1 cầu nguyện / thỉnh chuông > 0 thắp hương.
+// ----------------------------------------------------------------------------
+const TTS_MAX_BACKLOG_SEC = [20, 28, 40, 90]; // theo ưu tiên 0..3
+let ttsBusyUntil = 0;
+
+function estimateSpeechSec(text) {
+  return 1.2 + String(text || '').length / 14;
+}
+
+// Trả về câu sẽ đọc ('' = không đọc). shortText: bản rút gọn dùng khi hàng đợi đã dài.
+// jump = CHEN HÀNG (tặng quà): luôn đọc, client chèn lên đầu hàng đợi (ngay sau câu đang đọc dở).
+// Khi hàng đợi đã rất dài thì dùng bản rút gọn để người phía sau không phải đợi quá lâu.
+function planSpeech(fullText, priority, shortText = '', { jump = false } = {}) {
+  if (!fullText) return '';
+  const now = Date.now();
+  if (jump) {
+    const backlogNow = Math.max(0, (ttsBusyUntil - now) / 1000);
+    const text = backlogNow > 45 && shortText ? shortText : fullText;
+    ttsBusyUntil = Math.max(ttsBusyUntil, now) + (estimateSpeechSec(text) + 0.25) * 1000;
+    return text;
+  }
+  const backlog = Math.max(0, (ttsBusyUntil - now) / 1000);
+  const limit = TTS_MAX_BACKLOG_SEC[priority] ?? 12;
+  for (const text of [fullText, shortText]) {
+    if (!text) continue;
+    if (backlog + estimateSpeechSec(text) <= limit) {
+      ttsBusyUntil = now + (backlog + estimateSpeechSec(text) + 0.25) * 1000;
+      return text;
+    }
+  }
+  return '';
+}
+
+// Giới hạn số bong bóng / động tác phát ra mỗi giây để màn hình không rối khi bình luận dồn dập.
+// Người ngồi hàng đầu (đã tặng quà) luôn được hiển thị.
+const ACTION_RATE = { say: 3, other: 6 }; // mỗi giây
+const actionBuckets = { say: { tokens: 3, at: Date.now() }, other: { tokens: 6, at: Date.now() } };
+function takeActionToken(kind) {
+  const b = actionBuckets[kind];
+  const rate = ACTION_RATE[kind];
+  const now = Date.now();
+  b.tokens = Math.min(rate, b.tokens + ((now - b.at) / 1000) * rate);
+  b.at = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+
+// Người vừa vào live (tầng 1): chọn mẫu tối đa 1 người / 3 giây để đi ngang sân kèm tên
+const ARRIVE_EVERY_MS = 3000;
+let lastArriveAt = 0;
+let arrivalsSinceLast = 0;
+function hallArrive(uid, name, avatar) {
+  if (!uid || hall.has(uid) || hallWaiting.has(uid)) return;
+  arrivalsSinceLast += 1;
+  const now = Date.now();
+  if (now - lastArriveAt < ARRIVE_EVERY_MS) return;
+  lastArriveAt = now;
+  broadcastNotification('hall.arrive', {
+    uid,
+    name: sanitizeUserName(name),
+    avatar: avatar || '',
+    // số người vào live kể từ lần chọn trước (để hiện "+N người vừa vào chùa")
+    count: arrivalsSinceLast
+  });
+  arrivalsSinceLast = 0;
+}
+
+// Bình luận thường (+1 CĐ) không phát temple.event -> gom lại phát temple.state tối đa 1 lần / 2 giây
+let stateBroadcastTimer = null;
+function scheduleStateBroadcast() {
+  if (stateBroadcastTimer) return;
+  stateBroadcastTimer = setTimeout(() => {
+    stateBroadcastTimer = null;
+    broadcastNotification('temple.state', getPublicState());
+  }, 2000);
+}
+
+// Lệnh ngắn điều khiển Phật tử của chính mình (không đọc TTS, không chiếm sân khấu chính)
+const HALL_COMMANDS = [
+  { action: 'bow', re: /(^|\s)(lạy|lay|lễ phật|le phat|đảnh lễ|danh le)(\s|$)/ },
+  { action: 'greet', re: /(^|\s)(chào|chao|hello|hi|xin chào|xin chao)(\s|$)/ },
+  { action: 'chant', re: /(niệm phật|niem phat|a di đà|a di da|nam mô|nam mo|mô phật|mo phat)/ }
+];
+const SHORT_COMMAND_MAX_WORDS = 4;
 
 // ============================================================================
 // 5. TIKTOK LIVE CONNECTOR & COMMENT PARSER
@@ -776,23 +1340,43 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     return null;
   }
 
-  // Chống 1 người spam bình luận liên tục làm nghẽn hàng đợi TTS (cooldown 3.5 giây/người)
-  const userKey = uniqueId || user || '';
-  const now = Date.now();
-  if (userKey) {
-    const lastTs = commentCooldownMap.get(userKey) || 0;
-    if (now - lastTs < 3500) {
-      return null;
-    }
-    commentCooldownMap.set(userKey, now);
-    if (commentCooldownMap.size > 600) {
-      const oldestKey = commentCooldownMap.keys().next().value;
-      commentCooldownMap.delete(oldestKey);
-    }
-  }
-
   const cleanUser = sanitizeUserName(user);
   const lower = cleanWish.toLowerCase();
+  const userKey = uniqueId || user || '';
+  const now = Date.now();
+
+  // Chống spam: nghi thức lớn (có TTS) 3.5 giây/người; lệnh/bong bóng nhẹ 1.2 giây/người
+  const passCooldown = (ms) => {
+    if (!userKey) return true;
+    const lastTs = commentCooldownMap.get(userKey) || 0;
+    if (now - lastTs < ms) return false;
+    commentCooldownMap.delete(userKey); // xóa rồi set lại để Map giữ thứ tự "mới dùng gần nhất"
+    commentCooldownMap.set(userKey, now);
+    if (commentCooldownMap.size > 600) {
+      commentCooldownMap.delete(commentCooldownMap.keys().next().value);
+    }
+    return true;
+  };
+  const isRitual =
+    /xin xăm|xin xam|gieo quẻ|gieo que|rút quẻ|rut que|quẻ|chuông|chuong|gõ mõ|go mo|tụng kinh|thắp hương|thap huong|dâng hương|dang huong|bái phật|bai phat/.test(lower) ||
+    /(^|\s)que(\s|$)/.test(lower);
+  const wordCount = lower.split(/\s+/).filter(Boolean).length;
+  const command = !isRitual && wordCount <= SHORT_COMMAND_MAX_WORDS
+    ? HALL_COMMANDS.find((c) => c.re.test(lower))
+    : null;
+
+  if (!isRitual && (command || !isPrayerText(lower))) {
+    // Lệnh ngắn hoặc bình luận thường: chỉ Phật tử của người đó cử động / hiện bong bóng, +1 Công Đức
+    if (!passCooldown(1200)) return null;
+    const dev = recordDevotee(cleanUser, uniqueId, avatar, 1, 0, 0);
+    hallEngage(dev.uniqueId, dev.name, dev.avatar, 'comment');
+    hallAction(dev.uniqueId, command ? command.action : 'say', cleanWish, dev);
+    saveState();
+    scheduleStateBroadcast(); // để Bảng Công Đức / tổng công đức cập nhật cả khi chỉ bình luận thường
+    return { hall: { uid: dev.uniqueId, action: command ? command.action : 'say', text: cleanWish } };
+  }
+
+  if (!passCooldown(3500)) return null;
 
   // 1. Xin xăm / Gieo quẻ
   if (
@@ -825,15 +1409,17 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('dâng hương') ||
     lower.includes('dang huong') ||
     lower.includes('bái phật') ||
-    lower.includes('bai phat') ||
-    lower.includes('lạy phật') ||
-    lower.includes('lay phat')
+    lower.includes('bai phat')
   ) {
     return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 3, wish: cleanWish });
   }
 
-  // 5. Cầu nguyện / Thả đèn hoa đăng
-  if (
+  // 5. Lời cầu nguyện dài -> Thả đèn hoa đăng + đọc TTS
+  return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
+}
+
+function isPrayerText(lower) {
+  return (
     lower.includes('cầu') ||
     lower.includes('cau ') ||
     lower.includes('nguyện') ||
@@ -847,11 +1433,7 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('bình an') ||
     lower.includes('tài lộc') ||
     lower.includes('chúc')
-  ) {
-    return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
-  }
-
-  return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 1, wish: cleanWish });
+  );
 }
 
 const giftComboTracker = new Map();
@@ -963,9 +1545,11 @@ async function connectTikTokLive(usernameOrUrl) {
   on(WebcastEvent.MEMBER, (data) => {
     // Chỉ cập nhật avatar cho người đã có trên bảng; KHÔNG cộng công đức / tạo mục mới cho mỗi lượt vào phòng
     // (trước đây mỗi người xem lướt qua đều +1 CĐ, làm Bảng Vàng phình to vô hạn và sai lệch)
-    const { uniqueId, avatar } = extractUserFromEvent(data);
+    const { user, uniqueId, avatar } = extractUserFromEvent(data);
     const existing = uniqueId && state.devotees[uniqueId.slice(0, 40)];
     if (existing && avatar) existing.avatar = avatar;
+    // Tầng 1: người chỉ vào xem live không có ghế; thỉnh thoảng được chọn đi ngang sân kèm tên
+    hallArrive(existing?.uniqueId || uniqueId, user, avatar);
   });
 
   on(WebcastEvent.CHAT, (data) => {
@@ -1094,11 +1678,30 @@ const SIM_DEVOTEES = [
   { user: 'Diệu Thảo Tâm An', uniqueId: 'tam_an_99', wish: 'Nam Mô A Di Đà Phật, nguyện cầu thế giới hòa bình chúng sinh an lạc' },
   { user: 'Lê Hoàng Nam', uniqueId: 'hoangnam.dev', wish: 'Cầu thi cử đỗ đạt điểm cao, sự nghiệp rộng mở' },
   { user: 'Phạm Thanh Hà', uniqueId: 'thanhha.lotus', wish: 'Cầu gia đạo êm ấm, con cái ngoan ngoãn học giỏi' },
-  { user: 'Vũ Đức Thịnh', uniqueId: 'ducthinh88', wish: 'Con xin gieo một quẻ cầu tài lộc đầu năm' }
+  { user: 'Vũ Đức Thịnh', uniqueId: 'ducthinh88', wish: 'Con xin gieo một quẻ cầu tài lộc đầu năm' },
+  { user: 'Hoàng Bảo Ngọc', uniqueId: 'baongoc.hb', wish: 'Cầu cho mẹ mau khỏe lại' },
+  { user: 'Đỗ Gia Huy', uniqueId: 'giahuy_do', wish: 'Cầu năm nay đi làm thuận lợi' },
+  { user: 'Bùi Thu Trang', uniqueId: 'thutrang.bui', wish: 'Cầu gia đình luôn hạnh phúc' },
+  { user: 'Ngô Minh Khang', uniqueId: 'khang.ngo', wish: 'Cầu thi đậu đại học' }
 ];
+const SIM_SHORT_COMMENTS = ['lạy', 'chào cả nhà', 'a di đà phật', 'niệm phật', 'lạy phật', 'chùa đẹp quá', 'hi mọi người'];
+const SIM_JOIN_NAMES = ['Lan Anh', 'Minh Tuấn', 'Thảo Vy', 'Quốc Bảo', 'Ngọc Hân', 'Đức Anh', 'Kim Ngân', 'Hải Đăng', 'Phương Thảo', 'Gia Bảo', 'Tâm An', 'Thiện Nhân'];
 
 function runSingleSimulationStep() {
   const pick = SIM_DEVOTEES[Math.floor(Math.random() * SIM_DEVOTEES.length)];
+  // Tầng 1: vài người xem mới vào live (không bình luận) -> đi ngang sân kèm tên
+  const joins = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < joins; i++) {
+    const name = SIM_JOIN_NAMES[Math.floor(Math.random() * SIM_JOIN_NAMES.length)];
+    setTimeout(() => hallArrive(`sim_join_${Math.random().toString(36).slice(2, 8)}`, name, ''), 300 + i * 3100);
+  }
+  // Phần lớn người xem thật chỉ gõ lệnh ngắn -> mô phỏng vài lệnh/bong bóng trước mỗi nghi thức
+  const chatters = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < chatters; i++) {
+    const who = SIM_DEVOTEES[Math.floor(Math.random() * SIM_DEVOTEES.length)];
+    const text = SIM_SHORT_COMMENTS[Math.floor(Math.random() * SIM_SHORT_COMMENTS.length)];
+    setTimeout(() => parseViewerComment(text, who.user, who.uniqueId, ''), 600 + i * 1700);
+  }
   const roll = Math.random();
   if (roll < 0.30) {
     Rituals.burnIncense({ user: pick.user, uniqueId: pick.uniqueId, count: 3, wish: pick.wish });
@@ -1169,6 +1772,10 @@ async function handleRpcCall(method, params = {}) {
       return await connectTikTokLive(params.username);
     case 'live.disconnect':
       return disconnectTikTokLive();
+    case 'live.simulateJoin':
+      // Giả lập 1 người xem vừa vào live (sự kiện MEMBER của TikTok) để thử hall.arrive
+      hallArrive(params.uniqueId || `sim_join_${Date.now().toString(36)}`, params.user || 'Thí Chủ', params.avatar || '');
+      return { ok: true };
     case 'live.setAutoSim':
       configureAutoSim(Boolean(params.enabled));
       saveState();
@@ -1204,10 +1811,130 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use('/tts-cache', express.static(TTS_CACHE_DIR, { maxAge: '7d' }));
+app.use('/music', express.static(MUSIC_DIR, { maxAge: '1d' }));
 app.use(express.static(path.join(__dirname, 'public')));
+// Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
+app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
+// Addons của Three.js (RoomEnvironment...) cho trang Chánh Điện 3D — nạp qua importmap "three"
+app.use('/vendor/three-addons', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'), { maxAge: '7d' }));
 
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ============================================================================
+// THƯ VIỆN NHẠC NỀN (tải lên từ trang Admin, lưu ở data/music/)
+// ============================================================================
+const MAX_PLAYLIST = 3;
+const MAX_LIBRARY = 30;
+const DEFAULT_TRACK = { id: 'default', name: 'Nam Mô A Di Đà Phật (mặc định)', url: '/assets/bg_chant.m4a', builtin: true };
+const MUSIC_TYPES = {
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/m4a': 'm4a',
+  'audio/aac': 'aac',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/webm': 'webm',
+  'audio/flac': 'flac'
+};
+const MUSIC_EXTS = new Set(Object.values(MUSIC_TYPES));
+
+function readUploadedTracks() {
+  try {
+    const list = JSON.parse(fs.readFileSync(MUSIC_LIBRARY_FILE, 'utf8'));
+    return Array.isArray(list) ? list.filter((t) => t && t.id && t.file && fs.existsSync(path.join(MUSIC_DIR, t.file))) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeUploadedTracks(list) {
+  fs.writeFileSync(MUSIC_LIBRARY_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
+function getMusicLibrary() {
+  return [DEFAULT_TRACK, ...readUploadedTracks()];
+}
+
+function cleanTrackName(raw, fallback) {
+  const name = String(raw || '')
+    .normalize('NFC')
+    .replace(/[\u0000-\u001f<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  return name || fallback;
+}
+
+// Tải lên 1 file nhạc: POST /api/music?name=<tên hiển thị>, body = nội dung file (Content-Type: audio/*),
+// header X-File-Name = tên file gốc (encodeURIComponent) để đoán đuôi file khi trình duyệt không gửi đúng MIME.
+app.post('/api/music', express.raw({ type: () => true, limit: '40mb' }), (req, res) => {
+  try {
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 1024) {
+      return res.status(400).json({ ok: false, error: 'File nhạc trống hoặc quá nhỏ' });
+    }
+    const uploaded = readUploadedTracks();
+    if (uploaded.length >= MAX_LIBRARY) {
+      return res.status(400).json({ ok: false, error: `Thư viện đã đủ ${MAX_LIBRARY} bài, hãy xóa bớt trước khi tải thêm` });
+    }
+    let originalName = '';
+    try {
+      originalName = decodeURIComponent(String(req.headers['x-file-name'] || ''));
+    } catch (_) {}
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    let ext = MUSIC_TYPES[mime];
+    if (!ext) {
+      const fromName = path.extname(originalName).slice(1).toLowerCase();
+      ext = MUSIC_EXTS.has(fromName) ? fromName : fromName === 'mp4' ? 'm4a' : '';
+    }
+    if (!ext) {
+      return res.status(400).json({ ok: false, error: 'Chỉ nhận file âm thanh mp3, m4a, aac, ogg, wav, webm, flac' });
+    }
+    const id = `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const file = `${id}.${ext}`;
+    fs.writeFileSync(path.join(MUSIC_DIR, file), body);
+    const track = {
+      id,
+      name: cleanTrackName(req.query?.name, cleanTrackName(path.basename(originalName, path.extname(originalName)), 'Nhạc nền')),
+      file,
+      url: `/music/${file}`,
+      size: body.length,
+      uploadedAt: new Date().toISOString()
+    };
+    writeUploadedTracks([...uploaded, track]);
+    res.json({ ok: true, track, library: getMusicLibrary() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || 'Không lưu được file nhạc' });
+  }
+});
+
+app.get('/api/music', (_req, res) => {
+  res.json({ ok: true, library: getMusicLibrary(), maxPlaylist: MAX_PLAYLIST });
+});
+
+// Xóa 1 bài khỏi thư viện (bài mặc định không xóa được); nếu đang nằm trong danh sách phát thì gỡ ra luôn
+app.delete('/api/music/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  const uploaded = readUploadedTracks();
+  const track = uploaded.find((t) => t.id === id);
+  if (!track) return res.status(404).json({ ok: false, error: 'Không tìm thấy bài nhạc' });
+  try {
+    fs.unlinkSync(path.join(MUSIC_DIR, track.file));
+  } catch (_) {}
+  writeUploadedTracks(uploaded.filter((t) => t.id !== id));
+  const playlist = (state.settings.bgPlaylist || []).filter((t) => t.id !== id);
+  if (playlist.length !== (state.settings.bgPlaylist || []).length) {
+    state.settings = { ...state.settings, bgPlaylist: playlist };
+    saveState();
+    broadcastNotification('temple.state', getPublicState());
+  }
+  res.json({ ok: true, library: getMusicLibrary(), settings: state.settings });
 });
 
 // HTTP JSON-RPC 2.0 Endpoint

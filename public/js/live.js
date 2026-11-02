@@ -407,8 +407,8 @@
     } else {
       liveDot.classList.remove('connected');
       liveText.textContent = st.settings?.autoSim
-        ? 'CHÙA LINH ỨNG • TỰ ĐỘNG GIẢ LẬP ĐÔNG NGƯỜI'
-        : 'CHÙA LINH ỨNG • ĐỨC PHẬT A DI ĐÀ';
+        ? 'CHÙA THIÊN MỤ • TỰ ĐỘNG GIẢ LẬP ĐÔNG NGƯỜI'
+        : 'CHÙA THIÊN MỤ • ĐỨC PHẬT A DI ĐÀ';
     }
 
     const btnAutoSim = document.getElementById('btnToggleAutoSim');
@@ -419,6 +419,13 @@
       btnAutoSim.classList.toggle('active-toggle', Boolean(st.settings.autoSim));
     }
     if (st.settings) {
+      // Nhạc nền (danh sách phát), hiệu ứng âm thanh, giọng đọc — cài đặt ở trang Admin
+      audio.applySettings(st.settings);
+      const btnMusic = document.getElementById('btnToggleMusic');
+      if (btnMusic) {
+        btnMusic.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;
+        btnMusic.classList.toggle('active-toggle', audio.bgMusicEnabled);
+      }
       if (typeof st.settings.ttsEnabled === 'boolean') {
         audio.ttsEnabled = st.settings.ttsEnabled;
         const btnTts = document.getElementById('btnToggleTts');
@@ -796,15 +803,12 @@
   });
 
   document.getElementById('btnToggleMusic')?.addEventListener('click', (e) => {
-    audio.bgMusicEnabled = !audio.bgMusicEnabled;
-    if (audio.bgMusicEnabled) {
-      audio.startZenAmbience();
-    } else {
-      audio.stopZenAmbience();
-    }
+    audio.setMusicEnabled(!audio.bgMusicEnabled);
     const btn = e.currentTarget;
     btn.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;
     btn.classList.toggle('active-toggle', audio.bgMusicEnabled);
+    // Lưu lên server để đồng bộ với trang Admin và màn OBS
+    callRpc('temple.updateSettings', { bgMusicEnabled: audio.bgMusicEnabled });
   });
 
   // Khởi tạo và gắn sự kiện thanh trượt chỉnh âm lượng Nhạc nền & Giọng đọc

@@ -4,6 +4,9 @@
   --lacquer-deep: #3d0a07;
   --gold: #f2c35b;
   --gold-soft: #ffe2a0;
+  --gold-bright: #ffe89e;
+  --gold-main: #f4c150;
+  --muted-gold: #d8be92;
   --ivory: #fff6e2;
   --lam: #6f8ba4;
   --ink: #2a120c;
@@ -310,8 +313,9 @@ body.obs-mode .quick-dock { display: none !important; }
   text-align: center;
   font-family: 'Noto Serif', serif;
   font-weight: 900;
-  font-size: 24px;
-  letter-spacing: 0.5px;
+  font-size: 20px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
   color: var(--gold-soft);
   padding: 8px 0 6px;
   border-bottom: 1px solid rgba(242, 195, 91, 0.35);
@@ -403,6 +407,7 @@ body.obs-mode .quick-dock { display: none !important; }
 .merit-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .merit-val { flex: none; color: var(--gold-soft); font-weight: 800; font-size: 19px; }
 .merit-empty { font-size: 18px !important; color: #e8cfa8; line-height: 1.35; }
+.merit-list li.merit-empty, .gift-list li.gift-empty { display: block; text-align: center; border-bottom: none; padding: 10px 4px; }
 
 /* Đại lễ */
 .grand-banner {
@@ -542,6 +547,7 @@ body.obs-mode .quick-dock { display: none !important; }
 .gift-banner.big { border-width: 4px; box-shadow: 0 0 70px rgba(255, 210, 100, 0.95); }
 .gift-banner-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 3px solid #fff1c0; background: #6f8ba4; flex: none; }
 .gift-banner-title { font-family: 'Noto Serif', serif; font-weight: 900; font-size: 34px; color: #fff4c8; text-shadow: 0 2px 6px rgba(60, 20, 0, 0.8); white-space: nowrap; }
+.gift-banner-text { display: flex; flex-direction: column; min-width: 0; }
 .gift-banner-sub { font-size: 23px; font-weight: 700; color: #ffe6a8; }
 
 .toast-stack {
@@ -575,3 +581,186 @@ body.obs-mode .quick-dock { display: none !important; }
 
 .status-pill, .hud-counts { white-space: nowrap; flex-shrink: 0; }
 .hud-counts span { white-space: nowrap; }
+
+
+/* ==========================================================================
+   BẢNG ĐIỀU KHIỂN NHANH BÊN CẠNH MÀN HÌNH LIVE (QUICK RPC DOCK)
+   ========================================================================== */
+.quick-dock {
+  width: 390px;
+  max-height: 96vh;
+  overflow-y: auto;
+  background: #180605;
+  border: 1.5px solid rgba(242, 195, 91, 0.45);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.quick-dock::-webkit-scrollbar,
+.event-feed::-webkit-scrollbar {
+  width: 6px;
+}
+.quick-dock::-webkit-scrollbar-track,
+.event-feed::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+.quick-dock::-webkit-scrollbar-thumb,
+.event-feed::-webkit-scrollbar-thumb {
+  background: rgba(242, 195, 91, 0.25);
+  border-radius: 3px;
+}
+.quick-dock::-webkit-scrollbar-thumb:hover,
+.event-feed::-webkit-scrollbar-thumb:hover {
+  background: rgba(242, 195, 91, 0.5);
+}
+
+.dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(242, 195, 91, 0.25);
+  padding-bottom: 12px;
+}
+.dock-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--gold-bright);
+  white-space: nowrap;
+}
+.dock-link {
+  font-size: 12px;
+  color: var(--gold-main);
+  text-decoration: none;
+  border: 1px solid rgba(242, 195, 91, 0.4);
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.2s, border-color 0.2s;
+  user-select: none;
+  white-space: nowrap;
+}
+.dock-link:hover {
+  background: rgba(242, 195, 91, 0.15);
+  border-color: var(--gold);
+}
+.dock-section {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(242, 195, 91, 0.2);
+  border-radius: 14px;
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dock-section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted-gold);
+}
+.dock-input-row {
+  display: flex;
+  gap: 8px;
+}
+.dock-input {
+  flex: 1;
+  min-width: 0;
+  background: #0f0403;
+  border: 1px solid rgba(242, 195, 91, 0.38);
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--ivory);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dock-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 6px rgba(242, 195, 91, 0.35);
+}
+.dock-btn {
+  cursor: pointer;
+  border: 1px solid rgba(242, 195, 91, 0.5);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #6e140e 0%, #420a07 100%);
+  color: var(--gold-bright);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: filter 0.2s, transform 0.1s;
+  user-select: none;
+}
+.dock-btn:hover {
+  filter: brightness(1.12);
+}
+.dock-btn:active {
+  transform: scale(0.98);
+}
+.dock-btn.gold {
+  background: linear-gradient(180deg, #f4c150 0%, #c48312 100%);
+  color: #1f0604;
+  border-color: #fff3b0;
+}
+.dock-btn.active-toggle {
+  background: linear-gradient(180deg, #1b7a46 0%, #104f2d 100%);
+  border-color: #58e698;
+  color: #eafff3;
+}
+.dock-btn.gold.active-toggle {
+  background: linear-gradient(180deg, #1b7a46 0%, #104f2d 100%);
+  border-color: #58e698;
+  color: #eafff3;
+}
+.dock-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.volume-control-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+.volume-label-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ivory);
+}
+.volume-label-line strong {
+  color: var(--gold-bright);
+}
+.volume-slider {
+  width: 100%;
+  accent-color: var(--gold-main);
+  cursor: pointer;
+  height: 6px;
+}
+.event-feed {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.event-feed-item {
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--gold-main);
+  color: #f3e5cf;
+}

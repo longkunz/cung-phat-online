@@ -1,20 +1,20 @@
 /**
- * Chùa Thiên Mụ 3D — Đại Hùng Bảo Điện + sân chùa, tháp Phước Duyên 7 tầng, cổng Tam Quan,
+ * Chùa Thiên Mụ 3D — Đại Hùng Bảo Điện (chỉ dựng trong chánh điện; ngoài cửa chính là vùng sáng),
  * Đạo Tràng Phật tử áo lam có khớp tay chân (TikTok Live 9:16).
  *
  * - Toàn bộ hình khối + texture dựng bằng code lúc khởi động (không file model / ảnh ngoài).
  * - Phật tử: rig khớp (hông, thân, đầu, cánh tay, cẳng tay, bàn tay, đùi, cẳng chân, bàn chân).
  *   Mỗi bộ phận là 1 InstancedMesh dùng chung cho mọi người -> ~12 draw call cho cả đạo tràng;
  *   ma trận từng bộ phận được tính trên CPU từ tư thế (đi, quỳ, lạy, chắp tay...) mỗi khung hình.
- * - Người mới vào đạo tràng đi từ cổng Tam Quan, qua sân, lên bậc, theo thảm đỏ về chỗ rồi quỳ.
- * - Đạo diễn camera tự động: hall / side / altar / top + cắt cảnh theo sự kiện (entrance/follow,
- *   buddha khi Đại Lễ, altar khi dâng hương / xin xăm).
+ * - Người mới bước vào từ cửa chính, theo thảm đỏ lên lư hương quỳ lạy 3 lạy rồi về chỗ ngồi.
+ * - Đạo diễn camera chỉ trong chánh điện: cảnh chính 'người vào lạy' (bám theo trên thảm -> góc thấp 3/4 khi
+ *   lạy, thấy tượng Phật phía sau -> lùi về toàn cảnh); giữa các cảnh chính luân phiên hall / altar / side / buddha.
  * - Nhãn tên / bong bóng / chữ bay là HTML, chiếu 3D -> 2D mỗi khung hình (đúng ở mọi góc máy).
  * - Âm thanh + TTS dùng lại nguyên TempleAudioEngine (public/js/audio.js).
  * - Giao thức: temple.state, temple.event, hall.roster, hall.action, temple.viewerCount, tts.play.
  * - Hiệu năng: tối đa 30 FPS, dừng khi tab ẩn, pixelRatio 1, powerPreference 'low-power'.
  *   URL: ?obs=1 (khung sạch cho OBS), ?q=0.75 (độ phân giải render; q<1 tắt đổ bóng),
- *        ?aa=0 (tắt khử răng cưa), ?shadows=0, ?cam=hall|altar|side|buddha|entrance|top (khóa góc máy),
+ *        ?aa=0 (tắt khử răng cưa), ?shadows=0, ?cam=hall|altar|side|buddha (khóa góc máy),
  *        ?director=0 (không tự đổi góc máy theo chu kỳ).
  */
 import * as THREE from 'three';
@@ -144,6 +144,7 @@ function radialTexture(stops) {
 }
 const glowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,0.55)'], [1, 'rgba(255,255,255,0)']]);
 const softTex = radialTexture([[0, 'rgba(255,255,255,0.9)'], [0.5, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
+const shadowTexInv = () => radialTexture([[0, 'rgba(255,255,255,0.9)'], [0.6, 'rgba(255,255,255,0.3)'], [1, 'rgba(255,255,255,0)']]);
 const shadowTex = radialTexture([[0, 'rgba(0,0,0,0.55)'], [0.6, 'rgba(0,0,0,0.25)'], [1, 'rgba(0,0,0,0)']]);
 
 // Hạt nhiễu dùng chung để giả vân gỗ / đá / độ nhám
@@ -457,10 +458,8 @@ const HALL_FRONT = 14; // tường trước (cửa chính)
 const HALL_BACK = -19.5;
 const COURT_Y = -0.45;
 const STEP_LEN = 1.2;
-function groundY(z) {
-  if (z <= HALL_FRONT) return 0;
-  if (z >= HALL_FRONT + STEP_LEN) return COURT_Y;
-  return (COURT_Y * (z - HALL_FRONT)) / STEP_LEN;
+function groundY() {
+  return 0; // chỉ dựng trong điện: sàn phẳng
 }
 
 const hallLen = HALL_FRONT - HALL_BACK;
@@ -508,32 +507,32 @@ for (const side of [-1, 1]) {
   const f = new THREE.Mesh(doorFrameGeo, M.goldTrim);
   f.position.set(side * (DOOR_W / 2 + 0.05), DOOR_H / 2, HALL_FRONT + 0.2);
   scene.add(f);
-  const leaf = new THREE.Group();
-  const panel = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W / 2, DOOR_H - 0.1, 0.14), M.lacquer);
-  panel.position.x = -side * DOOR_W / 4;
-  const studGeo = new THREE.SphereGeometry(0.06, 6, 4);
-  for (let r = 0; r < 7; r++) {
-    for (let c = 0; c < 3; c++) {
-      const st = new THREE.Mesh(studGeo, M.goldTrim);
-      st.position.set(-side * (0.45 + c * 0.7), 0.6 + r * 0.95, 0.08);
-      leaf.add(st);
-    }
-  }
-  panel.position.y = DOOR_H / 2;
-  leaf.add(panel);
-  mergeStaticByMaterial(leaf); // cánh cửa + 21 đinh vàng -> 2 draw call
-  leaf.position.set(side * DOOR_W / 2, 0, HALL_FRONT + 0.45);
-  leaf.rotation.y = side * -1.25; // mở ra phía sân
-  scene.add(leaf);
 }
 const lintel = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + 0.8, 0.35, 0.7), M.goldTrim);
 lintel.position.set(0, DOOR_H + 0.1, HALL_FRONT + 0.2);
 scene.add(lintel);
-// Bậc thềm đá xuống sân
-for (let i = 0; i < 3; i++) {
-  const st = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + 2.4 - i * 0.0, 0.15, STEP_LEN / 3 + 0.02), M.stone);
-  st.position.set(0, -0.075 - i * 0.15, HALL_FRONT + 0.2 + (i + 0.5) * (STEP_LEN / 3));
-  scene.add(st);
+// Ô cửa chính: chỉ thấy ánh sáng ngoài trời (không dựng sân/tháp/cổng) — mặt phẳng sáng + quầng sương
+{
+  const doorTex = canvasTexture(64, 128, (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#fff3d8');
+    g.addColorStop(0.7, '#ffd9a0');
+    g.addColorStop(1, '#e8b678');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }).tex;
+  const doorLight = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W + 0.4, DOOR_H + 0.4), new THREE.MeshBasicMaterial({ map: doorTex, fog: false }));
+  doorLight.position.set(0, DOOR_H / 2, HALL_FRONT + 1.2);
+  doorLight.rotation.y = Math.PI;
+  scene.add(doorLight);
+  const haze = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W * 2.2, DOOR_H * 1.6), additive(softTex, 0xffe0b0, 0.35));
+  haze.position.set(0, DOOR_H / 2, HALL_FRONT - 0.3);
+  haze.rotation.y = Math.PI;
+  scene.add(haze);
+  // vệt sáng từ cửa đổ trên sàn
+  const spill = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W + 1, 6).rotateX(-Math.PI / 2), additive(shadowTexInv(), 0xffd9a0, 0.22));
+  spill.position.set(0, 0.03, HALL_FRONT - 3);
+  scene.add(spill);
 }
 // Cửa sổ cao hai bên + vệt nắng (giả thể tích bằng mặt phẳng cộng sáng)
 const shaftTex = canvasTexture(64, 256, (ctx, w, h) => {
@@ -647,9 +646,6 @@ const signMat = makeSign('CHÙA THIÊN MỤ');
 const plaque = new THREE.Mesh(new THREE.PlaneGeometry(6.3, 1.35), signMat);
 plaque.position.set(0, 10.9, -18.55);
 scene.add(plaque);
-const plaqueOut = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.1), signMat);
-plaqueOut.position.set(0, DOOR_H + 1.3, HALL_FRONT + 0.42);
-scene.add(plaqueOut);
 
 // ============================================================================
 // 6. TƯỢNG PHẬT A DI ĐÀ — kiết già, ấn thiền định ôm hoa sen, y vắt vai trái,
@@ -1043,6 +1039,7 @@ for (const side of [-1, 1]) {
 // 7. LƯ HƯƠNG + NHANG + KHÓI, CHUÔNG, MÕ, BỒ ĐOÀN LẠY TRƯỚC LƯ
 // ============================================================================
 const BURNER = new THREE.Vector3(0, 0, -10.2);
+const BURNER_SCALE = 0.55;
 {
   const g = new THREE.Group();
   const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.0, 0.7, 8), M.stone);
@@ -1060,11 +1057,45 @@ const BURNER = new THREE.Vector3(0, 0, -10.2);
     ear.rotation.y = Math.PI / 2;
     g.add(ear);
   }
+  // lư hương vừa tầm tay Phật tử (nhân vật chibi cao ~1.3)
+  g.scale.setScalar(BURNER_SCALE);
   g.position.copy(BURNER);
   scene.add(g);
 }
-const BURNER_TOP = BURNER.y + 1.85;
-const stickGeo = new THREE.CylinderGeometry(0.018, 0.018, 1.0, 4);
+const BURNER_TOP = BURNER.y + 1.85 * BURNER_SCALE;
+// Bàn nhang nhỏ hai bên lư: bó nhang + ngọn nến để thắp
+const INCENSE_TABLES = [];
+{
+  const tbl = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.46), M.lacquer);
+  top.position.y = 0.5;
+  tbl.add(top);
+  for (const lx of [-0.3, 0.3]) for (const lz of [-0.18, 0.18]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.47, 0.05), M.lacquerDark);
+    leg.position.set(lx, 0.235, lz);
+    tbl.add(leg);
+  }
+  const bundle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 10), new THREE.MeshStandardMaterial({ color: 0xc23a1c, roughness: 0.8 }));
+  bundle.position.set(-0.16, 0.74, 0);
+  bundle.rotation.z = 0.5;
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.22, 10), M.candle);
+  candle.position.set(0.18, 0.64, 0.02);
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.05, 10), M.goldTrim);
+  cup.position.set(0.18, 0.55, 0.02);
+  tbl.add(bundle, candle, cup);
+  mergeStaticByMaterial(tbl);
+  for (const side of [-1, 1]) {
+    const t = side < 0 ? tbl : tbl.clone();
+    t.position.set(side * 1.3, 0, -8.95);
+    scene.add(t);
+    const flame = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.24), flameMat);
+    flame.position.set(side * 1.3 + 0.18, 0.82, -8.93);
+    candleFlames.push(flame);
+    scene.add(flame);
+    INCENSE_TABLES.push({ x: side * 1.3, candle: new THREE.Vector3(side * 1.3 + 0.18, 0.8, -8.93) });
+  }
+}
+const stickGeo = new THREE.CylinderGeometry(0.01, 0.01, 1.0, 4);
 stickGeo.translate(0, 0.5, 0);
 const MAX_STICKS = 15;
 const sticks = new THREE.InstancedMesh(stickGeo, new THREE.MeshStandardMaterial({ color: 0xc23a1c, roughness: 0.8 }), MAX_STICKS);
@@ -1072,11 +1103,11 @@ const tips = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.16), additi
 const stickPos = [];
 for (let i = 0; i < MAX_STICKS; i++) {
   const a = i * 2.39996;
-  const r = 0.12 + 0.48 * Math.sqrt((i + 0.5) / MAX_STICKS);
+  const r = (0.12 + 0.48 * Math.sqrt((i + 0.5) / MAX_STICKS)) * BURNER_SCALE;
   stickPos.push({
     p: new THREE.Vector3(BURNER.x + Math.sin(a) * r, BURNER_TOP - 0.05, BURNER.z + Math.cos(a) * r * 0.8),
     tilt: new THREE.Euler(Math.cos(a) * 0.12, 0, -Math.sin(a) * 0.12),
-    len: rand(0.8, 1.05),
+    len: rand(0.5, 0.62),
     tip: new THREE.Vector3()
   });
 }
@@ -1095,7 +1126,9 @@ layoutSticks();
 scene.add(sticks, tips);
 
 // Bồ đoàn lạy trước lư hương (3 làn)
-const BOW_SPOTS = [new THREE.Vector3(-1.0, 0, -8.1), new THREE.Vector3(1.0, 0, -8.1), new THREE.Vector3(0, 0, -7.6)];
+// Chỗ đứng vái trước lư hương (tối đa 3 người cùng lúc); bước lên cắm nhang ở PLANT_DZ phía trước
+const BOW_SPOTS = [new THREE.Vector3(0, 0, -8.85), new THREE.Vector3(-0.45, 0, -8.7), new THREE.Vector3(0.45, 0, -8.7)];
+const PLANT_DZ = -0.42;
 
 class Particles {
   constructor(count, size, tex) {
@@ -1244,175 +1277,10 @@ const lanternGroup = new THREE.Group();
   scene.add(lanternGroup);
 }
 
-// ============================================================================
-// 8. SÂN CHÙA: gạch đá, lối đi, đèn đá, cây, CỔNG TAM QUAN, THÁP PHƯỚC DUYÊN 7 TẦNG
-// ============================================================================
-{
-  // Bầu trời hoàng hôn xứ Huế
-  const skyTex = canvasTexture(16, 256, (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#0d0f2a');
-    g.addColorStop(0.45, '#2b2350');
-    g.addColorStop(0.62, '#7a3a4a');
-    g.addColorStop(0.72, '#d77a46');
-    g.addColorStop(1, '#2a1a14');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  }).tex;
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(110, 24, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
-  sky.position.set(0, 0, 20);
-  scene.add(sky);
-
-  const court = new THREE.Mesh(new THREE.PlaneGeometry(60, 50), M.courtyard);
-  court.rotation.x = -Math.PI / 2;
-  court.position.set(0, COURT_Y, HALL_FRONT + 25.4);
-  court.receiveShadow = true;
-  scene.add(court);
-  // nền ngoài hai bên điện (để nhìn từ trên không thấy hở)
-  for (const side of [-1, 1]) {
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(40, hallLen + 2), M.courtyard);
-    g.rotation.x = -Math.PI / 2;
-    g.position.set(side * 30, COURT_Y, (HALL_FRONT + HALL_BACK) / 2);
-    scene.add(g);
-  }
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(3, 24), new THREE.MeshStandardMaterial({ color: 0xb8a890, roughness: 0.8 }));
-  path.rotation.x = -Math.PI / 2;
-  path.position.set(0, COURT_Y + 0.01, HALL_FRONT + 13);
-  scene.add(path);
-}
-const GATE_Z = 27;
-const TOWER_Z = 37;
-const gateGlows = [];
-{
-  // Cổng Tam Quan: 3 lối, mái 2 tầng ngói đen, bờ nóc vàng, đầu đao cong
-  const g = new THREE.Group();
-  const pillar = new THREE.BoxGeometry(0.7, 5, 0.7);
-  for (const x of [-4.4, -1.6, 1.6, 4.4]) {
-    const p = new THREE.Mesh(pillar, M.lacquer);
-    p.position.set(x, 2.5, 0);
-    g.add(p);
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), M.stone);
-    base.position.set(x, 0.25, 0);
-    g.add(base);
-  }
-  const roof = (w, d, y, h) => {
-    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 1, h, 4, 1), M.roofTile);
-    r.rotation.y = Math.PI / 4;
-    r.scale.set(w / 1.41, 1, d / 1.41);
-    const wrap = new THREE.Group();
-    wrap.add(r);
-    wrap.position.y = y;
-    g.add(wrap);
-    const ridge = new THREE.Mesh(new THREE.BoxGeometry(w * 0.45, 0.14, 0.2), M.goldTrim);
-    ridge.position.y = y + h / 2 - 0.02;
-    g.add(ridge);
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const tip = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), M.goldTrim);
-        tip.position.set((sx * w) / 2, y - h / 2 + 0.12, (sz * d) / 2);
-        g.add(tip);
-      }
-    }
-  };
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(10, 0.6, 0.9), M.lacquerDark);
-  beam.position.y = 5.1;
-  g.add(beam);
-  roof(5.2, 3.4, 6.5, 1.6);
-  roof(3.8, 2.6, 7.9, 1.2);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.6), signMat);
-  sign.position.set(0, 4.5, 0.46);
-  g.add(sign);
-  const signBack = sign.clone();
-  signBack.position.z = -0.46;
-  signBack.rotation.y = Math.PI;
-  g.add(signBack);
-  mergeStaticByMaterial(g);
-  g.position.set(0, COURT_Y, GATE_Z);
-  scene.add(g);
-  // mái hai lối phụ
-  for (const sx of [-1, 1]) {
-    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 1, 1.1, 4, 1), M.roofTile);
-    r.rotation.y = Math.PI / 4;
-    r.scale.set(3.4 / 1.41, 1, 2.4 / 1.41);
-    r.position.set(sx * 3.0, COURT_Y + 5.9, GATE_Z);
-    scene.add(r);
-  }
-  // Đèn đá dọc lối đi
-  const lamps = new THREE.Group();
-  const lampGeo = new THREE.CylinderGeometry(0.25, 0.35, 1.3, 6);
-  const lampTop = new THREE.ConeGeometry(0.5, 0.45, 6);
-  for (const z of [17.5, 21, 24.5]) {
-    for (const sx of [-1, 1]) {
-      const l = new THREE.Mesh(lampGeo, M.stone);
-      l.position.set(sx * 2.3, COURT_Y + 0.65, z);
-      const t = new THREE.Mesh(lampTop, M.stone);
-      t.position.set(sx * 2.3, COURT_Y + 1.6, z);
-      const lightBox = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.34), new THREE.MeshBasicMaterial({ color: 0xffc070, fog: false }));
-      lightBox.position.set(sx * 2.3, COURT_Y + 1.35, z);
-      const gl = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), additive(glowTex, 0xffa040, 0.55));
-      gl.position.copy(lightBox.position);
-      gateGlows.push(gl);
-      lamps.add(l, t, lightBox);
-      scene.add(gl);
-    }
-  }
-  mergeStaticByMaterial(lamps);
-  scene.add(lamps);
-  // Cây xanh hai bên sân
-  const foliage = new THREE.IcosahedronGeometry(1.6, 1);
-  const trunkGeo = new THREE.CylinderGeometry(0.18, 0.26, 2.4, 6);
-  const treePos = [[-8, 18], [8, 19], [-10, 24], [10, 25], [-7.5, 30], [7.5, 31], [-12, 33], [12, 34]];
-  const leaves = new THREE.InstancedMesh(foliage, M.leaf, treePos.length * 2);
-  const trunks = new THREE.InstancedMesh(trunkGeo, M.trunk, treePos.length);
-  treePos.forEach(([x, z], i) => {
-    trunks.setMatrixAt(i, _m.makeTranslation(x, COURT_Y + 1.2, z));
-    leaves.setMatrixAt(i * 2, _m.compose(_v.set(x, COURT_Y + 3.2, z), _q.identity(), _s.set(1.2, 1, 1.2)));
-    leaves.setMatrixAt(i * 2 + 1, _m.compose(_v.set(x + 0.4, COURT_Y + 4.4, z - 0.3), _q.identity(), _s.set(0.8, 0.8, 0.8)));
-  });
-  scene.add(leaves, trunks);
-}
-{
-  // Tháp Phước Duyên: bát giác 7 tầng, mỗi tầng có mái ngói + ô cửa vòm, chóp đồng
-  const tower = new THREE.Group();
-  const plat = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.9, 0.8, 8), M.stone);
-  plat.position.y = 0.4;
-  tower.add(plat);
-  let y = 0.8;
-  for (let i = 0; i < 7; i++) {
-    const r = 2.3 - i * 0.22;
-    const h = 2.05 - i * 0.1;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.97, r, h, 8, 1), M.towerWall);
-    body.position.y = y + h / 2;
-    tower.add(body);
-    const eave = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r + 0.6, 0.38, 8, 1), M.roofTile);
-    eave.position.y = y + h + 0.1;
-    tower.add(eave);
-    const trim = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.62, r + 0.62, 0.06, 8, 1), M.goldTrim);
-    trim.position.y = y + h - 0.08;
-    tower.add(trim);
-    y += h + 0.28;
-  }
-  const finial = [
-    [new THREE.CylinderGeometry(0.35, 0.55, 0.5, 8), 0.25],
-    [new THREE.SphereGeometry(0.42, 16, 10), 0.8],
-    [new THREE.CylinderGeometry(0.08, 0.12, 1.2, 8), 1.6],
-    [new THREE.SphereGeometry(0.22, 12, 8), 2.25],
-    [new THREE.ConeGeometry(0.12, 0.6, 8), 2.7]
-  ];
-  for (const [geo, dy] of finial) {
-    const f = new THREE.Mesh(geo, M.bronze);
-    f.position.y = y + dy;
-    tower.add(f);
-  }
-  mergeStaticByMaterial(tower);
-  tower.position.set(0, COURT_Y, TOWER_Z);
-  scene.add(tower);
-  const towerGlow = new THREE.Mesh(new THREE.PlaneGeometry(10, 18), additive(softTex, 0xffa060, 0.18));
-  towerGlow.position.set(0, COURT_Y + 8, TOWER_Z - 3);
-  scene.add(towerGlow);
-}
-const GATE_SPAWN = new THREE.Vector3(0, COURT_Y, GATE_Z - 1.2);
-const DOOR_IN = new THREE.Vector3(0, 0, HALL_FRONT - 1.0);
+// Người vào / ra đều qua cửa chính của điện (không dựng sân ngoài)
+const DOOR_SPAWN = new THREE.Vector3(0, 0, HALL_FRONT - 0.3);
+const DOOR_OUT = new THREE.Vector3(0, 0, HALL_FRONT + 0.6);
+const DOOR_IN = new THREE.Vector3(0, 0, HALL_FRONT - 1.6);
 
 // ============================================================================
 // 9. LÀN ĐÈN HOA ĐĂNG + CÁNH SEN RƠI
@@ -1461,68 +1329,105 @@ function startPetalRain(sec = 9) {
 }
 
 // ============================================================================
-// 10. PHẬT TỬ ÁO LAM — RIG KHỚP DỰNG BẰNG INSTANCEDMESH (mỗi bộ phận 1 draw call)
+// 10. PHẬT TỬ ÁO LAM — NHÂN VẬT CHIBI (đầu tròn to, thân áo tràng hình chuông che chân, tay tròn)
+//     Mỗi bộ phận 1 InstancedMesh dùng chung -> ~10 draw call cho cả đạo tràng.
 // ============================================================================
-// Kích thước (đơn vị ~ mét)
-const THIGH = 0.42;
-const SHIN = 0.4;
-const STAND_HIP = THIGH + SHIN + 0.05;
-const KNEEL_HIP = 0.43; // ngồi trên gót, trên bồ đoàn cao 0.16
-const UPPER_ARM = 0.27;
-const FORE_ARM = 0.24;
-const SHOULDER_Y = 0.46;
-const SHOULDER_X = 0.19;
-const NECK_Y = 0.51;
-const STRIDE = 0.7; // quãng đường cho mỗi nửa chu kỳ bước
+// Kích thước (đơn vị ~ mét). Gốc thân ở "eo": váy áo phía dưới, thân trên + đầu phía trên.
+const SKIRT_H = 0.42; // chiều cao vạt áo từ eo xuống gấu
+const STAND_WAIST = SKIRT_H + 0.05; // đứng: gấu áo cách sàn 5 cm (lộ bàn chân khi bước)
+const KNEEL_WAIST = 0.27; // quỳ: thân hạ xuống, vạt áo xòe phẳng trên đệm (mặt đệm ~0.16)
+const TORSO_H = 0.34;
+const HEAD_R = 0.27;
+const HEAD_C = 0.22; // tâm đầu cao hơn đỉnh thân
+const SHOULDER = new THREE.Vector3(0.19, 0.29, 0);
+const ARM_L1 = 0.2;
+const ARM_L2 = 0.19;
+const STRIDE = 0.34; // bước chân ngắn kiểu chibi (lạch bạch)
+
+// Mặt vẽ trên texture (mắt khép cong hiền, má hồng, miệng mỉm cười) — nền trắng nhân màu da từng người
+const faceTex = canvasTexture(512, 256, (ctx, w, h) => {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  const cx = 0.75 * w; // u = 0.75 là phía trước (-z) của SphereGeometry
+  ctx.strokeStyle = '#3a2216';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 7;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(cx + sx * 26, 0.535 * h, 13, Math.PI * 0.12, Math.PI * 0.88); // mắt khép: cung cong xuống
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,120,130,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx + sx * 44, 0.62 * h, 15, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#a0403a';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(cx, 0.6 * h, 11, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+}).tex;
 
 const partGeos = {
-  torso: mergeColored([
-    { geo: lathe([[0, -0.02], [0.17, -0.02], [0.165, 0.12], [0.18, 0.3], [0.205, 0.42], [0.17, 0.48], [0.08, 0.52], [0, 0.53]], 18), scale: [1, 1, 0.74] },
-    // vạt cài khuy bên phải đặc trưng áo dài / áo tràng
-    { geo: new THREE.BoxGeometry(0.02, 0.32, 0.02), color: 0x9fb0c0, pos: [0.07, 0.3, -0.128] },
-    { geo: new THREE.TorusGeometry(0.075, 0.012, 6, 16), color: 0xb7c4cf, pos: [0, 0.5, 0], rot: [Math.PI / 2, 0, 0] }
-  ]),
+  // vạt áo dưới eo: hình chuông, gấu tròn mềm (che hoàn toàn chân)
   skirt: mergeColored([
-    { geo: lathe([[0, 0.06], [0.175, 0.06], [0.2, -0.1], [0.235, -0.28], [0.265, -0.42], [0, -0.42]], 18), scale: [1, 1, 0.8] }
+    { geo: lathe([[0, 0.02], [0.2, 0.02], [0.225, -0.1], [0.27, -0.24], [0.32, -0.36], [0.345, -0.405], [0.335, -0.42], [0.2, -0.425], [0, -0.425]], 28), scale: [1, 1, 0.92] }
   ]),
-  head: mergeColored([
-    { geo: new THREE.CylinderGeometry(0.05, 0.058, 0.1, 10), pos: [0, 0.04, 0] },
-    { geo: new THREE.SphereGeometry(0.15, 18, 14), pos: [0, 0.2, 0], scale: [0.92, 1.06, 0.98] },
-    { geo: new THREE.SphereGeometry(0.018, 6, 5), color: 0x24140c, pos: [-0.052, 0.215, -0.135] },
-    { geo: new THREE.SphereGeometry(0.018, 6, 5), color: 0x24140c, pos: [0.052, 0.215, -0.135] },
-    { geo: new THREE.BoxGeometry(0.05, 0.008, 0.01), color: 0x3a2418, pos: [-0.052, 0.248, -0.137], rot: [0, 0, 0.12] },
-    { geo: new THREE.BoxGeometry(0.05, 0.008, 0.01), color: 0x3a2418, pos: [0.052, 0.248, -0.137], rot: [0, 0, -0.12] },
-    { geo: new THREE.SphereGeometry(0.02, 6, 5), color: 0xe8b090, pos: [0, 0.19, -0.148], scale: [0.8, 1.2, 1] },
-    { geo: new THREE.SphereGeometry(0.022, 6, 5), color: 0xb9605a, pos: [0, 0.145, -0.13], scale: [1.6, 0.5, 0.7] },
-    { geo: new THREE.SphereGeometry(0.03, 6, 5), pos: [-0.14, 0.2, 0.0], scale: [0.6, 1.3, 1] },
-    { geo: new THREE.SphereGeometry(0.03, 6, 5), pos: [0.14, 0.2, 0.0], scale: [0.6, 1.3, 1] }
+  // thân trên: vai tròn, cổ áo sáng màu, đường khuy áo tràng
+  torso: mergeColored([
+    { geo: lathe([[0, -0.02], [0.205, -0.02], [0.21, 0.1], [0.195, 0.22], [0.155, 0.305], [0.075, 0.345], [0, 0.35]], 28), scale: [1, 1, 0.9] },
+    { geo: new THREE.TorusGeometry(0.075, 0.018, 8, 20), color: 0xc8d3dd, pos: [0, 0.335, 0], rot: [Math.PI / 2, 0, 0] }
   ]),
-  hair: mergeColored([
-    { geo: new THREE.SphereGeometry(0.168, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), pos: [0, 0.205, 0.016], rot: [0.45, 0, 0], scale: [0.96, 1.07, 1.02] },
-    { geo: new THREE.SphereGeometry(0.068, 10, 8), pos: [0, 0.27, 0.15] }
+  head: (() => {
+    const g = new THREE.SphereGeometry(HEAD_R, 40, 28);
+    g.translate(0, HEAD_C, 0);
+    return g;
+  })(),
+  ears: mergeColored([
+    { geo: new THREE.SphereGeometry(0.05, 10, 8), pos: [-HEAD_R + 0.01, HEAD_C - 0.01, 0.01], scale: [0.6, 1, 0.8] },
+    { geo: new THREE.SphereGeometry(0.05, 10, 8), pos: [HEAD_R - 0.01, HEAD_C - 0.01, 0.01], scale: [0.6, 1, 0.8] }
   ]),
-  upperArm: mergeColored([{ geo: new THREE.CylinderGeometry(0.06, 0.054, UPPER_ARM, 10), pos: [0, -UPPER_ARM / 2, 0] }, { geo: new THREE.SphereGeometry(0.062, 10, 8) }]),
-  foreArm: mergeColored([{ geo: new THREE.CylinderGeometry(0.06, 0.05, FORE_ARM - 0.03, 10), pos: [0, -(FORE_ARM - 0.03) / 2, 0] }, { geo: new THREE.SphereGeometry(0.055, 8, 6) }]),
-  hand: mergeColored([{ geo: new THREE.SphereGeometry(0.045, 10, 8), pos: [0, -0.055, -0.005], scale: [0.62, 1.55, 0.42] }]),
-  thigh: mergeColored([{ geo: new THREE.CylinderGeometry(0.068, 0.078, THIGH, 10), pos: [0, -THIGH / 2, 0] }, { geo: new THREE.SphereGeometry(0.078, 10, 8) }]),
-  shin: mergeColored([{ geo: new THREE.CylinderGeometry(0.046, 0.06, SHIN, 10), pos: [0, -SHIN / 2, 0] }, { geo: new THREE.SphereGeometry(0.062, 10, 8) }]),
-  foot: mergeColored([{ geo: new THREE.BoxGeometry(0.085, 0.05, 0.21), color: 0x3a2216, pos: [0, -0.03, -0.06] }])
+  // tóc ngắn (mái che trán một chút) / tóc búi; người cạo đầu thì không có tóc
+  hairShort: mergeColored([
+    { geo: new THREE.SphereGeometry(HEAD_R + 0.014, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.47), pos: [0, HEAD_C + 0.005, 0.02], rot: [0.45, 0, 0] }
+  ]),
+  hairBun: mergeColored([
+    { geo: new THREE.SphereGeometry(HEAD_R + 0.014, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), pos: [0, HEAD_C + 0.005, 0.025], rot: [0.5, 0, 0] },
+    { geo: new THREE.SphereGeometry(0.1, 16, 12), pos: [0, HEAD_C + 0.2, 0.17] }
+  ]),
+  upperArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.062, ARM_L1 - 0.03, 6, 12), pos: [0, -ARM_L1 / 2, 0] }]),
+  foreArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.057, ARM_L2 - 0.04, 6, 12), pos: [0, -ARM_L2 / 2 + 0.01, 0] }]),
+  hand: mergeColored([{ geo: new THREE.SphereGeometry(0.062, 14, 10), scale: [0.85, 1, 0.7] }]),
+  foot: mergeColored([{ geo: new THREE.SphereGeometry(1, 12, 8), scale: [0.065, 0.04, 0.1], pos: [0, 0.035, -0.03] }]),
+  // nén nhang cầm tay (3 nén xòe nhẹ), gốc ở giữa 2 bàn tay
+  heldIncense: mergeColored([
+    { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [-0.03, 0.26, 0], rot: [0, 0, 0.1] },
+    { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [0, 0.27, 0] },
+    { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [0.03, 0.26, 0], rot: [0, 0, -0.1] }
+  ])
 };
-const PAIRED = { upperArm: true, foreArm: true, hand: true, thigh: true, shin: true, foot: true };
-const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 });
+const PAIRED = { upperArm: true, foreArm: true, hand: true, foot: true };
+const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
+const headMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, metalness: 0 });
 const parts = {};
 for (const [name, geo] of Object.entries(partGeos)) {
   const n = PAIRED[name] ? POOL * 2 : POOL;
-  const im = new THREE.InstancedMesh(geo, avatarMat, n);
+  const im = new THREE.InstancedMesh(geo, name === 'head' ? headMat : avatarMat, n);
   im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   im.setColorAt(0, _c.set(0xffffff));
   im.instanceColor.setUsage(THREE.DynamicDrawUsage);
   im.frustumCulled = false;
-  im.castShadow = SHADOWS;
+  im.castShadow = SHADOWS && name !== 'heldIncense';
   im.count = 0;
   parts[name] = im;
+  im.userData.part = name;
   scene.add(im);
 }
+// đầu nhang đang cháy trên tay (3 đốm sáng / người)
+const heldTips = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.09), additive(glowTex, 0xff7a2a, 1), POOL * 3);
+heldTips.frustumCulled = false;
+heldTips.count = 0;
+scene.add(heldTips);
 const auraMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), additive(glowTex, 0xffffff, 1), POOL);
 auraMesh.setColorAt(0, _c.set(0));
 auraMesh.frustumCulled = false;
@@ -1625,7 +1530,6 @@ function refreshSeats() {
       if (kind === 'gold') throneGlow.setMatrixAt(nl++, _m.makeTranslation(p.x, 0.03, p.z));
     }
   }
-  for (const p of BOW_SPOTS) putC(p, [1, 1], true);
   cushions.count = nc;
   pinkThrones.count = np;
   goldThrones.count = ng;
@@ -1639,8 +1543,9 @@ refreshSeats();
 scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 
 // Chỗ đứng chờ ngoài sân (16 người, hai bên lối đi giữa đèn đá và cổng Tam Quan)
+// Chỗ đứng chờ (16 người): dọc tường cửa chính phía trong điện, hai bên cửa
 const WAIT_SPOTS = [];
-for (const z of [18.6, 20.2, 21.8, 23.4]) for (const x of [-3.4, 3.4, -4.5, 4.5]) WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.15, 0.15), 0, z + rand(-0.2, 0.2)));
+for (const z of [HALL_FRONT - 1.0, HALL_FRONT - 2.1]) for (const x of [-3.3, 3.3, -4.4, 4.4, -5.5, 5.5, -6.6, 6.6]) WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.1, 0.1), 0, z + rand(-0.15, 0.15)));
 
 // ----------------------------------------------------------------------------
 // Trạng thái Phật tử
@@ -1688,6 +1593,18 @@ function newAvatar(i) {
     flashOnArrive: false,
     entering: false,
     guestKind: '',
+    heroStage: '',
+    heroKind: '',
+    heroSide: 1,
+    hairStyle: 0,
+    handPose: null,
+    lastPose: null,
+    hands: [new THREE.Vector3(-0.27, 0.04, 0), new THREE.Vector3(0.27, 0.04, 0)],
+    torsoS: 0,
+    headS: 0,
+    swayS: 0,
+    sticks: 0,
+    stickFlare: 0,
     goldTrail: false,
     anon: false
   };
@@ -1699,8 +1616,11 @@ function assignTones(a) {
     pants: new THREE.Color(PANTS_TONES[(s >> 2) % PANTS_TONES.length]),
     skin: new THREE.Color(SKIN_TONES[(s >> 1) % SKIN_TONES.length]),
     hair: new THREE.Color(HAIR_TONES[(s >> 3) % HAIR_TONES.length]),
-    feet: new THREE.Color(0xffffff)
+    feet: new THREE.Color(0x3a2418)
   };
+  // kiểu tóc: 0 tóc ngắn, 1 búi tóc, 2 cạo đầu (ít hơn)
+  const r = (s >> 4) % 7;
+  a.hairStyle = r < 3 ? 0 : r < 6 ? 1 : 2;
 }
 
 function setGlow(a, intensity, color = 0xffd27a) {
@@ -1745,7 +1665,10 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   a.pos.copy(at);
   a.yaw = yaw;
   a.kneel = kneel;
-  a.pray = kneel;
+  if (kneel > 0.5) {
+    a.hands[0].set(-HAND_POSES.pray[0], HAND_POSES.pray[1], HAND_POSES.pray[2]);
+    a.hands[1].set(HAND_POSES.pray[0], HAND_POSES.pray[1], HAND_POSES.pray[2]);
+  }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
   assignTones(a);
@@ -1768,7 +1691,7 @@ function lerpAngle(a, b, t) {
   if (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
 }
-function moveStep(target, speed = WALK_SPEED) {
+function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
   let from = null;
   let dur = 1;
   return {
@@ -1785,7 +1708,7 @@ function moveStep(target, speed = WALK_SPEED) {
       a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
       const dx = target.x - from.x;
       const dz = target.z - from.z;
-      if (Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 9));
+      if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
       // chân không trượt: pha bước tăng đúng theo quãng đường đi được
       a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
       if (k >= 1) a.walking = false;
@@ -1795,7 +1718,12 @@ function moveStep(target, speed = WALK_SPEED) {
 const waitStep = (dur, fn) => ({ dur, start: fn || null });
 function kneelStep(to, dur) {
   let from = 0;
-  return { dur: dur ?? (to ? 1.0 : 0.8), start(a) { from = a.kneel; a.walking = false; }, update(a, k) { a.kneel = lerp(from, to, ease(k)); } };
+  // ngồi xuống: hạ người êm rồi nảy nhẹ khi chạm đệm; đứng lên: ease in-out
+  return { dur: dur ?? (to ? 1.1 : 0.9), start(a) { from = a.kneel; a.walking = false; }, update(a, k) { a.kneel = lerp(from, to, to > from ? backOut(k) : ease(k)); if (k >= 1) a.kneel = to; } };
+}
+/** Đặt tư thế tay (chắp tay / cầm nhang / lên trán...) rồi chờ dur giây để lò xo đưa tay tới nơi. */
+function poseStep(pose, dur = 0.6, fn) {
+  return { dur, start(a) { a.handPose = pose; fn?.(a); } };
 }
 function turnStep(yaw, dur = 0.5) {
   let from = 0;
@@ -1877,7 +1805,7 @@ function goToSeat(a, onArrive) {
   steps.push(dynStep((av) => {
     if (av.seat < 0 || av.leaving) return [];
     // đang ở ngoài sân / gần cửa -> vào qua cửa chính trước
-    const pre = av.pos.z > HALL_FRONT - 1.5 ? [moveStep(new THREE.Vector3(0, 0, Math.max(av.pos.z, HALL_FRONT + 2))), moveStep(DOOR_IN.clone())] : [];
+    const pre = av.pos.z > HALL_FRONT - 2.5 ? [moveStep(DOOR_IN.clone())] : [];
     return [...pre, ...pathToSeat(av.seat)];
   }));
   runScript(a, steps, onArrive);
@@ -1923,7 +1851,9 @@ function processQueues(t) {
         // đang đi (vào / lên lư hương): bước động cuối kịch bản sẽ tự đi tới chỗ mới
         if (!a.script?.steps.some((s) => s.dynamic)) moveQueue.push(a);
       } else if (a.atSeat !== a.seat) {
-        goToSeat(a, onSeatArrive);
+        // lên hàng đầu: đi lên lư hương lạy tạ rồi mới về chỗ mới (cảnh chính); đổi chỗ thường: đi thẳng
+        if (a.flashOnArrive && director.heroFree(2)) walkToBurner(a, 'promote', { user: a.name });
+        else goToSeat(a, onSeatArrive);
       }
     }
   }
@@ -1945,11 +1875,15 @@ function processQueues(t) {
   const a = joinQueue.shift();
   a.queued = false;
   lastSpawnAt = t;
-  spawnAvatar(a, { uid: a.uid, name: a.name, member: true, at: new THREE.Vector3(rand(-0.4, 0.4), 0, GATE_SPAWN.z), pop: true, keep: a });
+  spawnAvatar(a, { uid: a.uid, name: a.name, member: true, at: DOOR_SPAWN.clone(), pop: true, keep: a });
   a.entering = true;
   setGlow(a, 1.2);
-  goToSeat(a, onSeatArrive);
-  director.request('follow', 1, 9, a);
+  seatNewcomer(a, 1);
+}
+/** Người mới có ghế: nếu đang rảnh cảnh chính thì vào lạy trước lư hương (được quay), không thì đi thẳng về chỗ. */
+function seatNewcomer(a, prio) {
+  if (director.heroFree(prio)) walkToBurner(a, prio >= 3 ? 'gift' : 'join', { user: a.name });
+  else goToSeat(a, onSeatArrive);
 }
 
 function walkOut(a) {
@@ -1962,8 +1896,7 @@ function walkOut(a) {
   const steps = [];
   if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
   else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
-  if (a.pos.z < HALL_FRONT) steps.push(moveStep(DOOR_IN.clone()));
-  steps.push(moveStep(new THREE.Vector3(0, 0, Math.max(HALL_FRONT + 3.5, a.pos.z))), moveStep(new THREE.Vector3(0, 0, GATE_SPAWN.z)), waitStep(0.05, (av) => despawn(av)));
+  steps.push(...exitSteps(WALK_SPEED));
   a.seat = -1;
   runScript(a, steps);
 }
@@ -1972,9 +1905,15 @@ function walkOut(a) {
 // Đi lên lư hương dâng lễ (qua làn bên mép thảm, vòng qua hàng đầu)
 // ----------------------------------------------------------------------------
 let spotCursor = 0;
+/**
+ * Cảnh chính "thắp nhang": tới bàn nhang -> lấy 3 nén -> châm ở ngọn nến (đầu nhang bùng sáng, khói) ->
+ * bước tới trước lư, nâng nhang lên trán, vái 3 vái -> bước lên cắm nhang vào lư -> lùi lại, chắp tay, vái nhẹ ->
+ * về chỗ quỳ xuống chắp tay (nghi lễ / lệnh lạy: lạy thêm 3 lạy khi đã quỳ) — khách thì ra về.
+ */
 function walkToBurner(a, kind, ev) {
   const spotIdx = BOW_SPOTS.findIndex((_, i) => !avatars.some((x) => x.active && x.bowSpot === i));
-  const spot = BOW_SPOTS[spotIdx >= 0 ? spotIdx : spotCursor++ % BOW_SPOTS.length];
+  const si = spotIdx >= 0 ? spotIdx : spotCursor++ % BOW_SPOTS.length;
+  const spot = BOW_SPOTS[si];
   a.bowSpot = spotIdx;
   const steps = [];
   if (a.member && a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
@@ -1982,24 +1921,67 @@ function walkToBurner(a, kind, ev) {
     a.pos.copy(DOOR_IN);
     a.yaw = 0;
   }
-  const sideX = spot.x === 0 ? (a.pos.x <= 0 ? -1 : 1) : Math.sign(spot.x);
+  const table = INCENSE_TABLES[si === 1 ? 0 : si === 2 ? 1 : a.pos.x < 0 ? 0 : 1];
+  const sideX = Math.sign(table.x);
+  const tableSpot = new THREE.Vector3(table.x, 0, -8.32);
+  const plantSpot = new THREE.Vector3(spot.x, 0, spot.z + PLANT_DZ);
+  a.heroStage = 'walk';
+  a.heroKind = kind;
+  a.heroSide = sideX;
+  // từ cửa: đi giữa thảm đỏ tới trước hàng đầu, rồi tách sang làn bên cạnh ghế hạng 1
+  if (a.pos.z > -3.5 && Math.abs(a.pos.x) < 1.3 && !(a.member && a.atSeat >= 0)) steps.push(moveStep(new THREE.Vector3(0, 0, -4.3)));
+  const bows = kind !== 'join' && kind !== 'promote';
   steps.push(
     moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9)),
-    moveStep(spot.clone(), 1.0),
+    moveStep(tableSpot, 1.0),
+    turnStep(0, 0.45),
+    waitStep(0.01, (av) => { av.heroStage = 'bow'; }),
+    // lấy nhang
+    poseStep('reach', 0.75),
+    waitStep(0.2, (av) => { av.sticks = 1; }),
+    poseStep('hold', 0.55),
+    // châm nhang ở ngọn nến
+    poseStep('candle', 0.6),
+    waitStep(0.75, (av) => {
+      av.sticks = 2;
+      av.stickFlare = 1.2;
+      for (let i = 0; i < 10; i++) sparks.spawn(table.candle.x, table.candle.y + 0.08, table.candle.z, rand(-0.4, 0.4), rand(0.4, 1.2), rand(-0.4, 0.4), rand(0.4, 0.8), 0xffc060);
+    }),
+    poseStep('hold', 0.5),
+    // tới trước lư hương, nâng nhang lên trán, vái 3 vái
+    moveStep(spot.clone(), 0.9),
     turnStep(0, 0.4),
-    kneelStep(1, 0.9),
-    waitStep(0.15, (av) => { av.bowAt = clock.elapsed; av.bowCount = 3; }),
-    waitStep(1.6, (av) => ritualClimax(av, kind, ev)),
-    waitStep(4.6),
-    waitStep(0.05, (av) => { av.bowSpot = -1; }),
-    kneelStep(0),
-    turnStep(Math.PI, 0.5),
+    poseStep('forehead', 0.65),
+    waitStep(BOW_STAND_DUR * 3 + 0.1, (av) => { av.bowAt = clock.elapsed; av.bowCount = 3; }),
+    // bước lên cắm nhang
+    poseStep('hold', 0.35),
+    moveStep(plantSpot, 0.6, true),
+    poseStep('plant', 0.7),
+    waitStep(0.5, (av) => {
+      av.sticks = 0;
+      visibleSticks = Math.min(MAX_STICKS, visibleSticks + 3);
+      layoutSticks();
+      ritualClimax(av, kind, ev);
+    }),
+    poseStep('hold', 0.3),
+    moveStep(spot.clone(), 0.55, true),
+    // chắp tay, vái nhẹ
+    poseStep('pray', 0.55),
+    waitStep(BOW_STAND_DUR + 0.15, (av) => { av.bowAt = clock.elapsed; av.bowCount = 1; }),
+    waitStep(0.05, (av) => { av.bowSpot = -1; av.heroStage = 'done'; av.handPose = null; }),
+    turnStep(Math.PI, 0.6),
     moveStep(new THREE.Vector3(sideX * LANE_X, 0, VIP_Z - 0.9))
   );
-  // về ghế (kể cả khách hành hương vừa được xếp chỗ trong lúc làm lễ) hoặc ra về qua cổng
-  steps.push(dynStep((av) => (av.member ? (av.seat >= 0 && !av.leaving ? pathToSeat(av.seat) : []) : afterGuestRitual(av))));
-  runScript(a, steps, (av) => { av.bowSpot = -1; av.goldTrail = false; if (av.member) onSeatArrive(av); });
-  director.request('altar', 2, 11);
+  // về ghế (kể cả khách vừa được xếp chỗ trong lúc làm lễ): quỳ, chắp tay, lạy 3 lạy nếu là nghi lễ; khách thì ra về
+  steps.push(dynStep((av) => {
+    if (!av.member) return afterGuestRitual(av);
+    if (av.seat < 0 || av.leaving) return [];
+    const back = pathToSeat(av.seat);
+    if (bows) back.push(waitStep(0.4), waitStep(BOW_KNEEL_DUR * 3, (x) => { x.bowAt = clock.elapsed; x.bowCount = 3; }));
+    return back;
+  }));
+  runScript(a, steps, (av) => { av.bowSpot = -1; av.goldTrail = false; av.heroStage = ''; av.handPose = null; av.sticks = 0; if (av.member) onSeatArrive(av); });
+  director.hero(a, kind === 'gift' || kind === 'grand' ? 3 : kind === 'join' || kind === 'promote' ? 1 : 2);
 }
 
 function ritualClimax(a, kind, ev) {
@@ -2063,8 +2045,7 @@ function ensureMember(m) {
     uidToAvatar.set(uid, w);
     w.entering = true;
     if (w.vipRank) w.flashOnArrive = true;
-    goToSeat(w, onSeatArrive);
-    director.request('follow', 1, 9, w);
+    seatNewcomer(w, w.tier !== 'normal' ? 3 : 1);
     return w;
   }
   // khách hành hương / khách đứng sân vừa đủ điều kiện có ghế -> chính nhân vật đó vào chỗ
@@ -2079,7 +2060,6 @@ function ensureMember(m) {
     uidToAvatar.set(uid, g);
     g.entering = true;
     if (!g.busy || !g.script?.steps.some((st) => st.dynamic)) goToSeat(g, onSeatArrive);
-    director.request('follow', 1, 9, g);
     return g;
   }
   a = allocAvatar();
@@ -2095,13 +2075,12 @@ function ensureMember(m) {
     a.atSeat = seat;
   } else if (a.tier !== 'normal') {
     // người tặng quà: không xếp hàng, đi ngay từ cổng về chỗ với vệt vàng
-    spawnAvatar(a, { uid, name: a.name, member: true, at: new THREE.Vector3(0, 0, GATE_SPAWN.z - 4), pop: true, keep: a });
+    spawnAvatar(a, { uid, name: a.name, member: true, at: DOOR_SPAWN.clone(), pop: true, keep: a });
     a.entering = true;
     a.goldTrail = true;
     a.flashOnArrive = true;
     setGlow(a, 1.6, 0xffe27a);
-    goToSeat(a, (av) => { av.goldTrail = false; onSeatArrive(av); });
-    director.request('follow', 2, 9, a);
+    walkToBurner(a, 'gift', { user: a.name });
   } else {
     walkIn(a);
   }
@@ -2176,8 +2155,7 @@ function sendToWaitSpot(a) {
   const steps = [];
   if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
   else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
-  if (a.pos.z < HALL_FRONT) steps.push(moveStep(DOOR_IN.clone()), moveStep(new THREE.Vector3(0, 0, HALL_FRONT + 2.5)));
-  steps.push(moveStep(new THREE.Vector3(Math.sign(spot.x) * 1.0, 0, spot.z)), moveStep(spot.clone(), 1.1), turnStep(rand(-0.25, 0.25), 0.5));
+  steps.push(moveStep(new THREE.Vector3(Math.sign(spot.x) * LANE_X, 0, spot.z)), moveStep(spot.clone(), 1.1), turnStep(0, 0.5));
   runScript(a, steps);
 }
 
@@ -2204,7 +2182,7 @@ function syncWaiting(list, count) {
     setTimeout(() => {
       a.queued = false;
       if (waitMap.get(w.uid) !== a) return;
-      spawnAvatar(a, { uid: w.uid, name: w.name, member: false, at: new THREE.Vector3(rand(-0.5, 0.5), 0, GATE_SPAWN.z + 0.5), pop: true });
+      spawnAvatar(a, { uid: w.uid, name: w.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
       a.tier = w.tier || 'normal';
       a.waiting = true;
       ensureTag(a);
@@ -2290,14 +2268,14 @@ const GUEST_SPEED = 2.3;
 const MAX_GUEST_WALKERS = 6;
 const MAX_COURT_GUESTS = 8;
 const guestMap = new Map(); // uid -> avatar khách đang hiện
-const COURT_IN = new THREE.Vector3(0, 0, GATE_Z - 2.6); // ngay sau cổng Tam Quan
-const PILGRIM_SPAWN_Z = 19.5; // khách hành hương xuất hiện giữa sân (đỡ phải đi cả quãng dài từ cổng)
+const COURT_IN = new THREE.Vector3(0, 0, HALL_FRONT - 2.6); // khách đứng ngay trong cửa chính
 const BELL_SPOT = new THREE.Vector3(BELL_POS.x + 1.5, 0, BELL_POS.z + 1.6);
 
 const countGuests = (kind) => avatars.filter((x) => x.active && x.guestKind === kind && !x.fade).length;
-const exitSteps = (speed = GUEST_SPEED) => [moveStep(new THREE.Vector3(0, 0, GATE_Z + 0.5), speed), waitStep(0.05, (av) => despawn(av))];
+// ra về: theo thảm ra cửa chính, bước qua ngưỡng rồi mờ dần trong ánh sáng ngoài cửa
+const exitSteps = (speed = GUEST_SPEED) => [moveStep(DOOR_IN.clone(), speed), moveStep(DOOR_OUT.clone(), speed), waitStep(0.05, (av) => despawn(av))];
 function toHallSteps(a, speed = GUEST_SPEED) {
-  return a.pos.z > HALL_FRONT - 0.5 ? [moveStep(new THREE.Vector3(0, 0, HALL_FRONT + 2), speed), moveStep(DOOR_IN.clone(), speed)] : [];
+  return a.pos.z > HALL_FRONT - 2.5 ? [moveStep(DOOR_IN.clone(), speed)] : [];
 }
 
 /** Khách chưa có ghế làm nghi lễ: từ sân đi vào lư hương (hoặc chuông) -> lễ -> đi ra cổng (hoặc về ghế nếu vừa được xếp chỗ). */
@@ -2316,7 +2294,7 @@ function guestPilgrim(ev, kind) {
   }
   const a = allocAvatar();
   if (!a) { aggregateToast(kind); return; }
-  spawnAvatar(a, { uid: ev.uniqueId || '', name: ev.user, member: false, at: new THREE.Vector3(rand(-0.4, 0.4), 0, PILGRIM_SPAWN_Z), pop: true });
+  spawnAvatar(a, { uid: ev.uniqueId || '', name: ev.user, member: false, at: DOOR_SPAWN.clone(), pop: true });
   a.guestKind = 'pilgrim';
   a.goldTrail = priority;
   if (ev.uniqueId) guestMap.set(ev.uniqueId, a);
@@ -2339,7 +2317,7 @@ function guestPilgrim(ev, kind) {
 }
 function afterGuestRitual(av) {
   if (av.member && av.seat >= 0 && !av.leaving) return pathToSeat(av.seat);
-  return [moveStep(DOOR_IN.clone(), GUEST_SPEED), ...exitSteps()];
+  return exitSteps();
 }
 
 /** hall.action cho khách (guest: true): đứng ở sân ngay sau cổng ~6 giây với bong bóng / động tác rồi ra về. */
@@ -2352,17 +2330,16 @@ function courtGuest(uid, name, action, text) {
     }
     a = allocAvatar();
     if (!a) return null;
-    spawnAvatar(a, { uid, name, member: false, at: new THREE.Vector3(rand(-0.6, 0.6), 0, GATE_Z + 0.6), pop: true });
+    spawnAvatar(a, { uid, name, member: false, at: DOOR_SPAWN.clone(), pop: true });
     a.guestKind = 'court';
     guestMap.set(uid, a);
-    const spot = new THREE.Vector3((countGuests('court') % 2 ? 1 : -1) * rand(0.9, 2.2), 0, COURT_IN.z + rand(-0.8, 0.8));
+    const spot = new THREE.Vector3((countGuests('court') % 2 ? 1 : -1) * rand(1.4, 2.6), 0, COURT_IN.z + rand(-0.6, 0.6));
     runScript(a, [
       moveStep(spot, 1.6),
       turnStep(rand(-0.3, 0.3), 0.4),
       waitStep(0.05, (av) => { av.waiting = true; }),
       waitStep(6),
       waitStep(0.05, (av) => { av.waiting = false; }),
-      turnStep(Math.PI, 0.5),
       ...exitSteps(1.8)
     ]);
   }
@@ -2376,43 +2353,37 @@ function arrive(p) {
   if (countGuests('arrive') >= 3) return;
   const a = allocAvatar();
   if (!a) return;
-  spawnAvatar(a, { uid: p.uid || '', name: p.name, member: false, at: new THREE.Vector3(rand(-0.4, 0.4), 0, GATE_Z + 0.8), pop: true });
+  spawnAvatar(a, { uid: p.uid || '', name: p.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
   a.guestKind = 'arrive';
-  const stop = new THREE.Vector3(rand(-0.8, 0.8), 0, HALL_FRONT + 3.6);
+  const stop = new THREE.Vector3(rand(-0.5, 0.5), 0, HALL_FRONT - 3.2);
   runScript(a, [
     moveStep(stop, 1.7),
     turnStep(0, 0.4),
     waitStep(0.1, (av) => { av.bowAt = clock.elapsed; av.bowCount = 1; }),
     waitStep(2.3),
     turnStep(Math.PI, 0.6),
-    moveStep(new THREE.Vector3(rand(-0.5, 0.5), 0, GATE_Z + 1), 1.7),
-    waitStep(0.05, (av) => despawn(av))
+    ...exitSteps(1.7)
   ]);
 }
 
 // Đám đông vô danh ngoài sân (không tên): min(12, ceil(người xem / 25)), đi dạo / đứng ngắm tháp
 const crowd = [];
 function crowdTarget(n) {
-  return Math.max(0, Math.min(12, n));
+  return Math.max(0, Math.min(6, n));
 }
-function wanderPoint() {
-  const side = Math.random() < 0.5 ? -1 : 1;
-  return new THREE.Vector3(side * rand(2.9, 8), 0, rand(22, 33));
-}
-function crowdWander(a) {
-  if (!a.active || a.fade || !crowd.includes(a)) return;
-  runScript(a, [moveStep(wanderPoint(), rand(0.7, 1.1)), turnStep(rand(-Math.PI, Math.PI), 0.8), waitStep(rand(2.5, 7))], crowdWander);
-}
+// đứng lặng dọc hai bên phía sau điện (giữa cột và tường), không đi lại
+const CROWD_SPOTS = [[-8.2, 9.6], [8.2, 9.6], [-8.2, 7.2], [8.2, 7.2], [-8.3, 4.8], [8.3, 4.8]];
 function syncCrowd(viewers) {
-  const want = crowdTarget(Math.ceil((Number(viewers) || 0) / 25));
+  const want = crowdTarget(Math.ceil((Number(viewers) || 0) / 40));
   while (crowd.length < want) {
     const a = allocAvatar();
     if (!a) break;
-    spawnAvatar(a, { uid: '', name: '', member: false, at: wanderPoint(), anon: true });
-    a.yaw = rand(-Math.PI, Math.PI);
+    const [x, z] = CROWD_SPOTS[crowd.length];
+    spawnAvatar(a, { uid: '', name: '', member: false, at: new THREE.Vector3(x, 0, z), anon: true });
+    a.yaw = Math.atan2(x, 4);
     a.guestKind = 'crowd';
+    a.waiting = true; // chắp tay đứng
     crowd.push(a);
-    crowdWander(a);
   }
   while (crowd.length > want) despawn(crowd.pop());
 }
@@ -2547,132 +2518,145 @@ function renderGiftBoard(feed) {
 }
 
 // ----------------------------------------------------------------------------
-// TƯ THẾ: tính góc khớp từ trạng thái (quỳ / đi / chắp tay / lạy / gật đầu)
+// TƯ THẾ & CHUYỂN ĐỘNG (chibi): mọi thứ được làm mượt bằng lò xo tắt dần
+//  - tay: 2 khớp, giải IK tới "điểm đích của bàn tay" (chắp tay, lên trán, chạm sàn, cầm/cắm nhang...)
+//  - thân trên gập ở eo; đầu theo sau thân hơi trễ rồi ổn định lại (chuyển động phụ)
+//  - quỳ = cả người hạ xuống, vạt áo xòe phẳng trên đệm (có nảy nhẹ khi chạm đệm)
 // ----------------------------------------------------------------------------
-const BOW_DUR = 2.1;
-// Tư thế tay: [shoulderPitch, shoulderRollIn, elbowPitch, elbowYawIn, wrist]
-const ARM_HANG = [0.06, -0.06, 0.18, 0, 0];
-const ARM_PRAY = [0.55, -0.12, 1.9, 0.6, -0.2];
-const ARM_FOREHEAD = [1.45, -0.05, 2.35, 0.72, -0.2];
-const ARM_FLOOR = [1.95, 0.12, 0.3, 0.1, 0.9];
-const _arm = [0, 0, 0, 0, 0];
-function mixArm(out, a, b, k) {
-  for (let i = 0; i < 5; i++) out[i] = lerp(a[i], b[i], k);
-  return out;
-}
+// Đích bàn tay trong khung thân trên (gốc ở eo, mặt hướng -z). x dương = tay phải.
+const HAND_POSES = {
+  hang: [0.27, 0.04, 0.01],
+  pray: [0.034, 0.2, -0.27],
+  forehead: [0.04, 0.47, -0.35],
+  floor: [0.3, 0.5, -0.18],
+  reach: [0.07, 0.03, -0.37],
+  candle: [0.05, 0.15, -0.39],
+  hold: [0.04, 0.23, -0.3],
+  plant: [0.05, 0.5, -0.4]
+};
+const BOW_KNEEL_DUR = 2.4;
+const BOW_STAND_DUR = 1.35;
+const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt);
+const backOut = (x) => 1 + 2.2 * (x - 1) ** 3 + 1.2 * (x - 1) ** 2; // vượt nhẹ rồi về (nảy khi ngồi xuống đệm)
 
-/** Đường cong 1 lạy: chắp tay đưa lên trán -> cúi rạp, 2 tay đặt sàn, trán chạm đất -> đứng thẳng lên. */
-function bowPhases(t, count) {
-  if (t < 0 || t > count * BOW_DUR) return null;
-  const k = (t % BOW_DUR) / BOW_DUR;
-  const raise = k < 0.18 ? ease(k / 0.18) : k < 0.3 ? 1 : k < 0.45 ? 1 - ease((k - 0.3) / 0.15) : k > 0.85 ? ease((k - 0.85) / 0.15) * 0.6 : 0;
-  const fold = k < 0.26 ? 0 : k < 0.48 ? ease((k - 0.26) / 0.22) : k < 0.66 ? 1 : k < 0.9 ? 1 - ease((k - 0.66) / 0.24) : 0;
+/** Một lần lạy: (raise) đưa tay lên trán, (fold) gập người; kết thúc mượt, không giật. */
+function bowPhases(t, count, dur) {
+  if (t < 0 || t > count * dur) return null;
+  const k = (t % dur) / dur;
+  const raise = k < 0.16 ? ease(k / 0.16) : k < 0.3 ? 1 : k < 0.42 ? 1 - ease((k - 0.3) / 0.12) : k > 0.86 ? ease((k - 0.86) / 0.14) * 0.5 : 0;
+  const fold = k < 0.22 ? 0 : k < 0.46 ? ease((k - 0.22) / 0.24) : k < 0.62 ? 1 : k < 0.9 ? 1 - ease((k - 0.62) / 0.28) : 0;
   return { raise, fold };
 }
+function standBowCurve(t, count) {
+  if (t < 0 || t > count * BOW_STAND_DUR) return 0;
+  const k = (t % BOW_STAND_DUR) / BOW_STAND_DUR;
+  return k < 0.4 ? ease(k / 0.4) : k < 0.52 ? 1 : 1 - ease((k - 0.52) / 0.48);
+}
 
-const P = { hipY: 0, pelvisZ: 0, torso: 0, head: 0, roll: 0, legs: [[0, 0, 0], [0, 0, 0]], arms: [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], skirtY: 1, skirtW: 1 };
-function computePose(a, t) {
-  const k = ease(clamp01(a.kneel));
+const _ht = [new THREE.Vector3(), new THREE.Vector3()];
+/** Tính tư thế mong muốn rồi làm mượt vào trạng thái hiện tại của nhân vật. */
+function updatePose(a, t, dt) {
+  const k = a.kneel;
   const w = a.walk;
-  const ph = a.phase;
-  // Quỳ ngồi trên gót: đùi chúi xuống trước, cẳng chân gập ra sau nằm trên bồ đoàn
-  P.hipY = lerp(STAND_HIP, KNEEL_HIP, k);
-  P.pelvisZ = 0.17 * k;
-  P.torso = -0.04 * k;
-  P.head = 0;
-  P.roll = 0;
-  P.skirtY = lerp(1, 0.55, k);
-  P.skirtW = lerp(1, 1.3, k);
-  const hipK = lerp(0, 1.05, k);
-  const kneeK = lerp(0, -2.62, k);
-  const ankleK = lerp(0, -1.3, k);
-  for (let s = 0; s < 2; s++) {
-    const sp = s === 0 ? Math.sin(ph) : Math.sin(ph + Math.PI);
-    const cp = s === 0 ? Math.cos(ph) : Math.cos(ph + Math.PI);
-    P.legs[s][0] = hipK + w * 0.42 * sp;
-    P.legs[s][1] = kneeK - w * (0.08 + 0.85 * Math.max(0, cp));
-    P.legs[s][2] = ankleK + w * 0.25 * Math.max(0, -sp);
+  let torsoT = 0;
+  let headT = 0;
+  // tư thế tay mặc định: đứng/đi buông tay (vung nhẹ ngược chân); quỳ hoặc đứng chờ: chắp tay
+  let pose = a.handPose || ((k > 0.9 || a.waiting) && !a.walking ? 'pray' : 'hang');
+  const kb = a.kneel > 0.9 ? bowPhases(t - a.bowAt, a.bowCount, BOW_KNEEL_DUR) : null;
+  let floorMix = 0;
+  if (kb) {
+    // lạy khi quỳ: tay lên trán -> rạp người, 2 tay úp sàn, đầu gần chạm đất -> lên
+    if (kb.raise > 0.5 && kb.fold < 0.3) pose = 'forehead';
+    floorMix = kb.fold;
+    torsoT += 1.3 * kb.fold;
+    headT += 0.25 * kb.fold - 0.1 * kb.raise;
+  } else if (a.kneel < 0.5 && !a.walking) {
+    // vái khi đứng (cầm nhang hoặc chắp tay): gập ở eo
+    const sb = standBowCurve(t - a.bowAt, a.bowCount);
+    torsoT += 0.55 * sb;
+    headT += 0.15 * sb;
   }
-  P.hipY -= w * 0.045 * Math.sin(ph) ** 2;
-  P.roll = w * 0.035 * Math.sin(ph);
-  P.torso += -w * 0.06;
-
-  // Tay: buông khi đứng/đi (vung ngược chân), chắp trước ngực khi quỳ
-  a.pray = lerp(a.pray, (a.kneel > 0.92 || a.waiting) && !a.walking ? 1 : 0, 0.12);
-  mixArm(_arm, ARM_HANG, ARM_PRAY, ease(a.pray));
-  for (let s = 0; s < 2; s++) {
-    const arm = P.arms[s];
-    for (let i = 0; i < 5; i++) arm[i] = _arm[i];
-    arm[0] += -w * 0.38 * (s === 0 ? Math.sin(ph) : Math.sin(ph + Math.PI)) * (1 - a.pray);
-    arm[2] += w * 0.25;
-  }
-
-  // Lạy
-  const b = bowPhases(t - a.bowAt, a.bowCount);
-  if (b && a.kneel > 0.5) {
-    for (let s = 0; s < 2; s++) {
-      mixArm(_arm, P.arms[s], ARM_FOREHEAD, b.raise * (1 - b.fold));
-      mixArm(P.arms[s], _arm, ARM_FLOOR, b.fold);
-    }
-    P.torso += -1.62 * b.fold;
-    P.head += -0.28 * b.fold + 0.15 * b.raise;
-    P.hipY += 0.07 * b.fold;
-    P.pelvisZ -= 0.12 * b.fold;
-    P.skirtY = lerp(P.skirtY, 0.75, b.fold);
-  } else if (b && !a.walking) {
-    // đứng lạy (người chờ ngoài sân): chắp tay đưa lên trán rồi cúi gập người
-    for (let s = 0; s < 2; s++) mixArm(P.arms[s], P.arms[s], ARM_FOREHEAD, Math.max(b.raise, b.fold) * 0.8);
-    P.torso += -0.95 * b.fold;
-    P.head += -0.3 * b.fold;
-  }
-  // Gật đầu chào (chắp tay cúi nhẹ 2 lần)
+  // chào: gật đầu + cúi nhẹ 2 lần, chắp tay
   const nk = (t - a.nodAt) / 1.6;
   if (nk >= 0 && nk < 1) {
     const n = Math.sin(nk * Math.PI * 2) ** 2;
-    P.torso += -0.3 * n;
-    P.head += -0.25 * n;
-    if (a.kneel < 0.5) for (let s = 0; s < 2; s++) mixArm(P.arms[s], P.arms[s], ARM_PRAY, Math.min(1, nk * 4) * (1 - Math.max(0, nk - 0.8) * 5));
+    torsoT += 0.22 * n;
+    headT += 0.25 * n;
+    if (!a.handPose && !kb) pose = 'pray';
   }
-  // Niệm Phật: lắc lư nhẹ
+  // niệm Phật: lắc lư theo nhịp
   if (t < a.chantUntil) {
-    P.torso += Math.sin(t * 4.2) * 0.04;
-    P.head += Math.sin(t * 4.2 + 0.6) * 0.06;
+    torsoT += Math.sin(t * 4.2) * 0.04;
+    headT += Math.sin(t * 4.2 + 0.7) * 0.07;
   }
-  // thở
-  P.torso += Math.sin(t * 1.4 + a.idx * 1.7) * 0.012;
-  return P;
+  // chắp tay lại -> nháy sáng vàng nhẹ
+  if (pose === 'pray' && a.lastPose !== 'pray' && a.lastPose) setGlow(a, 0.55, 0xffe39a);
+  a.lastPose = pose;
+
+  // làm mượt: thân (nhanh), đầu (chậm hơn -> trễ rồi ổn định)
+  a.torsoS += (torsoT - a.torsoS) * smoothK(7, dt);
+  const headAbsT = a.torsoS + headT;
+  a.headS += (headAbsT - a.headS) * smoothK(4.5, dt);
+  // bàn tay
+  const hp = HAND_POSES[pose] || HAND_POSES.hang;
+  for (let s = 0; s < 2; s++) {
+    const sg = s === 0 ? -1 : 1;
+    const tgt = _ht[s].set(sg * hp[0], hp[1], hp[2]);
+    if (floorMix > 0) tgt.lerp(_v.set(sg * HAND_POSES.floor[0], HAND_POSES.floor[1], HAND_POSES.floor[2]), floorMix);
+    if (pose === 'hang' && w > 0.01) tgt.z += Math.sin(a.phase + (s ? Math.PI : 0)) * 0.09 * w; // vung tay khi đi
+    a.hands[s].lerp(tgt, smoothK(pose === 'hang' ? 8 : 10, dt));
+  }
 }
 
 // ----------------------------------------------------------------------------
-// Dựng ma trận từng bộ phận từ tư thế
+// Dựng ma trận từng bộ phận
 // ----------------------------------------------------------------------------
 const _root = new THREE.Matrix4();
-const _hip = new THREE.Matrix4();
+const _waist = new THREE.Matrix4();
 const _torso = new THREE.Matrix4();
 const _j1 = new THREE.Matrix4();
 const _j2 = new THREE.Matrix4();
-const _j3 = new THREE.Matrix4();
 const _t = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
 const _camQ = new THREE.Quaternion();
 const mT = (x, y, z) => _t.makeTranslation(x, y, z);
-const mRx = (a) => new THREE.Matrix4().makeRotationX(a);
 const _rx = new THREE.Matrix4();
-const _ry = new THREE.Matrix4();
 const _rz = new THREE.Matrix4();
 const _sc = new THREE.Matrix4();
+const _down = new THREE.Vector3(0, -1, 0);
+const _sh = new THREE.Vector3();
+const _el = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const _seg = new THREE.Vector3();
+const _qa = new THREE.Quaternion();
+const _one = new THREE.Vector3(1, 1, 1);
+const counters = {};
+function put(name, m, color) {
+  const i = counters[name]++;
+  parts[name].setMatrixAt(i, m);
+  parts[name].setColorAt(i, color);
+}
+/** Đoạn chi từ điểm A tới B (hình học dựng dọc -y): ma trận trong khung torso. */
+function limbMatrix(out, base, A, B) {
+  _seg.subVectors(B, A).normalize();
+  _qa.setFromUnitVectors(_down, _seg);
+  return out.copy(base).multiply(_m.compose(A, _qa, _one));
+}
 
 let fishBobAt = -10;
+const _white = new THREE.Color(1, 1, 1);
 function updateAvatars(dt, t) {
   _camQ.copy(camera.quaternion);
-  let n = 0;
+  for (const name of Object.keys(parts)) counters[name] = 0;
   let na = 0;
+  let nb = 0;
+  let nt = 0;
   const fishK = t - fishBobAt;
   for (const a of avatars) {
     if (!a.active) continue;
     if (a.script) tickScript(a, dt);
-    // đi bộ mượt: biên độ bước tăng/giảm dần
-    a.walk = lerp(a.walk, a.walking ? 1 : 0, Math.min(1, dt * 7));
+    a.walk += ((a.walking ? 1 : 0) - a.walk) * smoothK(6, dt);
 
     if (a.fade) {
       a.scale = Math.max(0, a.scale - dt * 2.2);
@@ -2686,82 +2670,110 @@ function updateAvatars(dt, t) {
       }
     } else {
       const pk = (t - a.popAt) / 0.55;
-      a.scale = pk < 1 ? Math.max(0.01, 1 + 2.7 * (pk - 1) ** 3 + 1.7 * (pk - 1) ** 2) : lerp(a.scale, a.scaleTarget, 0.3);
+      a.scale = pk < 1 ? Math.max(0.01, backOut(pk)) : a.scale + (a.scaleTarget - a.scale) * smoothK(8, dt);
     }
-
-    // vệt vàng sau bước chân người tặng quà
     if (a.goldTrail && a.walking && Math.random() < 0.6) {
-      sparks.spawn(a.pos.x + rand(-0.15, 0.15), groundY(a.pos.z) + rand(0.1, 1.2), a.pos.z + rand(-0.1, 0.25), rand(-0.2, 0.2), rand(0.3, 0.9), rand(-0.1, 0.2), rand(0.6, 1.1), Math.random() < 0.5 ? 0xffe27a : 0xffc04a);
+      sparks.spawn(a.pos.x + rand(-0.15, 0.15), rand(0.1, 1.1), a.pos.z + rand(-0.1, 0.25), rand(-0.2, 0.2), rand(0.3, 0.9), rand(-0.1, 0.2), rand(0.6, 1.1), Math.random() < 0.5 ? 0xffe27a : 0xffc04a);
       a.glow = Math.max(a.glow, 0.7);
     }
-    const p = computePose(a, t);
-    let bob = 0;
-    if (fishK >= 0 && fishK < 0.5 && a.kneel > 0.9) bob = Math.sin((fishK / 0.5) * Math.PI) * 0.05 * (0.6 + 0.4 * Math.sin(a.idx));
-    a.bobY = bob;
-    const s = Math.max(0.0001, a.scale);
-    const gy = groundY(a.pos.z);
-
-    _root.compose(_pos.set(a.pos.x, gy + bob, a.pos.z), _q.setFromAxisAngle(_v.set(0, 1, 0), a.yaw), _s.set(s, s, s));
-    _hip.copy(_root).multiply(mT(0, p.hipY, p.pelvisZ)).multiply(_rz.makeRotationZ(p.roll));
-    _torso.copy(_hip).multiply(_rx.makeRotationX(p.torso));
+    updatePose(a, t, dt);
 
     const T = a.tones;
-    const put = (name, slot, m, color) => {
-      parts[name].setMatrixAt(slot, m);
-      parts[name].setColorAt(slot, color);
-    };
-    put('torso', n, _torso, T.robe);
-    _j1.copy(_hip).multiply(_rx.makeRotationX(p.torso * 0.35)).multiply(_sc.makeScale(p.skirtW, p.skirtY, p.skirtW));
-    put('skirt', n, _j1, T.robe);
-    _j1.copy(_torso).multiply(mT(0, NECK_Y, 0)).multiply(_rx.makeRotationX(p.head));
-    put('head', n, _j1, T.skin);
-    put('hair', n, _j1, T.hair);
-    a.head.set(0, 0.42, 0).applyMatrix4(_j1);
+    const s = Math.max(0.0001, a.scale);
+    const k = a.kneel; // có thể vượt 1 chút (nảy khi ngồi)
+    const w = a.walk;
+    // lạch bạch: nghiêng trái/phải + nhún theo bước; thở nhẹ khi đứng yên
+    const roll = Math.sin(a.phase) * 0.075 * w;
+    a.swayS += (roll - a.swayS) * smoothK(5, dt); // vạt áo đung đưa trễ hơn thân
+    let bob = Math.abs(Math.sin(a.phase)) * 0.035 * w;
+    if (fishK >= 0 && fishK < 0.5 && k > 0.9) bob += Math.sin((fishK / 0.5) * Math.PI) * 0.04 * (0.6 + 0.4 * Math.sin(a.idx));
+    const breath = Math.sin(t * 1.5 + a.idx * 1.7);
+    a.bobY = bob;
+    const waistY = lerp(STAND_WAIST, KNEEL_WAIST, k) + bob + breath * 0.004;
+    const kc = clamp01(k);
+    const skirtY = Math.max(0.2, (waistY - lerp(0.05, 0.145, kc)) / SKIRT_H);
+    const skirtW = lerp(1, 1.3, kc) * (1 + Math.max(0, k - 1) * 0.6);
 
+    _root.compose(_pos.set(a.pos.x, 0, a.pos.z), _q.setFromAxisAngle(_v.set(0, 1, 0), a.yaw), _s.set(s, s, s));
+    _waist.copy(_root).multiply(mT(0, waistY, 0));
+    // vạt áo: đung đưa trễ + nghiêng nhẹ theo thân khi cúi
+    _j1.copy(_waist).multiply(_rz.makeRotationZ(-a.swayS * 0.6)).multiply(_rx.makeRotationX(-Math.min(0.2, a.torsoS * 0.12))).multiply(_sc.makeScale(skirtW, skirtY, skirtW));
+    put('skirt', _j1, T.robe);
+    _torso.copy(_waist).multiply(_rz.makeRotationZ(roll)).multiply(_rx.makeRotationX(-a.torsoS)).multiply(_sc.makeScale(1, 1 + breath * 0.012 * (1 - w), 1));
+    put('torso', _torso, T.robe);
+    _j1.copy(_torso).multiply(mT(0, TORSO_H, 0)).multiply(_rx.makeRotationX(-(a.headS - a.torsoS))).multiply(_rz.makeRotationZ(-roll * 0.4));
+    put('head', _j1, T.skin);
+    put('ears', _j1, T.skin);
+    if (a.hairStyle === 0) put('hairShort', _j1, T.hair);
+    else if (a.hairStyle === 1) put('hairBun', _j1, T.hair);
+    a.head.set(0, HEAD_C + HEAD_R + 0.05, 0).applyMatrix4(_j1);
+
+    // tay: IK 2 khớp trong khung thân, khuỷu tay chĩa xuống - ra ngoài
     for (let side = 0; side < 2; side++) {
-      const sg = side === 0 ? -1 : 1; // 0 = trái (x âm), 1 = phải
-      const slot = n * 2 + side;
-      const [shP, shR, elP, elY, wr] = p.arms[side];
-      // vai -> cánh tay trên
-      _j1.copy(_torso).multiply(mT(sg * SHOULDER_X, SHOULDER_Y, 0)).multiply(_rx.makeRotationX(shP)).multiply(_rz.makeRotationZ(-sg * shR));
-      put('upperArm', slot, _j1, T.robe);
-      _j2.copy(_j1).multiply(mT(0, -UPPER_ARM, 0)).multiply(_ry.makeRotationY(sg * elY)).multiply(_rx.makeRotationX(elP));
-      put('foreArm', slot, _j2, T.robe);
-      _j3.copy(_j2).multiply(mT(0, -FORE_ARM, 0)).multiply(_rx.makeRotationX(wr));
-      put('hand', slot, _j3, T.skin);
-      // hông -> đùi -> cẳng chân -> bàn chân (gắn khung hông, không nghiêng theo thân khi lạy)
-      const [hp, kn, an] = p.legs[side];
-      _j1.copy(_root).multiply(mT(sg * 0.1, p.hipY - 0.02, p.pelvisZ)).multiply(_rx.makeRotationX(hp));
-      put('thigh', slot, _j1, T.pants);
-      _j2.copy(_j1).multiply(mT(0, -THIGH, 0)).multiply(_rx.makeRotationX(kn));
-      put('shin', slot, _j2, T.pants);
-      _j3.copy(_j2).multiply(mT(0, -SHIN, 0)).multiply(_rx.makeRotationX(an));
-      put('foot', slot, _j3, T.feet);
+      const sg = side === 0 ? -1 : 1;
+      _sh.set(sg * SHOULDER.x, SHOULDER.y, SHOULDER.z);
+      const H = _v.copy(a.hands[side]);
+      _dir.subVectors(H, _sh);
+      let d = _dir.length();
+      const maxD = ARM_L1 + ARM_L2 - 0.005;
+      if (d > maxD) { _dir.multiplyScalar(maxD / d); d = maxD; H.copy(_sh).add(_dir); }
+      _dir.normalize();
+      const cosA = clamp01((ARM_L1 * ARM_L1 + d * d - ARM_L2 * ARM_L2) / (2 * ARM_L1 * Math.max(0.01, d)));
+      const sinA = Math.sqrt(1 - cosA * cosA);
+      _pole.set(sg * 0.7, -1, 0.35);
+      _pole.addScaledVector(_dir, -_pole.dot(_dir)).normalize();
+      _el.copy(_sh).addScaledVector(_dir, ARM_L1 * cosA).addScaledVector(_pole, ARM_L1 * sinA);
+      put('upperArm', limbMatrix(_j1, _torso, _sh, _el), T.robe);
+      put('foreArm', limbMatrix(_j2, _torso, _el, H), T.robe);
+      _j1.copy(_torso).multiply(_m.compose(H, _qa, _one));
+      put('hand', _j1, T.skin);
+      // bàn chân: chỉ ló ra khi bước
+      const fv = Math.max(0.0001, Math.min(1, w * 1.4) * (1 - kc));
+      const step = Math.sin(a.phase + (side ? Math.PI : 0));
+      _j1.copy(_root).multiply(mT(sg * 0.1, Math.max(0, -step) * 0.035 * w, -0.04 + step * 0.1 * w)).multiply(_sc.makeScale(fv, fv, fv));
+      put('foot', _j1, T.feet);
+    }
+    // nhang cầm tay
+    if (a.sticks > 0) {
+      _v.addVectors(a.hands[0], a.hands[1]).multiplyScalar(0.5);
+      _v.y += 0.02;
+      _j1.copy(_torso).multiply(_m.compose(_v, _q.setFromEuler(_e.set(-0.12 + a.torsoS * 0.6, 0, 0, 'XYZ')), _one));
+      put('heldIncense', _j1, _white);
+      if (a.sticks > 1) {
+        const glowS = 1 + Math.sin(t * 9 + a.idx) * 0.2 + (a.stickFlare || 0);
+        for (const [x, y] of [[-0.06, 0.555], [0, 0.57], [0.06, 0.555]]) {
+          _pos.set(x, y, 0).applyMatrix4(_j1);
+          heldTips.setMatrixAt(nt++, _m.compose(_pos, _camQ, _s.set(glowS, glowS, glowS)));
+          if (Math.random() < dt * 0.9) smoke.spawn(_pos.x, _pos.y + 0.02, _pos.z, rand(-0.04, 0.04), rand(0.3, 0.5), rand(-0.04, 0.04), rand(2, 3), 0x4a443e);
+        }
+        a.stickFlare = Math.max(0, (a.stickFlare || 0) - dt * 1.5);
+      }
     }
     if (!SHADOWS) {
-      blobMesh.setMatrixAt(n, _m.compose(_pos.set(a.pos.x, gy + 0.18 * a.kneel + 0.02, a.pos.z), _q.identity(), _s.set(s * 1.1, 1, s * 1.1)));
+      blobMesh.setMatrixAt(nb++, _m.compose(_pos.set(a.pos.x, 0.17 * kc + 0.02, a.pos.z), _q.identity(), _s.set(s * 1.0, 1, s * 1.0)));
     }
 
-    // Hào quang (cộng sáng; cường độ = màu)
+    // hào quang (cộng sáng; cường độ = màu)
     a.glow = Math.max(0, a.glow - dt * 0.55);
     const chanting = t < a.chantUntil;
     let aura = a.glow;
     if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
     if (aura > 0.01) {
-      const sz = (1.6 + aura * 0.6) * s;
+      const sz = (1.5 + aura * 0.6) * s;
       _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
       auraMesh.setColorAt(na, _c);
-      auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, gy + lerp(0.9, 0.62, a.kneel) * s, a.pos.z), _camQ, _s.set(sz, sz * 1.25, 1)));
+      auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
       na++;
     }
-    n++;
   }
   for (const [name, im] of Object.entries(parts)) {
-    im.count = PAIRED[name] ? n * 2 : n;
+    im.count = counters[name];
     im.instanceMatrix.needsUpdate = true;
     if (im.instanceColor) im.instanceColor.needsUpdate = true;
   }
-  blobMesh.count = SHADOWS ? 0 : n;
+  heldTips.count = nt;
+  heldTips.instanceMatrix.needsUpdate = true;
+  blobMesh.count = SHADOWS ? 0 : nb;
   blobMesh.instanceMatrix.needsUpdate = true;
   auraMesh.count = na;
   auraMesh.instanceMatrix.needsUpdate = true;
@@ -2769,87 +2781,143 @@ function updateAvatars(dt, t) {
 }
 
 // ============================================================================
-// 11. ĐẠO DIỄN CAMERA: các góc máy đặt tên + chuyển cảnh mượt
+// 11. ĐẠO DIỄN CAMERA — chỉ quay TRONG chánh điện.
+//  Cảnh chính (hero): 1 người vào lạy: (a) bám theo từ cửa xuống thảm đỏ, (b) góc thấp 3/4 bên cạnh,
+//  thấy người lạy ở tiền cảnh và tượng Phật phía sau, giữ yên + đẩy vào rất chậm khi quỳ lạy 3 lạy, (c) bùng hương,
+//  (d) người đó đi về chỗ / ra về trong khi máy lùi về toàn cảnh 'hall'.
+//  Mỗi lúc chỉ 1 người được quay (hàng đợi, quà tặng ưu tiên và được chen ngang), cách nhau ≥ 8 giây.
+//  Giữa các cảnh chính: luân phiên hall / altar / side / buddha.
 // ============================================================================
 const CAM_LOCK = params.get('cam');
 const DIRECTOR_AUTO = params.get('director') !== '0' && !CAM_LOCK;
-const CYCLE = ['hall', 'side', 'altar', 'top', 'hall', 'court'];
+const CYCLE = ['hall', 'altar', 'hall', 'side', 'hall', 'buddha'];
+const HERO_GAP = 8;
 const SHOTS = {
   hall: (u) => ({ pos: [Math.sin(u * 0.11) * 0.5, 10.8 + Math.sin(u * 0.07) * 0.2, 13.2 - Math.min(u, 15) * 0.04], look: [Math.sin(u * 0.09) * 0.25, 3.4, -8.5] }),
   altar: (u) => ({ pos: [1.5 + Math.sin(u * 0.12) * 0.5, 3.7 + Math.sin(u * 0.08) * 0.15, -9.9], look: [-0.3, 0.5, 1.5] }),
   side: (u) => ({ pos: [8.4, 4.4, -7.2 + Math.min(u, 15) * 0.08], look: [-1.2, 0.5, -0.8] }),
   buddha: (u) => ({ pos: [Math.sin(u * 0.2) * 0.5, 6.4, -5.5 - Math.min(u, 12) * 0.22], look: [0, 6.6, -16.4] }),
-  entrance: (u) => ({ pos: [-1.2 + Math.sin(u * 0.1) * 0.3, 2.2, 2.2], look: [0, 4.2, 30] }),
-  top: (u) => ({ pos: [-10 + Math.sin(u * 0.05) * 2, 36, -22], look: [0, 0, 13] }),
-  // sân chùa: từ thềm điện nhìn ra cổng Tam Quan và tháp Phước Duyên
-  court: (u) => ({ pos: [2.4 + Math.sin(u * 0.08) * 0.5, 11.5, HALL_FRONT + 0.9 + Math.min(u, 15) * 0.05], look: [-0.3, 3.8, TOWER_Z - 4] }),
-  follow: (u, target) => {
-    if (!target || !target.active) return SHOTS.entrance(u);
-    const gy = groundY(target.pos.z);
-    // máy quay đi giật lùi phía trước người mới để thấy mặt
-    return { pos: [target.pos.x + 1.5, gy + 2.3, target.pos.z - 3.8], look: [target.pos.x, gy + 1.15, target.pos.z + 0.6] };
+  // cảnh chính: chọn góc theo giai đoạn của người được quay
+  hero: (u, a) => {
+    if (!a || !a.active) return SHOTS.hall(u);
+    const p = a.pos;
+    if (a.heroStage === 'bow' || (a.heroStage === 'walk' && p.z < VIP_Z + 0.4)) {
+      // góc thấp 3/4 phía sau-bên: người thắp nhang ở tiền cảnh (thấy nghiêng mặt và tay cầm nhang),
+      // tượng Phật nằm trên trục nhìn phía sau/trên; đẩy vào rất chậm khi đang vái
+      const sg = a.heroSide || 1;
+      const push = 1 - Math.min(0.15, (a.heroBowT || 0) * 0.01);
+      // (khung dọc 9:16 hẹp ngang: máy đặt chéo sau-bên ~35° để người và tượng Phật cùng lọt khung)
+      const lx = lerp(p.x, 0, 0.12);
+      const lz = lerp(p.z, -16.4, 0.12);
+      return { pos: [p.x + sg * 1.45 * push, 0.9, p.z + 2.4 * push], look: [lx, 1.5, lz] };
+    }
+    if (p.z > HALL_FRONT - 3.5) {
+      // vừa bước qua cửa: máy đứng trong điện, nhìn ra cửa thấy người đi vào trong vùng sáng
+      return { pos: [1.7, 1.75, HALL_FRONT - 7], look: [p.x * 0.5, 1.3, p.z] };
+    }
+    // bám theo sau lưng, lệch bên, ngang tầm mắt, không xuyên tường / người ngồi
+    const bx = Math.max(-1.05, Math.min(1.05, p.x + 0.9));
+    return { pos: [bx, 1.85, Math.min(HALL_FRONT - 1, p.z + 3.1)], look: [p.x * 0.6, 1.1, p.z - 3.5] };
   }
 };
 const director = {
-  name: CAM_LOCK && SHOTS[CAM_LOCK] ? CAM_LOCK : 'hall',
-  priority: 0,
+  name: CAM_LOCK && SHOTS[CAM_LOCK] && CAM_LOCK !== 'hero' ? CAM_LOCK : 'hall',
   until: 14,
   startedAt: 0,
-  lastCut: -10,
-  blendFrom: { pos: new THREE.Vector3(0, 10.2, 12.2), look: new THREE.Vector3(0, 3.6, -8.5) },
+  blendFrom: { pos: new THREE.Vector3(), look: new THREE.Vector3() },
   blendStart: -10,
   blendDur: 2.0,
-  target: null,
   cycleIdx: 0,
-  curLook: new THREE.Vector3(0, 3.6, -8.5),
+  curLook: new THREE.Vector3(),
   livePos: new THREE.Vector3(),
   liveLook: new THREE.Vector3(),
-  cut(name, priority, hold, target) {
+  heroA: null,
+  heroPrio: 0,
+  heroStart: -100,
+  heroQueue: [],
+  cut(name, hold, blend = 2.2) {
     const t = clock.elapsed;
     this.blendFrom.pos.copy(camera.position);
     this.blendFrom.look.copy(this.curLook);
     this.blendStart = t;
-    this.blendDur = name === 'follow' ? 1.6 : 2.2;
+    this.blendDur = blend;
     this.name = name;
-    this.priority = priority;
     this.until = t + hold;
     this.startedAt = t;
-    this.lastCut = t;
-    this.target = target || null;
   },
-  request(name, priority, hold, target) {
-    if (CAM_LOCK) return;
+  /** Có nên cho người này vào cảnh chính ngay không (dùng cho người mới / lên hàng đầu). */
+  heroFree(prio) {
+    if (CAM_LOCK) return false;
+    if (prio >= 3) return !(this.heroA && this.heroPrio >= 3) || this.heroQueue.length < 2;
+    return !this.heroA && !this.heroQueue.length && clock.elapsed - this.heroStart >= HERO_GAP;
+  },
+  /** Xin quay cảnh chính cho nhân vật a (đã được giao kịch bản đi lên lư hương). */
+  hero(a, prio) {
+    if (CAM_LOCK || !a) return;
+    if (this.heroA === a || this.heroQueue.some((h) => h.a === a)) return;
+    if (prio >= 3 && this.heroA && this.heroPrio < 3) {
+      this.startHero(a, prio); // quà tặng chen ngang cảnh thường (người kia vẫn lạy tiếp, chỉ không được quay)
+      return;
+    }
+    this.heroQueue.push({ a, prio, at: clock.elapsed });
+    // quà trước, rồi theo thứ tự đến
+    this.heroQueue.sort((x, y) => y.prio - x.prio || x.at - y.at);
+  },
+  startHero(a, prio) {
+    this.heroA = a;
+    this.heroPrio = prio;
+    this.heroStart = clock.elapsed;
+    a.heroBowT = 0;
+    this.name = 'hero';
     const t = clock.elapsed;
-    const busy = this.until > t && priority < this.priority; // sự kiện lớn hơn đang diễn
-    if (busy) return;
-    if (t - this.lastCut < 4 && priority <= this.priority) return; // tối đa 1 cú cắt / 4 giây
-    if (name === this.name && this.target === (target || null)) { this.until = Math.max(this.until, t + hold); return; }
-    this.cut(name, priority, hold, target);
+    this.blendFrom.pos.copy(camera.position);
+    this.blendFrom.look.copy(this.curLook);
+    this.blendStart = t;
+    this.blendDur = 1.8;
+    this.startedAt = t;
+    this.until = t + 60;
+    const s = SHOTS.hero(0, a);
+    this.livePos.set(...s.pos);
+    this.liveLook.set(...s.look);
+  },
+  endHero() {
+    this.heroA = null;
+    this.heroPrio = 0;
+    this.cut('hall', 12 + Math.random() * 2, 2.6);
   },
   update(t, dt) {
-    if (!CAM_LOCK && t > this.until) {
-      if (this.name === 'follow' && this.target?.active && this.target.entering) {
-        this.until = t + 2;
-      } else if (DIRECTOR_AUTO) {
+    // cảnh chính
+    const h = this.heroA;
+    if (h) {
+      if (!h.active || h.heroStage === 'done' || !h.heroStage || t - this.heroStart > 45) this.endHero();
+      else if (h.heroStage === 'bow') h.heroBowT = (h.heroBowT || 0) + dt;
+    }
+    if (!this.heroA && !CAM_LOCK) {
+      // bỏ ứng viên đã lạy xong / đã rời đi; quà đợi ngắn hơn
+      this.heroQueue = this.heroQueue.filter((q) => q.a.active && (q.a.heroStage === 'walk' || q.a.heroStage === 'bow'));
+      const next = this.heroQueue[0];
+      if (next && (t - this.heroStart >= HERO_GAP || next.prio >= 3)) {
+        this.heroQueue.shift();
+        this.startHero(next.a, next.prio);
+      }
+    }
+    if (!this.heroA && !CAM_LOCK && t > this.until) {
+      if (DIRECTOR_AUTO) {
         this.cycleIdx = (this.cycleIdx + 1) % CYCLE.length;
-        this.cut(CYCLE[this.cycleIdx], 0, 13 + Math.random() * 2);
-      } else if (this.name !== 'hall') {
-        this.cut('hall', 0, 1e9);
+        this.cut(CYCLE[this.cycleIdx], CYCLE[this.cycleIdx] === 'hall' ? 13 : 10 + Math.random() * 2);
       } else {
-        this.until = t + 1e9;
-        this.priority = 0;
+        this.cut('hall', 1e9);
       }
     }
     const u = t - this.startedAt;
-    const live = SHOTS[this.name](u, this.target);
-    const lp = _v.set(...live.pos);
-    if (this.name === 'follow') {
-      // giữ máy không xuyên tường: đi qua cửa chính thì ép vào khe cửa
-      if (Math.abs(lp.z - (HALL_FRONT + 0.2)) < 1.2) lp.x = Math.max(-DOOR_W / 2 + 0.6, Math.min(DOOR_W / 2 - 0.6, lp.x));
-      this.livePos.lerp(lp, Math.min(1, dt * 3));
-      this.liveLook.lerp(_s.set(...live.look), Math.min(1, dt * 4));
+    const live = SHOTS[this.name](u, this.heroA);
+    if (this.name === 'hero') {
+      // máy bám mượt (không giật) — đổi giai đoạn sẽ tự lướt sang góc mới trong ~2 giây
+      const kp = Math.min(1, dt * 1.6);
+      this.livePos.lerp(_v.set(...live.pos), kp);
+      this.liveLook.lerp(_s.set(...live.look), Math.min(1, dt * 2.2));
     } else {
-      this.livePos.copy(lp);
+      this.livePos.set(...live.pos);
       this.liveLook.set(...live.look);
     }
     const k = ease(clamp01((t - this.blendStart) / this.blendDur));
@@ -2987,7 +3055,7 @@ function makeFixedLabel(cls) {
 }
 const reservedLabel = makeFixedLabel('reserved-label');
 const waitSign = makeFixedLabel('wait-sign');
-const WAIT_SIGN_POS = new THREE.Vector3(0, COURT_Y + 3.2, 21);
+const WAIT_SIGN_POS = new THREE.Vector3(0, DOOR_H + 0.7, HALL_FRONT - 0.4);
 function placeFixed(lbl, pos, text) {
   if (!text) { if (lbl.el.style.display !== 'none') lbl.el.style.display = 'none'; return; }
   if (text !== lbl.text) { lbl.inner.textContent = text; lbl.text = text; }
@@ -3147,7 +3215,6 @@ function updateEnvironment(dt, t) {
   GOLD.robe.emissiveIntensity = GOLD.robePlain.emissiveIntensity = 0.45 + flare.halo * 0.9;
 
   for (const g of hangingLanterns) g.quaternion.copy(camera.quaternion);
-  for (const gl of gateGlows) gl.quaternion.copy(camera.quaternion);
   for (const f of candleFlames) {
     f.quaternion.copy(camera.quaternion);
     f.scale.set(1 + Math.sin(t * 9 + f.position.x) * 0.08, 1 + Math.sin(t * 11 + f.position.x) * 0.12, 1);
@@ -3200,17 +3267,28 @@ function updateEnvironment(dt, t) {
 
 let rafId = 0;
 let lastFrame = 0;
-function frame(now) {
-  rafId = requestAnimationFrame(frame);
-  if (now - lastFrame < FRAME_MS - 2) return;
-  const dt = Math.min(DT_MAX, (now - (lastFrame || now)) / 1000);
-  lastFrame = now;
+// ?manual=1 (chỉ dùng kiểm thử): dừng đồng hồ thật; Temple3D.step(giây, bước) chạy mô phỏng bước đều rồi vẽ 1 khung
+const MANUAL = params.get('manual') === '1';
+function simulate(dt) {
   clock.elapsed += dt;
   const t = clock.elapsed;
   processQueues(t);
   director.update(t, dt);
   updateEnvironment(dt, t);
   updateAvatars(dt, t);
+}
+function frame(now) {
+  rafId = requestAnimationFrame(frame);
+  if (now - lastFrame < FRAME_MS - 2) return;
+  const dt = Math.min(DT_MAX, (now - (lastFrame || now)) / 1000);
+  lastFrame = now;
+  if (!MANUAL) simulate(dt);
+  renderer.render(scene, camera);
+  updateOverlay();
+}
+function stepSim(sec, h = 1 / 30, render = true) {
+  for (let left = sec; left > 1e-6; left -= h) simulate(Math.min(h, left));
+  if (!render) return;
   renderer.render(scene, camera);
   updateOverlay();
 }
@@ -3312,9 +3390,8 @@ function playEvent(ev) {
       startPetalRain(9);
       flare.halo = 1;
       bowAll(1);
-      showGrand(ev);
+      if (!ev.giftAnnounce) showGrand(ev); // đã có băng-rôn quà thì không hiện thêm băng-rôn Đại Lễ
       walkFor(ev, 'grand');
-      director.request('buddha', 3, 8);
       break;
     case 'ringBell':
       audio?.playTempleBell(1.0);
@@ -3338,8 +3415,8 @@ function playEvent(ev) {
     case 'drawFortune':
       audio?.playFortuneShake();
       if (me) { setGlow(me, 1, 0xfff0b0); me.nodAt = t; }
-      director.request('altar', 2, 10);
       if (ev.hallStatus === 'guest' && ev.uniqueId) guestPilgrim(ev, 'fortune');
+      else if (me && me.active && !me.busy) walkToBurner(me, 'fortune', ev);
       // ttsText rỗng (server bỏ qua giọng đọc khi đông) -> enqueueTts gọi onStart ngay: tờ quẻ hiện liền
       audio?.enqueueTts(ev.ttsText || '', ttsOpts(ev, {
         onStart: () => {
@@ -3508,4 +3585,4 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS };

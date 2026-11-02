@@ -378,7 +378,7 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
 .grand-banner {
   position: absolute;
   left: 50%;
-  top: 1240px;
+  top: 1560px;
   transform: translate(-50%, -50%) scale(0.7);
   opacity: 0;
   padding: 24px 48px;
@@ -490,7 +490,7 @@ body.obs-mode .t3d-wrapper { height: 100vh; border: none; border-radius: 0; }
 .gift-banner {
   position: absolute;
   left: 50%;
-  top: 470px;
+  top: 1430px; /* 1/3 dưới khung: không che mặt tượng Phật */
   transform: translate(-50%, -30px) scale(0.85);
   opacity: 0;
   display: flex;

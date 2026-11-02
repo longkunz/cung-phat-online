@@ -55,6 +55,22 @@ async def test_health_endpoint():
 
 
 @pytest.mark.asyncio
+async def test_ready_endpoint(monkeypatch):
+    import services.tts.main as tts_main
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # When loading or not ready, returns 503
+        monkeypatch.setattr(tts_main, "SERVICE_STATUS", "loading")
+        res_loading = await client.get("/ready")
+        assert res_loading.status_code == 503
+
+        # When ready, returns 200
+        monkeypatch.setattr(tts_main, "SERVICE_STATUS", "ready")
+        res_ready = await client.get("/ready")
+        assert res_ready.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_voices_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

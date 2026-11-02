@@ -48,12 +48,17 @@ def resolve_model_source() -> str:
         if candidate and os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "config.json")):
             return candidate
 
-    # On Windows, HF cache symlinks can fail in ONNX Runtime. Snapshot to local dir if needed.
+    # On Windows or cross-mount Docker volumes, HF cache symlinks can fail. Snapshot to local dir if needed.
     try:
         from huggingface_hub import snapshot_download
-        local_target = Path.home() / ".cache" / "zerotts-local"
+        env_target = os.environ.get("ZEROTTS_MODEL_PATH", "").strip()
+        local_target = Path(env_target) if env_target else (Path.home() / ".cache" / "zerotts-local")
         local_target.mkdir(parents=True, exist_ok=True)
-        snapshot_download(repo_id="zeroweight-ai/ZeroTTS", local_dir=str(local_target))
+        snapshot_download(
+            repo_id="zeroweight-ai/ZeroTTS",
+            local_dir=str(local_target),
+            max_workers=2
+        )
         if (local_target / "config.json").is_file():
             return str(local_target)
     except Exception as exc:
@@ -238,16 +243,28 @@ class VoicesResponse(BaseModel):
     voices: List[str]
 
 
-@app.get("/health", response_model=HealthResponse)
-async def health():
+def _build_status_response(strict: bool = False):
     uptime = round(time.time() - START_TIME, 2)
-    return HealthResponse(
-        status=SERVICE_STATUS,
-        voices=VOICES,
-        model=MODEL_SOURCE,
-        sampleRate=SAMPLE_RATE,
-        uptimeSec=uptime,
-    )
+    payload = {
+        "status": SERVICE_STATUS,
+        "voices": VOICES,
+        "model": MODEL_SOURCE,
+        "sampleRate": SAMPLE_RATE,
+        "uptimeSec": uptime,
+    }
+    if strict and SERVICE_STATUS != "ready":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+    return HealthResponse(**payload)
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health(strict: bool = False):
+    return _build_status_response(strict=strict)
+
+
+@app.get("/ready", response_model=HealthResponse)
+async def ready():
+    return _build_status_response(strict=True)
 
 
 @app.get("/voices", response_model=VoicesResponse)

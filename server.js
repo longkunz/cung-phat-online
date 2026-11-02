@@ -1784,6 +1784,49 @@ app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'th
 // Addons của Three.js (RoomEnvironment...) cho trang Chánh Điện 3D — nạp qua importmap "three"
 app.use('/vendor/three-addons', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'), { maxAge: '7d' }));
 
+function getTtsDependencyStatus() {
+  return (typeof zeroTts !== 'undefined' && zeroTts)
+    ? zeroTts.getStatus()
+    : { ready: false, status: 'uninitialized' };
+}
+
+app.get('/health', (_req, res) => {
+  const ttsStatus = getTtsDependencyStatus();
+  res.status(200).json({
+    status: 'ok',
+    service: 'live-gateway',
+    ready: true,
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+    dependencies: {
+      tts: ttsStatus
+    }
+  });
+});
+
+app.get('/ready', (_req, res) => {
+  const ttsStatus = getTtsDependencyStatus();
+  if (ttsStatus.ready) {
+    return res.status(200).json({
+      status: 'ready',
+      service: 'live-gateway',
+      ready: true,
+      dependencies: {
+        tts: ttsStatus
+      }
+    });
+  }
+  return res.status(503).json({
+    status: 'unavailable',
+    service: 'live-gateway',
+    ready: false,
+    error: `TTS Service dependency is not ready (status: ${ttsStatus.status || 'offline'})`,
+    dependencies: {
+      tts: ttsStatus
+    }
+  });
+});
+
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });

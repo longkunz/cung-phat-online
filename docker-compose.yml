@@ -4,20 +4,25 @@ services:
       context: ./services/tts
       dockerfile: Dockerfile
     container_name: chua-online-tts
-    ports:
-      - "8008:8008"
+    expose:
+      - "8008"
     environment:
       - PORT=8008
       - OMP_NUM_THREADS=3
       - OMP_WAIT_POLICY=PASSIVE
+      - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+      - ZEROTTS_MODEL_PATH=/root/.cache/zerotts-local
     volumes:
-      - ~/.cache/zerotts-local:/root/.cache/zerotts-local
+      - zerotts-cache:/root/.cache/zerotts-local
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8008/ready"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 180s
+      start_interval: 5s
+    networks:
+      - temple-network
     restart: unless-stopped
 
   live-gateway:
@@ -31,7 +36,27 @@ services:
       - PORT=3000
       - TTS_SERVICE_URL=http://tts-service:8008
     depends_on:
-      - tts-service
+      tts-service:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      start_interval: 5s
+    networks:
+      - temple-network
     restart: unless-stopped
+
+networks:
+  temple-network:
+    name: chua-online-network
+    driver: bridge
+
+volumes:
+  zerotts-cache:
+    name: chua-online-zerotts-cache

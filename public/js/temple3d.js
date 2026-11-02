@@ -3669,9 +3669,11 @@ function connect() {
           break;
         case 'hall.arrive': arrive(p); break;
         case 'temple.viewerCount': updateStatus({ viewerCount: Number(p.viewerCount) || 0 }); break;
-        case 'tts.play':
-          if (p.url) audio?.enqueueTts(p.text || 'Nam mô A Di Đà Phật', { voice: p.voice || 'maichi', url: p.url });
+        case 'tts.play': {
+          const audioSrc = p.audio || p.url;
+          if (audioSrc) audio?.enqueueTts(p.text || 'Nam mô A Di Đà Phật', { voice: p.voice || 'maichi', url: audioSrc });
           break;
+        }
         default: break;
       }
     } catch (err) {

@@ -1,0 +1,37 @@
+services:
+  tts-service:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    container_name: chua-online-tts
+    ports:
+      - "8008:8008"
+    environment:
+      - PORT=8008
+      - OMP_NUM_THREADS=3
+      - OMP_WAIT_POLICY=PASSIVE
+    volumes:
+      - ~/.cache/zerotts-local:/root/.cache/zerotts-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  live-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chua-online-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - TTS_SERVICE_URL=http://tts-service:8008
+    depends_on:
+      - tts-service
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

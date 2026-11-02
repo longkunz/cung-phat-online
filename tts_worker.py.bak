@@ -31,6 +31,8 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 LOCAL_MODEL_CANDIDATES = [
     os.environ.get("ZEROTTS_MODEL_PATH", ""),
+    str(Path.home() / ".cache" / "zerotts-local"),
+    str(Path(__file__).resolve().parent / "models" / "zerotts"),
     "/Users/zens/Work/UIT/Projects/f1-metrics-explainer/models/zerotts",
 ]
 
@@ -49,6 +51,21 @@ def resolve_model_source() -> str:
     for candidate in LOCAL_MODEL_CANDIDATES:
         if candidate and os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "config.json")):
             return candidate
+
+    # Trên Windows, cache mặc định của huggingface_hub dùng symlinks trỏ sang blobs/
+    # khiến ONNX Runtime văng lỗi bảo mật 'External data path escapes model directory'.
+    # Tự động tải/hardlink về ~/.cache/zerotts-local dùng file thật.
+    try:
+        from huggingface_hub import snapshot_download
+        local_target = Path.home() / ".cache" / "zerotts-local"
+        local_target.mkdir(parents=True, exist_ok=True)
+        snapshot_download(repo_id="zeroweight-ai/ZeroTTS", local_dir=str(local_target))
+        if (local_target / "config.json").is_file():
+            return str(local_target)
+    except Exception as exc:
+        import sys
+        sys.stderr.write(f"[tts_worker] snapshot_download local_dir warning: {exc}\n")
+
     return "zeroweight-ai/ZeroTTS"
 
 

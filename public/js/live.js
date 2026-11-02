@@ -646,10 +646,11 @@
           if (msg.params?.state) updateUIState(msg.params.state);
           if (msg.params?.event) triggerRitualVisuals(msg.params.event);
         } else if (msg.method === 'tts.play') {
-          if (msg.params?.url) {
+          const audioSrc = msg.params?.audio || msg.params?.url;
+          if (audioSrc) {
             audio.enqueueTts(msg.params.text || 'Nam mô A Di Đà Phật', {
               voice: msg.params.voice || 'maichi',
-              url: msg.params.url
+              url: audioSrc
             });
           }
         }

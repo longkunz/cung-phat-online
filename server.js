@@ -105,174 +105,139 @@ const FORTUNE_DECK = [
 ];
 
 // ============================================================================
-// 2. ZEROTTS PYTHON WORKER MANAGER (VOICE: MAI CHI)
+// 2. ZEROTTS STANDALONE SERVICE CLIENT (VOICE: MAI CHI)
 // ============================================================================
 class ZeroTTSManager {
-  constructor() {
-    this.proc = null;
+  constructor(baseUrl) {
+    this.baseUrl = (baseUrl || process.env.TTS_SERVICE_URL || 'http://localhost:8008').replace(/\/+$/, '');
     this.ready = false;
-    this.status = 'starting';
+    this.status = 'loading';
     this.voice = 'maichi';
     this.voices = ['maichi'];
     this.model = 'zeroweight-ai/ZeroTTS';
-    this.pending = new Map();
+    this.sampleRate = 48000;
     this.inflight = new Map();
-    this.reqCounter = 0;
-    this.buffer = '';
-    this.restartAttempts = 0;
-    this.restartTimer = null;
-    this.startWorker();
+    this.healthTimer = null;
+    this.startHealthPolling();
   }
 
-  resolvePythonBin() {
-    const isWindows = process.platform === 'win32';
-    const venvPy = path.join(__dirname, '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python');
-    if (fs.existsSync(venvPy)) return venvPy;
-    return isWindows ? 'python' : 'python3';
+  startHealthPolling() {
+    this.checkHealth();
+    this.scheduleNextPoll();
   }
 
-  startWorker() {
-    const pyBin = this.resolvePythonBin();
-    const scriptPath = path.join(__dirname, 'tts_worker.py');
-    console.log(`[ZeroTTS] Khởi chạy worker với ${pyBin} (Giọng mặc định: Mai Chi)...`);
-
-    this.status = 'loading';
-    this.buffer = '';
-    const proc = spawn(pyBin, [scriptPath], {
-      cwd: __dirname,
-      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    this.proc = proc;
-
-    // Không có listener 'error' thì lỗi spawn (vd. không tìm thấy python) sẽ làm sập cả server
-    proc.on('error', (err) => {
-      console.error('[ZeroTTS] Không khởi chạy được worker:', err.message);
-      this.handleWorkerExit(proc, null);
-    });
-    // Ghi vào stdin khi worker đã chết gây EPIPE -> phải bắt lỗi để không crash
-    proc.stdin.on('error', (err) => {
-      console.warn('[ZeroTTS] Lỗi ghi stdin worker:', err.message);
-    });
-
-    proc.stdout.on('data', (chunk) => {
-      this.buffer += chunk.toString('utf8');
-      let lines = this.buffer.split('\n');
-      this.buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        this.handleWorkerLine(line.trim());
-      }
-    });
-
-    proc.stderr.on('data', (chunk) => {
-      const msg = chunk.toString('utf8').trim();
-      if (msg) console.log(`[ZeroTTS stderr] ${msg}`);
-    });
-
-    proc.on('exit', (code) => {
-      console.warn(`[ZeroTTS] Worker thoát với mã ${code}`);
-      this.handleWorkerExit(proc, code);
-    });
+  scheduleNextPoll() {
+    if (this.healthTimer) clearTimeout(this.healthTimer);
+    const interval = this.ready ? 15000 : 4000;
+    this.healthTimer = setTimeout(() => {
+      this.checkHealth().finally(() => this.scheduleNextPoll());
+    }, interval);
   }
 
-  handleWorkerExit(proc, code) {
-    if (this.proc !== proc) return; // đã xử lý (error + exit có thể cùng bắn)
-    this.proc = null;
-    this.ready = false;
-    this.status = 'stopped';
-    for (const [, item] of this.pending) {
-      clearTimeout(item.timer);
-      item.resolve({ ok: false, error: 'ZeroTTS worker exited' });
-    }
-    this.pending.clear();
-    broadcastNotification('tts.status', this.getStatus());
-
-    // Tự khởi động lại worker với backoff (tối đa 60s) thay vì mất TTS vĩnh viễn
-    if (!this.restartTimer) {
-      const delay = Math.min(60000, 2000 * 2 ** this.restartAttempts);
-      this.restartAttempts += 1;
-      console.warn(`[ZeroTTS] Thử khởi động lại worker sau ${Math.round(delay / 1000)}s...`);
-      this.restartTimer = setTimeout(() => {
-        this.restartTimer = null;
-        this.startWorker();
-      }, delay);
-    }
-  }
-
-  handleWorkerLine(line) {
+  async checkHealth() {
+    const wasReady = this.ready;
+    const oldStatus = this.status;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     try {
-      const msg = JSON.parse(line);
-      if (msg.type === 'status') {
-        this.status = msg.status;
-        this.model = msg.model || this.model;
-        broadcastNotification('tts.status', this.getStatus());
-      } else if (msg.type === 'ready') {
-        this.ready = true;
-        this.status = 'ready';
-        this.restartAttempts = 0;
-        this.voice = msg.voice || 'maichi';
-        this.voices = msg.voices || ['maichi'];
-        this.model = msg.model || this.model;
-        console.log(`[ZeroTTS] Sẵn sàng sau ${msg.loadSec}s! Giọng: ${this.voice} (${this.voices.join(', ')})`);
-        broadcastNotification('tts.status', this.getStatus());
-      } else if (msg.type === 'result' && msg.id != null) {
-        const entry = this.pending.get(msg.id);
-        if (entry) {
-          clearTimeout(entry.timer);
-          this.pending.delete(msg.id);
-          entry.resolve(msg);
+      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      if (res.ok) {
+        const data = await res.json();
+        this.status = data.status || 'ready';
+        this.ready = this.status === 'ready';
+        if (data.voices && Array.isArray(data.voices)) {
+          this.voices = data.voices;
         }
-      } else if (msg.type === 'error') {
-        console.error('[ZeroTTS Error]', msg.error);
+        if (data.model) this.model = data.model;
+        if (data.sampleRate) this.sampleRate = data.sampleRate;
+        if (this.ready && !wasReady) {
+          console.log(`[ZeroTTS] Kết nối thành công TTS Service tại ${this.baseUrl}! Giọng: ${this.voice} (${this.voices.join(', ')})`);
+        }
+      } else {
+        this.ready = false;
         this.status = 'error';
-        broadcastNotification('tts.status', this.getStatus());
       }
     } catch (err) {
-      console.log('[ZeroTTS stdout]', line);
+      this.ready = false;
+      this.status = 'offline';
+    } finally {
+      clearTimeout(timeoutId);
     }
+
+    if (this.ready !== wasReady || this.status !== oldStatus) {
+      if (typeof broadcastNotification === 'function') {
+        broadcastNotification('tts.status', this.getStatus());
+      }
+    }
+    return this.getStatus();
   }
 
   getStatus() {
     return {
       ready: this.ready,
       status: this.status,
-      engine: 'ZeroTTS (zeroweight-ai/ZeroTTS)',
-      voice: state.settings.ttsVoice || this.voice || 'maichi',
+      engine: 'ZeroTTS Microservice (FastAPI)',
+      serviceUrl: this.baseUrl,
+      voice: (typeof state !== 'undefined' && state.settings?.ttsVoice) || this.voice || 'maichi',
       voices: this.voices,
-      model: this.model
+      model: this.model,
+      sampleRate: this.sampleRate
     };
   }
 
-  synthesize(text, voiceOverride) {
+  async synthesize(text, voiceOverride) {
     const cleanText = String(text || '').trim();
-    if (!cleanText) return Promise.resolve({ ok: false, error: 'Empty text' });
-    const voice = String(voiceOverride || state.settings.ttsVoice || 'maichi').trim().toLowerCase();
+    if (!cleanText) return { ok: false, error: 'Empty text' };
+    const voice = String(voiceOverride || (typeof state !== 'undefined' && state.settings?.ttsVoice) || 'maichi').trim().toLowerCase();
     const dedupKey = `${voice}::${cleanText}`;
 
     if (this.inflight.has(dedupKey)) {
       return this.inflight.get(dedupKey);
     }
 
-    const promise = new Promise((resolve) => {
-      if (!this.proc || !this.ready) {
-        return resolve({ ok: false, error: `ZeroTTS đang ở trạng thái: ${this.status}` });
+    const promise = (async () => {
+      if (!this.ready) {
+        return { ok: false, error: `TTS Service đang ở trạng thái: ${this.status}` };
       }
-      const id = ++this.reqCounter;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        resolve({ ok: false, error: 'ZeroTTS synthesis timeout' });
-      }, 30000);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      try {
+        const res = await fetch(`${this.baseUrl}/synthesize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: cleanText, voice }),
+          signal: controller.signal
+        });
 
-      this.pending.set(id, { resolve, timer });
-      const payload = JSON.stringify({ id, text: cleanText, voice }) + '\n';
-      this.proc.stdin.write(payload);
-    }).finally(() => {
+        const data = await res.json().catch(() => ({ ok: false, error: 'Invalid JSON response from TTS service' }));
+        if (res.ok && data.ok) {
+          return {
+            ok: true,
+            voice: data.voice || voice,
+            audio: data.audio,
+            url: data.audio,
+            durationSec: data.durationSec
+          };
+        }
+        return { ok: false, error: data?.error || `TTS Service error (${res.status})` };
+      } catch (err) {
+        return { ok: false, error: err.name === 'AbortError' ? 'TTS synthesis timeout' : (err.message || 'TTS connection failed') };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })().finally(() => {
       this.inflight.delete(dedupKey);
     });
 
     this.inflight.set(dedupKey, promise);
     return promise;
+  }
+
+  destroy() {
+    if (this.healthTimer) {
+      clearTimeout(this.healthTimer);
+      this.healthTimer = null;
+    }
   }
 }
 
@@ -1761,7 +1726,8 @@ async function handleRpcCall(method, params = {}) {
         broadcastNotification('tts.play', {
           text: params.text,
           voice: res.voice,
-          url: res.url
+          audio: res.audio,
+          url: res.audio || res.url
         });
       }
       return res;
@@ -1962,7 +1928,6 @@ app.post('/rpc', async (req, res) => {
     });
   }
 });
-
 // ZeroTTS HTTP Endpoint (Mai Chi default)
 app.all('/api/tts', async (req, res) => {
   // Ép kiểu chuỗi: ?text[]=a hoặc body {text: 1} trước đây ném TypeError làm sập cả server
@@ -2047,7 +2012,8 @@ wss.on('connection', (ws) => {
 
 const zeroTts = new ZeroTTSManager();
 
-server.listen(PORT, () => {
+if (process.env.NO_SERVER_LISTEN !== '1') {
+  server.listen(PORT, () => {
   console.log(`============================================================`);
   console.log(`🪷 CHÙA ONLINE TIKTOK LIVE RPC ĐÃ KHỞI ĐỘNG`);
   console.log(`📺 Màn hình Live (9:16 OBS): http://localhost:${PORT}`);
@@ -2068,3 +2034,15 @@ server.listen(PORT, () => {
     });
   }
 });
+}
+
+module.exports = {
+  app,
+  server,
+  handleRpcCall,
+  ZeroTTSManager,
+  zeroTts,
+  broadcastNotification,
+  getPublicState,
+  Rituals
+};

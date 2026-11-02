@@ -34,10 +34,12 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
   - Pre-render toàn bộ Khói hương, Hạt vàng và Cánh hoa sen ra Offscreen Canvas 1 lần duy nhất lúc khởi tạo (`drawImage`), không gọi `createRadialGradient` hay `shadowBlur` trong vòng lặp frame.
 - **Zero-Flicker 8-Frame Sprite Stack (`public/js/live.js` & `public/css/live.css`)**:
   - Nạp sẵn cả 8 khung hình chuyển động (`walk1`, `walk2`, `kneelDown`, `kneel`, `forehead`, `bowMid`, `prostrate`, `prostrateDeep`) vào GPU với bóng đổ (drop-shadow) đã bake sẵn trong PNG, loại bỏ hoàn toàn hiện tượng nháy/mất hình khi chuyển tư thế.
-- **ZeroTTS Worker (`tts_worker.py`)**:
-  - Tiến trình Python thường trú nạp sẵn model `zeroweight-ai/ZeroTTS` (`intra_op_num_threads=3`, `OMP_WAIT_POLICY=PASSIVE` → **`0.0% CPU` khi chờ**).
-  - Tổng hợp nguyên câu trong 1 lần gọi (`single-pass synthesis`), khử DC offset, chuẩn hóa đỉnh âm lượng (`peak <= 0.90`) và làm mượt 2 đầu sóng âm (`cosine fade-in/out`) chống xước/rè tiếng.
-- **Bộ Lọc Chặn Ký Tự Lạ & Spam (`server.js` & `tts_worker.py`)**:
+- **ZeroTTS Microservice (`services/tts/main.py`):
+  - Dịch vụ FastAPI độc lập đóng gói model `zeroweight-ai/ZeroTTS` (`intra_op_num_threads=3`, `OMP_WAIT_POLICY=PASSIVE` → **`0.0% CPU` khi chờ**).
+  - Tổng hợp nguyên câu trong bộ nhớ thành chuỗi Base64 Data URI (`data:audio/wav;base64,...`) truyền thẳng qua WebSocket đến OBS phát trực tiếp trong RAM, hoàn toàn không ghi file tạm ra ổ đĩa.
+  - Khóa đồng thời bất đồng bộ (`asyncio.Lock`) tuần tự hóa các yêu cầu đọc, bảo vệ CPU khỏi nghẽn luồng.
+  - Cơ chế **Soft Dependency**: Live Gateway tự động thăm dò sức khỏe (`/health`); khi TTS đang nạp model hoặc ngoại tuyến, nghi thức và visual 3D vẫn hoạt động mượt mà và tự kết nối lại khi TTS sẵn sàng.
+- **Bộ Lọc Chặn Ký Tự Lạ & Spam (`services/tts/main.py`):
   - Chặn tự động các ký tự Cuneiform (`𒐫`), chữ Ả Rập gây lag, Braille, Zalgo, bình luận chỉ toàn dấu chấm (`...`) hoặc từ ngữ phản cảm.
   - Tự động chuẩn hóa Unicode (`NFKC` → `NFC`) chuyển tên kiểu chữ toán học về tiếng Việt sạch trước khi đọc TTS.
 
@@ -66,25 +68,40 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
 # Cài đặt dependencies cho Bun / Node
 bun install
 
-# Tạo môi trường Python .venv và cài đặt ZeroTTS
+# Tạo môi trường Python .venv và cài đặt thư viện TTS Microservice
 uv venv .venv
-uv pip install --python .venv/bin/python zerotts pillow
+uv pip install --python .venv/bin/python -r services/tts/requirements.txt
 ```
 
 Trên Windows (PowerShell), dùng đường dẫn Python trong `Scripts`:
 
 ```powershell
 uv venv .venv
-uv pip install --python .venv/Scripts/python.exe zerotts pillow
+uv pip install --python .venv/Scripts/python.exe -r services/tts/requirements.txt
 ```
 
-Server tự chọn Python trong `.venv` theo hệ điều hành. Worker giao tiếp bằng UTF-8 để giữ nguyên tiếng Việt.
+### 3. Khởi chạy Hệ thống
 
-### 3. Khởi chạy Server
+#### Cách 1: Khởi chạy đồng thời cả hai dịch vụ (Khuyên dùng cho Local Dev)
 ```bash
 bun start
-# Hoặc chế độ tự động reload khi sửa code:
+# Hoặc chế độ dev tự động reload khi sửa code:
 bun run dev
+```
+Script sẽ tự động khởi động song song cả **TTS Service** (cổng 8008) và **Live Gateway** (cổng 3000), hiển thị log màu riêng biệt và tự động dọn dẹp cả hai tiến trình khi bấm `Ctrl+C`.
+
+#### Cách 2: Khởi chạy qua Docker Compose (Production / VPS)
+```bash
+docker compose up --build
+```
+
+#### Cách 3: Chạy độc lập từng dịch vụ trong terminal riêng
+```bash
+# Terminal 1: Chạy TTS Service (FastAPI)
+bun run start:tts
+
+# Terminal 2: Chạy Live Gateway
+bun run start:gateway
 ```
 
 Mặc định server chạy tại cổng `3000`:

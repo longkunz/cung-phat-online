@@ -498,8 +498,8 @@ class TempleAudioEngine {
         body: JSON.stringify({ text, voice })
       });
       const data = await res.json();
-      if (data && data.ok && data.url) {
-        return data;
+      if (data && data.ok && (data.audio || data.url)) {
+        return { ok: true, url: data.audio || data.url, audio: data.audio };
       }
       return { ok: false, error: data?.error || 'ZeroTTS unavailable' };
     } catch (err) {
@@ -516,8 +516,8 @@ class TempleAudioEngine {
       let audioUrl = item.url;
       if (!audioUrl && item.fetchPromise) {
         const res = await item.fetchPromise;
-        if (res && res.ok && res.url) {
-          audioUrl = res.url;
+        if (res && res.ok && (res.audio || res.url)) {
+          audioUrl = res.audio || res.url;
         }
       }
 

@@ -111,3 +111,24 @@ async def test_concurrency_lock():
         assert res2.status_code == 200
         assert res1.json()["ok"] is True
         assert res2.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_synthesize_inference_exception_returns_json_error(monkeypatch):
+    import services.tts.main as tts_main
+    await asyncio.to_thread(tts_main.LOAD_EVENT.wait, 30.0)
+    assert tts_main.TTS_ENGINE is not None
+
+    def _failing_synth(*args, **kwargs):
+        raise RuntimeError("Simulated ONNX runtime crash")
+
+    monkeypatch.setattr(tts_main.TTS_ENGINE, "synthesize", _failing_synth)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/synthesize", json={"text": "Nam mô A Di Đà Phật"})
+        assert res.status_code == 500
+        assert res.headers.get("content-type", "").startswith("application/json")
+        body = res.json()
+        assert body["ok"] is False
+        assert "Simulated ONNX runtime crash" in body["error"]

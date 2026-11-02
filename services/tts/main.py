@@ -205,6 +205,14 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"ok": False, "error": str(exc)},
+    )
+
+
 class SynthesizeRequest(BaseModel):
     text: str = Field(..., description="Text to synthesize in Vietnamese")
     voice: Optional[str] = Field(None, description="Voice name (default: maichi)")
@@ -277,17 +285,20 @@ async def synthesize(req: SynthesizeRequest):
     lock = get_concurrency_lock()
     async with lock:
         def _infer():
-            raw_wav = TTS_ENGINE.synthesize(norm_text, voice=voice, eoa_extra_frames=2)
-            if raw_wav is None or raw_wav.size == 0:
-                return None
-            clean_audio = polish_waveform(raw_wav, SAMPLE_RATE)
-            return audio_to_data_uri(clean_audio, SAMPLE_RATE)
+            try:
+                raw_wav = TTS_ENGINE.synthesize(norm_text, voice=voice, eoa_extra_frames=2)
+                if raw_wav is None or raw_wav.size == 0:
+                    return None, "No audio generated"
+                clean_audio = polish_waveform(raw_wav, SAMPLE_RATE)
+                return audio_to_data_uri(clean_audio, SAMPLE_RATE), None
+            except Exception as exc:
+                return None, str(exc)
 
-        result = await asyncio.to_thread(_infer)
+        result, err_msg = await asyncio.to_thread(_infer)
         if result is None:
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"ok": False, "error": "No audio generated"},
+                content={"ok": False, "error": err_msg or "Inference failure"},
             )
 
         data_uri, duration_sec = result

@@ -137,12 +137,10 @@ class ZeroTTSManager {
   async checkHealth() {
     const wasReady = this.ready;
     const oldStatus = this.status;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
       if (res.ok) {
         const data = await res.json();
         this.status = data.status || 'ready';
@@ -162,6 +160,8 @@ class ZeroTTSManager {
     } catch (err) {
       this.ready = false;
       this.status = 'offline';
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (this.ready !== wasReady || this.status !== oldStatus) {
@@ -199,16 +199,15 @@ class ZeroTTSManager {
       if (!this.ready) {
         return { ok: false, error: `TTS Service đang ở trạng thái: ${this.status}` };
       }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(`${this.baseUrl}/synthesize`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: cleanText, voice }),
           signal: controller.signal
         });
-        clearTimeout(timeoutId);
 
         const data = await res.json().catch(() => ({ ok: false, error: 'Invalid JSON response from TTS service' }));
         if (res.ok && data.ok) {
@@ -223,6 +222,8 @@ class ZeroTTSManager {
         return { ok: false, error: data?.error || `TTS Service error (${res.status})` };
       } catch (err) {
         return { ok: false, error: err.name === 'AbortError' ? 'TTS synthesis timeout' : (err.message || 'TTS connection failed') };
+      } finally {
+        clearTimeout(timeoutId);
       }
     })().finally(() => {
       this.inflight.delete(dedupKey);

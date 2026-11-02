@@ -31,8 +31,7 @@ services:
       - PORT=3000
       - TTS_SERVICE_URL=http://tts-service:8008
     depends_on:
-      tts-service:
-        condition: service_healthy
+      - tts-service
     volumes:
       - ./data:/app/data
     restart: unless-stopped

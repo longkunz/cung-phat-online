@@ -143,4 +143,55 @@ describe("Live Gateway TTS Microservice Integration (Seams B & C)", () => {
       expect(zeroTts.status).toBe("ready");
     }
   });
+
+  test("Timeout guard: health check aborts on stalled response", async () => {
+    let stallServer;
+    const stallPort = 8098;
+    stallServer = http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+    });
+    await new Promise(resolve => stallServer.listen(stallPort, resolve));
+
+    try {
+      const { ZeroTTSManager } = await import("../server.js");
+      const manager = new ZeroTTSManager(`http://localhost:${stallPort}`);
+
+      const t0 = Date.now();
+      await manager.checkHealth();
+      const elapsedHealth = Date.now() - t0;
+      expect(manager.ready).toBe(false);
+      expect(manager.status).toBe("offline");
+      expect(elapsedHealth).toBeLessThan(4500);
+
+      manager.destroy();
+    } finally {
+      await new Promise(resolve => stallServer.close(resolve));
+    }
+  }, 10000);
+
+  test("Timeout guard: synthesize aborts on stalled response", async () => {
+    let stallServer;
+    const stallPort = 8097;
+    stallServer = http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+    });
+    await new Promise(resolve => stallServer.listen(stallPort, resolve));
+
+    try {
+      const { ZeroTTSManager } = await import("../server.js");
+      const manager = new ZeroTTSManager(`http://localhost:${stallPort}`);
+
+      manager.ready = true;
+      const t1 = Date.now();
+      const synthRes = await manager.synthesize("Thử timeout");
+      const elapsedSynth = Date.now() - t1;
+      expect(synthRes.ok).toBe(false);
+      expect(synthRes.error).toContain("timeout");
+      expect(elapsedSynth).toBeLessThan(7500);
+
+      manager.destroy();
+    } finally {
+      await new Promise(resolve => stallServer.close(resolve));
+    }
+  }, 10000);
 });

@@ -21,6 +21,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from '/vendor/three-addons/environments/RoomEnvironment.js';
 
 const params = new URLSearchParams(window.location.search);
+const CLOSEUPS_EARLY = params.get('closeups') === '1';
 const OBS = params.get('obs') === '1';
 if (OBS) document.body.classList.add('obs-mode');
 
@@ -195,7 +196,10 @@ function mergeColored(parts) {
   return out;
 }
 function lathe(profile, segments = 16) {
-  return new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segments);
+  // LatheGeometry chỉ cho pháp tuyến hướng ra ngoài khi biên dạng đi từ DƯỚI lên TRÊN.
+  // Biên dạng khai báo từ trên xuống (váy áo, chuông) sẽ bị lộn trong ra ngoài (thấy lòng váy + đáy rỗng) -> tự đảo.
+  const pts = profile[0][1] > profile[profile.length - 1][1] ? profile.slice().reverse() : profile;
+  return new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), segments);
 }
 /** Hình trụ / con nhộng nối 2 điểm. */
 function limb(a, b, r0, r1 = r0, seg = 8, capsule = false) {
@@ -496,11 +500,20 @@ for (const side of [-1, 1]) {
 // Tường trước có cửa chính 4.8 x 7
 const DOOR_W = 4.8;
 const DOOR_H = 7;
+// Góc toàn cảnh đặt máy phía trên-ngoài tường trước: tường trước dựng bằng mặt phẳng 1 mặt quay vào trong,
+// nhìn từ ngoài vào sẽ "trong suốt" (như cắt mặt cắt sân khấu) nên thấy được cả cửa chính lẫn tượng Phật.
+function frontWall(w, h, x, y) {
+  if (CLOSEUPS_EARLY) { wallBox(w, h, 0.4, x, y, HALL_FRONT + 0.2); return; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), M.panel);
+  m.rotation.y = Math.PI;
+  m.position.set(x, y, HALL_FRONT);
+  scene.add(m);
+}
 for (const side of [-1, 1]) {
   const w = (19.8 - DOOR_W) / 2;
-  wallBox(w, WALL_H, 0.4, side * (DOOR_W / 2 + w / 2), WALL_H / 2, HALL_FRONT + 0.2);
+  frontWall(w, WALL_H, side * (DOOR_W / 2 + w / 2), WALL_H / 2);
 }
-wallBox(DOOR_W, WALL_H - DOOR_H, 0.4, 0, DOOR_H + (WALL_H - DOOR_H) / 2, HALL_FRONT + 0.2);
+frontWall(DOOR_W, WALL_H - DOOR_H, 0, DOOR_H + (WALL_H - DOOR_H) / 2);
 // Khung cửa vàng + 2 cánh cửa mở ra ngoài
 const doorFrameGeo = new THREE.BoxGeometry(0.3, DOOR_H, 0.6);
 for (const side of [-1, 1]) {
@@ -511,6 +524,10 @@ for (const side of [-1, 1]) {
 const lintel = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + 0.8, 0.35, 0.7), M.goldTrim);
 lintel.position.set(0, DOOR_H + 0.1, HALL_FRONT + 0.2);
 scene.add(lintel);
+if (!CLOSEUPS_EARLY) {
+  // khung cửa nhìn từ phía ngoài sẽ lơ lửng -> chỉ giữ khi quay cận cảnh
+  scene.children.slice(-3).forEach((o) => { o.visible = false; });
+}
 // Ô cửa chính: chỉ thấy ánh sáng ngoài trời (không dựng sân/tháp/cổng) — mặt phẳng sáng + quầng sương
 {
   const doorTex = canvasTexture(64, 128, (ctx, w, h) => {
@@ -564,7 +581,8 @@ for (const z of [-12, -5.5, 1, 7.5]) {
   scene.add(sh);
 }
 // Xà ngang
-for (let z = -18; z <= 12; z += 4.8) {
+// Xà ngang: chỉ dựng khi bật cận cảnh (góc toàn cảnh mặc định nhìn từ trên cao, xà sẽ che khung hình)
+for (let z = -18; z <= 12 && CLOSEUPS_EARLY; z += 4.8) {
   const beam = new THREE.Mesh(new THREE.BoxGeometry(19.4, 0.55, 0.55), M.lacquerDark);
   beam.position.set(0, 12.2, z);
   scene.add(beam);
@@ -1179,7 +1197,7 @@ class Particles {
     this.geo.attributes.color.needsUpdate = true;
   }
 }
-const smoke = new Particles(90, 0.9, softTex);
+const smoke = new Particles(110, params.get('closeups') === '1' ? 0.9 : 1.25, softTex);
 const sparks = new Particles(140, 0.22, glowTex);
 let smokeAcc = 0;
 const flare = { burner: 0, halo: 0, bellSwing: 0 };
@@ -1408,6 +1426,8 @@ const partGeos = {
 };
 const PAIRED = { upperArm: true, foreArm: true, hand: true, foot: true };
 partGeos.heldIncense.scale(1.25, 1.2, 1.25);
+// máy quay ở xa (mặc định): nhang to hơn để đọc được động tác
+if (!CLOSEUPS_EARLY) partGeos.heldIncense.scale(1.5, 1.3, 1.5);
 const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
 const headMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, metalness: 0 });
 const parts = {};
@@ -1425,11 +1445,18 @@ for (const [name, geo] of Object.entries(partGeos)) {
   scene.add(im);
 }
 // đầu nhang đang cháy trên tay (3 đốm sáng / người)
-const heldTips = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.09, 0.09), additive(glowTex, 0xff7a2a, 1), POOL * 3);
+const heldTips = new THREE.InstancedMesh(new THREE.PlaneGeometry(CLOSEUPS_EARLY ? 0.09 : 0.2, CLOSEUPS_EARLY ? 0.09 : 0.2), additive(glowTex, 0xff7a2a, 1), POOL * 3);
 heldTips.frustumCulled = false;
 heldTips.count = 0;
 scene.add(heldTips);
 const auraMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), additive(glowTex, 0xffffff, 1), POOL);
+// vòng sáng vàng dưới chân người đang vái / lạy (để nhìn từ xa vẫn biết ai đang lạy)
+const ringTex = radialTexture([[0, 'rgba(255,255,255,0)'], [0.55, 'rgba(255,255,255,0)'], [0.72, 'rgba(255,255,255,0.95)'], [0.85, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
+const bowRings = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), additive(ringTex, 0xffffff, 1), POOL);
+bowRings.setColorAt(0, _c.set(0));
+bowRings.frustumCulled = false;
+bowRings.count = 0;
+scene.add(bowRings);
 auraMesh.setColorAt(0, _c.set(0));
 auraMesh.frustumCulled = false;
 auraMesh.count = 0;
@@ -2529,7 +2556,7 @@ function renderGiftBoard(feed) {
 // ----------------------------------------------------------------------------
 // Đích bàn tay trong khung thân trên (gốc ở eo, mặt hướng -z). x dương = tay phải.
 const HAND_POSES = {
-  hang: [0.27, 0.04, 0.01],
+  hang: [0.22, 0.02, -0.03],
   pray: [0.034, 0.2, -0.27],
   forehead: [0.04, 0.52, -0.3],
   floor: [0.3, 0.5, -0.18],
@@ -2651,7 +2678,7 @@ function limbMatrix(out, base, A, B) {
 /** Nhân vật a có nằm sát đường ngắm từ máy quay tới nhân vật chính (hoặc sát máy quay) không. */
 function isOccluder(a) {
   const h = director.heroA;
-  if (!h || a === h || director.name !== 'hero') return false;
+  if (!CLOSEUPS || !h || a === h || director.name !== 'hero') return false;
   const cx = camera.position.x;
   const cz = camera.position.z;
   const dx = h.pos.x - cx;
@@ -2671,6 +2698,7 @@ function updateAvatars(dt, t) {
   let na = 0;
   let nb = 0;
   let nt = 0;
+  let nr = 0;
   const fishK = t - fishBobAt;
   for (const a of avatars) {
     if (!a.active) continue;
@@ -2763,10 +2791,11 @@ function updateAvatars(dt, t) {
       put('heldIncense', _j1, _white);
       if (a.sticks > 1) {
         const glowS = 1 + Math.sin(t * 9 + a.idx) * 0.2 + (a.stickFlare || 0);
-        for (const [x, y] of [[-0.075, 0.665], [0, 0.685], [0.075, 0.665]]) {
+        const tipK = CLOSEUPS_EARLY ? 1 : 1.3;
+        for (const [x, y] of [[-0.075 * (CLOSEUPS_EARLY ? 1 : 1.5), 0.665 * tipK], [0, 0.685 * tipK], [0.075 * (CLOSEUPS_EARLY ? 1 : 1.5), 0.665 * tipK]]) {
           _pos.set(x, y, 0).applyMatrix4(_j1);
           heldTips.setMatrixAt(nt++, _m.compose(_pos, _camQ, _s.set(glowS, glowS, glowS)));
-          if (Math.random() < dt * 0.9) smoke.spawn(_pos.x, _pos.y + 0.02, _pos.z, rand(-0.04, 0.04), rand(0.3, 0.5), rand(-0.04, 0.04), rand(2, 3), 0x4a443e);
+          if (Math.random() < dt * 1.8) smoke.spawn(_pos.x, _pos.y + 0.02, _pos.z, rand(-0.04, 0.04), rand(0.3, 0.5), rand(-0.04, 0.04), rand(2, 3), 0x8a8076);
         }
         a.stickFlare = Math.max(0, (a.stickFlare || 0) - dt * 1.5);
       }
@@ -2775,6 +2804,16 @@ function updateAvatars(dt, t) {
       blobMesh.setMatrixAt(nb++, _m.compose(_pos.set(a.pos.x, 0.17 * kc + 0.02, a.pos.z), _q.identity(), _s.set(s * 1.0, 1, s * 1.0)));
     }
 
+    // vòng sáng dưới chân khi đang vái / lạy (mờ vào/ra mượt)
+    const bowing = t - a.bowAt >= 0 && t - a.bowAt < a.bowCount * (a.kneel > 0.9 ? BOW_KNEEL_DUR : BOW_STAND_DUR) + 0.2;
+    const ringOn = bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0;
+    a.ringS = (a.ringS || 0) + (ringOn - (a.ringS || 0)) * smoothK(4, dt);
+    if (a.ringS > 0.02) {
+      const rs = (1.15 + Math.sin(t * 3 + a.idx) * 0.06) * s;
+      _c.set(0xffc44a).multiplyScalar(a.ringS * 0.9);
+      bowRings.setColorAt(nr, _c);
+      bowRings.setMatrixAt(nr++, _m.compose(_pos.set(a.pos.x, 0.03 + 0.17 * kc, a.pos.z), _q.identity(), _s.set(rs, 1, rs)));
+    }
     // hào quang (cộng sáng; cường độ = màu)
     a.glow = Math.max(0, a.glow - dt * 0.55);
     const chanting = t < a.chantUntil;
@@ -2793,6 +2832,9 @@ function updateAvatars(dt, t) {
     im.instanceMatrix.needsUpdate = true;
     if (im.instanceColor) im.instanceColor.needsUpdate = true;
   }
+  bowRings.count = nr;
+  bowRings.instanceMatrix.needsUpdate = true;
+  if (bowRings.instanceColor) bowRings.instanceColor.needsUpdate = true;
   heldTips.count = nt;
   heldTips.instanceMatrix.needsUpdate = true;
   blobMesh.count = SHADOWS ? 0 : nb;
@@ -2812,9 +2854,20 @@ function updateAvatars(dt, t) {
 // ============================================================================
 const CAM_LOCK = params.get('cam');
 const DIRECTOR_AUTO = params.get('director') !== '0' && !CAM_LOCK;
-const CYCLE = ['hall', 'altar', 'hall', 'side', 'hall', 'buddha'];
+// Mặc định: chỉ góc TOÀN CẢNH TRÊN CAO (nhìn xuống ~45°) có trôi/xoay nhẹ; cận cảnh chỉ bật bằng ?closeups=1
+const CLOSEUPS = CLOSEUPS_EARLY;
+const WIDE = CLOSEUPS ? 'hall' : 'overview';
+const CYCLE = CLOSEUPS ? ['hall', 'altar', 'hall', 'side', 'hall', 'buddha'] : ['overview', 'overview2'];
 const HERO_GAP = 8;
 const SHOTS = {
+  // toàn cảnh trên cao phía sau đạo tràng nhìn xuống bàn thờ: thấy cả 40 chỗ, thảm, lư hương, tượng Phật
+  // (trên cao phía ngoài tường trước, nhìn xuống ~36°: thấy từ cửa chính tới tượng Phật, cả 40 chỗ)
+  overview: (u) => ({ pos: [Math.sin(u * 0.05) * 1.3, 19 + Math.sin(u * 0.04) * 0.3, 21 - Math.abs(Math.sin(u * 0.03)) * 0.8], look: [Math.sin(u * 0.05) * 0.4, -1, -6] }),
+  // biến thể: quỹ đạo vòng chậm sang một bên, cao hơn chút
+  overview2: (u) => {
+    const ang = -0.16 + Math.sin(u * 0.035) * 0.16;
+    return { pos: [Math.sin(ang) * 27, 19.5, -5.5 + Math.cos(ang) * 26.5], look: [0, -1, -6] };
+  },
   hall: (u) => ({ pos: [Math.sin(u * 0.11) * 0.5, 10.8 + Math.sin(u * 0.07) * 0.2, 13.2 - Math.min(u, 15) * 0.04], look: [Math.sin(u * 0.09) * 0.25, 3.4, -8.5] }),
   altar: (u) => ({ pos: [1.5 + Math.sin(u * 0.12) * 0.5, 3.7 + Math.sin(u * 0.08) * 0.15, -9.9], look: [-0.3, 0.5, 1.5] }),
   side: (u) => ({ pos: [8.4, 4.4, -7.2 + Math.min(u, 15) * 0.08], look: [-1.2, 0.5, -0.8] }),
@@ -2822,6 +2875,13 @@ const SHOTS = {
   // cảnh chính: chọn góc theo giai đoạn của người được quay
   // cảnh chính: chọn góc theo nhịp của người được quay (máy ở phía trước / bên, không quay sau lưng)
   hero: (u, a) => {
+    if (!CLOSEUPS) {
+      // không cận cảnh: đẩy vào nhẹ về phía bàn thờ khi đang thắp nhang / vái (vẫn thấy lư hương + vài hàng đầu)
+      const busy = a && a.active && ['take', 'raise', 'plant', 'pray'].includes(a.heroStage);
+      if (!busy) return SHOTS.overview(u);
+      const px = a.pos.x * 0.35;
+      return { pos: [px, 14, 10], look: [px, -0.5, -8.5] };
+    }
     if (!a || !a.active) return SHOTS.hall(u);
     const p = a.pos;
     const out = a.heroSide || 1; // phía bàn nhang (ngoài thảm)
@@ -2860,7 +2920,7 @@ const SHOTS = {
   }
 };
 const director = {
-  name: CAM_LOCK && SHOTS[CAM_LOCK] && CAM_LOCK !== 'hero' ? CAM_LOCK : 'hall',
+  name: CAM_LOCK && SHOTS[CAM_LOCK] && CAM_LOCK !== 'hero' ? CAM_LOCK : WIDE,
   until: 14,
   startedAt: 0,
   blendFrom: { pos: new THREE.Vector3(), look: new THREE.Vector3() },
@@ -2923,7 +2983,7 @@ const director = {
   endHero() {
     this.heroA = null;
     this.heroPrio = 0;
-    this.cut('hall', 12 + Math.random() * 2, 2.6);
+    this.cut(WIDE, 12 + Math.random() * 2, 2.6);
   },
   update(t, dt) {
     // cảnh chính
@@ -2948,16 +3008,16 @@ const director = {
         this.cycleIdx = (this.cycleIdx + 1) % CYCLE.length;
         this.cut(CYCLE[this.cycleIdx], CYCLE[this.cycleIdx] === 'hall' ? 13 : 10 + Math.random() * 2);
       } else {
-        this.cut('hall', 1e9);
+        this.cut(WIDE, 1e9);
       }
     }
     const u = t - this.startedAt;
     const live = SHOTS[this.name](u, this.heroA);
     if (this.name === 'hero') {
       // máy bám mượt (không giật) — đổi giai đoạn sẽ tự lướt sang góc mới trong ~2 giây
-      const kp = Math.min(1, dt * 1.6);
+      const kp = Math.min(1, dt * (CLOSEUPS ? 1.6 : 0.55));
       this.livePos.lerp(_v.set(...live.pos), kp);
-      this.liveLook.lerp(_s.set(...live.look), Math.min(1, dt * 2.2));
+      this.liveLook.lerp(_s.set(...live.look), Math.min(1, dt * (CLOSEUPS ? 2.2 : 0.6)));
     } else {
       this.livePos.set(...live.pos);
       this.liveLook.set(...live.look);
@@ -3164,7 +3224,7 @@ function updateOverlay() {
   placed.push(...bubbleRects);
   for (const a of tagCands) {
     const tg = a.tag;
-    const sc = Math.max(0.55, Math.min(1.3, 13 / tg.dist));
+    const sc = Math.max(CLOSEUPS ? 0.55 : 0.82, Math.min(1.3, 13 / tg.dist));
     const w = tg.w * sc;
     const h = 30 * sc;
     const x0 = tg.px - w / 2;

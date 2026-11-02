@@ -116,7 +116,7 @@ function startServices(options = {}) {
   // Spawn TTS Service directly without shell to avoid splitting paths containing spaces on Windows
   const ttsPort = process.env.TTS_PORT || '8008';
   const ttsArgs = ['-m', 'uvicorn', 'services.tts.main:app', '--host', '0.0.0.0', '--port', ttsPort];
-  if (isDev) ttsArgs.push('--reload');
+  if (isDev) ttsArgs.push('--reload', '--reload-dir', path.join(__dirname, '..', 'services', 'tts'));
 
   const ttsProc = spawn(pythonBin, ttsArgs, {
     cwd: path.join(__dirname, '..'),

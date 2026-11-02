@@ -8,7 +8,7 @@ const isDev = process.argv.includes('--dev') || process.argv.includes('--reload'
 const pythonBin = resolvePython();
 const port = process.env.PORT || process.env.TTS_PORT || '8008';
 const args = ['-m', 'uvicorn', 'services.tts.main:app', '--host', '0.0.0.0', '--port', port];
-if (isDev) args.push('--reload');
+if (isDev) args.push('--reload', '--reload-dir', path.join(__dirname, '..', 'services', 'tts'));
 
 console.log(`[TTS Service] Khởi chạy với ${pythonBin} tại cổng ${port}...`);
 const proc = spawn(pythonBin, args, {

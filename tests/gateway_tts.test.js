@@ -1,3 +1,6 @@
+process.env.NO_SERVER_LISTEN = "1";
+process.env.NODE_ENV = "test";
+
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import http from "http";
 

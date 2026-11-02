@@ -108,8 +108,15 @@ const FORTUNE_DECK = [
 // 2. ZEROTTS STANDALONE SERVICE CLIENT (VOICE: MAI CHI)
 // ============================================================================
 class ZeroTTSManager {
-  constructor(baseUrl) {
+  constructor(baseUrl, options = {}) {
+    if (typeof baseUrl === 'object' && baseUrl !== null) {
+      options = baseUrl;
+      baseUrl = options.baseUrl;
+    }
     this.baseUrl = (baseUrl || process.env.TTS_SERVICE_URL || 'http://localhost:8008').replace(/\/+$/, '');
+    this.synthTimeoutMs = (options && options.synthTimeoutMs)
+      || Number(process.env.TTS_SYNTH_TIMEOUT_MS)
+      || (process.env.NODE_ENV === 'test' ? 6000 : 35000);
     this.ready = false;
     this.status = 'loading';
     this.voice = 'maichi';
@@ -197,10 +204,13 @@ class ZeroTTSManager {
 
     const promise = (async () => {
       if (!this.ready) {
-        return { ok: false, error: `TTS Service đang ở trạng thái: ${this.status}` };
+        await this.checkHealth();
+        if (!this.ready) {
+          return { ok: false, error: `TTS Service đang ở trạng thái: ${this.status}` };
+        }
       }
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), this.synthTimeoutMs);
       try {
         const res = await fetch(`${this.baseUrl}/synthesize`, {
           method: 'POST',

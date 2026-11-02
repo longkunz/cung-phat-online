@@ -1457,6 +1457,68 @@ function extractUserFromEvent(data) {
   return { user, uniqueId, avatar };
 }
 
+// ============================================================================
+// 6b. BÁO TIM TIKTOK & LIKE BATCH ACCUMULATOR
+// ============================================================================
+class LikeBatchAccumulator {
+  constructor(options = {}) {
+    this.windowMs = options.windowMs || 300;
+    this.onFlush = options.onFlush || null;
+    this.timer = null;
+    this.pendingCount = 0;
+    this.contributors = new Map();
+  }
+
+  add(user, uniqueId, avatar, count = 1) {
+    const safeCount = Math.max(1, Number(count) || 1);
+    this.pendingCount += safeCount;
+    const key = uniqueId || user || 'cong_dong';
+    if (!this.contributors.has(key)) {
+      this.contributors.set(key, { user, uniqueId, avatar, count: 0 });
+    }
+    this.contributors.get(key).count += safeCount;
+
+    if (!this.timer) {
+      this.timer = setTimeout(() => this.flush(), this.windowMs);
+    }
+  }
+
+  flush() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.pendingCount <= 0) return null;
+
+    let topDevotee = null;
+    for (const c of this.contributors.values()) {
+      if (!topDevotee || c.count > topDevotee.count) {
+        topDevotee = c;
+      }
+    }
+
+    const batch = {
+      totalLikes: this.pendingCount,
+      contributorCount: this.contributors.size,
+      topDevotee: topDevotee || { user: 'Thí Chủ', uniqueId: 'cong_dong', avatar: '', count: this.pendingCount }
+    };
+
+    this.pendingCount = 0;
+    this.contributors.clear();
+
+    if (typeof this.onFlush === 'function') {
+      try {
+        this.onFlush(batch);
+      } catch (err) {
+        console.error('[LikeBatchAccumulator onFlush error]:', err);
+      }
+    }
+    return batch;
+  }
+}
+
+let activeLikeAccumulator = null;
+
 async function connectTikTokLive(usernameOrUrl) {
   const cleanUser = await resolveTikTokUsername(usernameOrUrl);
   if (!cleanUser) {
@@ -1539,10 +1601,23 @@ async function connectTikTokLive(usernameOrUrl) {
     parseViewerComment(commentText, user, uniqueId, avatar);
   });
 
+  const likeAccumulator = new LikeBatchAccumulator({
+    windowMs: 300,
+    onFlush: (batch) => {
+      Rituals.strikeWoodenFish({
+        user: batch.topDevotee.user,
+        uniqueId: batch.topDevotee.uniqueId,
+        avatar: batch.topDevotee.avatar,
+        count: batch.totalLikes
+      });
+    }
+  });
+  activeLikeAccumulator = likeAccumulator;
+
   on(WebcastEvent.LIKE, (data) => {
     const { user, uniqueId, avatar } = extractUserFromEvent(data);
     const likeCount = Math.min(15, Math.max(1, Number(data?.count ?? data?.likeCount ?? 1)));
-    Rituals.strikeWoodenFish({ user, uniqueId, avatar, count: likeCount });
+    likeAccumulator.add(user, uniqueId, avatar, likeCount);
   });
 
   const handleSocialEvent = (data) => {
@@ -1634,6 +1709,10 @@ async function connectTikTokLive(usernameOrUrl) {
 }
 
 function disconnectTikTokLive() {
+  if (activeLikeAccumulator) {
+    activeLikeAccumulator.flush();
+    activeLikeAccumulator = null;
+  }
   if (tiktokConn) {
     const old = tiktokConn;
     tiktokConn = null;
@@ -1709,9 +1788,46 @@ function configureAutoSim(enabled) {
 }
 
 // ============================================================================
-// 7. JSON-RPC 2.0 DISPATCHER
+// 7. JSON-RPC 2.0 DISPATCHER & RITUAL COOLDOWN GATEKEEPER
 // ============================================================================
+const RITUAL_COOLDOWNS = {
+  'temple.burnIncense': 2000,
+  'temple.sendPrayer': 2000,
+  'temple.ringBell': 3000,
+  'temple.drawFortune': 3500,
+  'temple.strikeWoodenFish': 250
+};
+const ritualCooldownMap = new Map();
+
+function checkRitualCooldown(method, params) {
+  const cooldownMs = RITUAL_COOLDOWNS[method];
+  if (!cooldownMs) return null;
+  const rawKey = String(params?.uniqueId || params?.user || params?.ip || '').trim().toLowerCase();
+  if (!rawKey) return null;
+  const key = `${method}::${rawKey}`;
+  const now = Date.now();
+  const lastAt = ritualCooldownMap.get(key) || 0;
+  const elapsed = now - lastAt;
+  if (elapsed < cooldownMs) {
+    const retryAfterMs = cooldownMs - elapsed;
+    return {
+      ok: false,
+      rateLimited: true,
+      error: `Thao tác quá nhanh. Thí chủ vui lòng tịnh tâm chờ ${Math.ceil(retryAfterMs / 1000)}s nữa.`,
+      retryAfterMs
+    };
+  }
+  ritualCooldownMap.delete(key);
+  ritualCooldownMap.set(key, now);
+  if (ritualCooldownMap.size > 2000) {
+    ritualCooldownMap.delete(ritualCooldownMap.keys().next().value);
+  }
+  return null;
+}
+
 async function handleRpcCall(method, params = {}) {
+  const throttled = checkRitualCooldown(method, params);
+  if (throttled) return throttled;
   switch (method) {
     case 'temple.getState':
       return getPublicState();
@@ -2130,13 +2246,14 @@ if (process.env.NO_SERVER_LISTEN !== '1') {
 
 // Chỉ export khi được file khác import/require (ví dụ: bun test)
 // Tránh export { app } khi chạy trực tiếp để Bun không kích hoạt nhầm Bun.serve()
-const isDirectRun = typeof Bun !== 'undefined' ? import.meta.main : (require.main === module);
+const isDirectRun = Boolean(require.main === module);
 
 if (!isDirectRun) {
   module.exports = {
     app,
     server,
     handleRpcCall,
+    LikeBatchAccumulator,
     ZeroTTSManager,
     zeroTts,
     broadcastNotification,

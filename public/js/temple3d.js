@@ -1706,6 +1706,9 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
+  // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
+  a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
+  a.speedMult = rand(0.92, 1.08);
   assignTones(a);
   a.anon = anon;
   if (anon) { if (a.tag) { a.tag.el.style.display = 'none'; a.tag.shown = false; } } else ensureTag(a);
@@ -1729,24 +1732,38 @@ function lerpAngle(a, b, t) {
 function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
   let from = null;
   let dur = 1;
+  let arrived = false;
   return {
     start(a) {
       from = a.pos.clone();
       from.y = 0;
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
+      arrived = false;
     },
     get dur() { return dur; },
+    isDone(a) { return arrived; },
     update(a, k, dt) {
-      const px = a.pos.x;
-      const pz = a.pos.z;
-      a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
-      const dx = target.x - from.x;
-      const dz = target.z - from.z;
-      if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
-      // chân không trượt: pha bước tăng đúng theo quãng đường đi được
-      a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
-      if (k >= 1) a.walking = false;
+      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường
+      if (typeof CrowdNav !== 'undefined') {
+        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars);
+        if (arrived || k >= 1) {
+          a.walking = false;
+          arrived = true;
+        }
+      } else {
+        const px = a.pos.x;
+        const pz = a.pos.z;
+        a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
+        const dx = target.x - from.x;
+        const dz = target.z - from.z;
+        if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
+        a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
+        if (k >= 1) {
+          a.walking = false;
+          arrived = true;
+        }
+      }
     }
   };
 }
@@ -1804,7 +1821,8 @@ function tickScript(a, dt) {
   s.t += dt;
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
-  if (k >= 1) nextStep(a);
+  const done = step.isDone ? step.isDone(a) : (k >= 1);
+  if (done) nextStep(a);
 }
 
 // Đường đi giữa chỗ ngồi và thảm: lùi ra lối giữa 2 hàng (phía cửa) -> ra làn đi bên mép thảm
@@ -2767,6 +2785,13 @@ function updateAvatars(dt, t) {
     if (!a.active) continue;
     if (a.script) tickScript(a, dt);
     a.walk += ((a.walking ? 1 : 0) - a.walk) * smoothK(6, dt);
+  }
+  // Vòng đệm đàn hồi mềm: chống xuyên thấu và chống đè thân
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.relaxCollisions(avatars);
+  }
+  for (const a of avatars) {
+    if (!a.active) continue;
 
     if (a.fade) {
       a.scale = Math.max(0, a.scale - dt * 2.2);
@@ -3774,7 +3799,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

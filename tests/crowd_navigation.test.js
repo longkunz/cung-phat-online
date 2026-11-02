@@ -343,4 +343,36 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     const distToTarget = Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z);
     expect(distToTarget).toBeGreaterThan(4.0);
   });
+  test("[Finding P1 Fix] Moving Hero (heroStage: 'walk') with distance 0.30m against seated devotee resolves to >= 0.50m with seated immovable", () => {
+    // Exact repro case from review: hero in transit (heroStage: 'walk', walking: false) and seated devotee (atSeat: 1, kneel: 1)
+    // Distance starts at 0.30m
+    const hero = createAvatar(10, 0, 0.3, { heroStage: 'walk', walking: false, atSeat: 5 });
+    const seated = createAvatar(11, 0, 0, { walking: false, kneel: 1, atSeat: 1 });
+    
+    expect(CrowdNav.isAvatarStatic(hero)).toBe(false);
+    expect(CrowdNav.isAvatarStatic(seated)).toBe(true);
+
+    const initialDist = Math.hypot(hero.pos.x - seated.pos.x, hero.pos.z - seated.pos.z);
+    expect(initialDist).toBeCloseTo(0.30, 2);
+
+    CrowdNav.relaxCollisions([hero, seated]);
+
+    // Seated devotee remains 100% immovable
+    expect(seated.pos.x).toBe(0);
+    expect(seated.pos.z).toBe(0);
+
+    // Hero absorbed 100% of displacement, distance >= 0.50m
+    const finalDist = Math.hypot(hero.pos.x - seated.pos.x, hero.pos.z - seated.pos.z);
+    expect(finalDist).toBeGreaterThanOrEqual(0.50);
+
+    // Also test reverse order [seated, hero]
+    const hero2 = createAvatar(20, 0.3, 0, { heroStage: 'walk', walking: false });
+    const seated2 = createAvatar(21, 0, 0, { walking: false, kneel: 1, atSeat: 2 });
+    CrowdNav.relaxCollisions([seated2, hero2]);
+
+    expect(seated2.pos.x).toBe(0);
+    expect(seated2.pos.z).toBe(0);
+    const finalDist2 = Math.hypot(hero2.pos.x - seated2.pos.x, hero2.pos.z - seated2.pos.z);
+    expect(finalDist2).toBeGreaterThanOrEqual(0.50);
+  });
 });

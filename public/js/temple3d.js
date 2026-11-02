@@ -1644,7 +1644,10 @@ function newAvatar(i) {
     anon: false
   };
 }
+const AR = typeof AvatarRules !== 'undefined' ? AvatarRules : null;
+
 function hashString(str) {
+  if (AR) return AR.hashString(str);
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
@@ -1652,10 +1655,11 @@ function hashString(str) {
   return Math.abs(h);
 }
 
-const devoteeTonesCache = new Map();
+const devoteeTonesCache = AR ? AR.devoteeTonesCache : new Map();
 const MAX_TONES_CACHE = 2000;
 
 function getOrCreateTones(key, fallbackIdx = 0) {
+  if (AR) return AR.getOrCreateTones(key, fallbackIdx, THREE.Color);
   if (key && devoteeTonesCache.has(key)) {
     return devoteeTonesCache.get(key);
   }
@@ -1679,6 +1683,10 @@ function getOrCreateTones(key, fallbackIdx = 0) {
 }
 
 function assignTones(a) {
+  if (AR) {
+    AR.assignTones(a, THREE.Color);
+    return;
+  }
   const key = a.uid || (a.name && a.name !== 'Thí Chủ' ? a.name : '');
   const toneData = getOrCreateTones(key, a.idx);
   a.tones = {
@@ -1692,6 +1700,7 @@ function assignTones(a) {
 }
 
 function isVipDevotee(a) {
+  if (AR) return AR.isVipDevotee(a);
   if (!a) return false;
   return Boolean(
     (a.vipRank && a.vipRank > 0) ||
@@ -1743,16 +1752,14 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
     seat: keep.seat,
     tier: keep.tier,
     vipRank: keep.vipRank,
-    flashOnArrive: keep.flashOnArrive,
-    tones: keep.tones,
-    hairStyle: keep.hairStyle
+    flashOnArrive: keep.flashOnArrive
   } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;
   a.uid = uid;
   a.name = name || 'Thí Chủ';
   a.member = member;
-  a.pos.copy(at);
+  if (at) a.pos.copy(at);
   a.yaw = yaw;
   a.kneel = kneel;
   if (kneel > 0.5) {
@@ -1764,12 +1771,10 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
   a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
   a.speedMult = rand(0.92, 1.08);
-  if (kept.tones) {
-    a.tones = kept.tones;
-    a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
-  } else {
-    assignTones(a);
-  }
+
+  // Luôn gán màu diện mạo theo danh tính UID mới (ngăn slot tái sử dụng mang tóc cũ)
+  assignTones(a);
+
   a.anon = anon;
   if (anon) { if (a.tag) { a.tag.el.style.display = 'none'; a.tag.shown = false; } } else ensureTag(a);
   touch(a);

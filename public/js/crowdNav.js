@@ -22,7 +22,12 @@
   }
 
   function isAvatarStatic(av) {
-    if (!av || av.walking) return false;
+    if (!av) return false;
+    // Bất kỳ ai đang bước đi, đang vào/ra, hoặc nhân vật chính đang di chuyển trong nghi lễ đều KHÔNG tĩnh
+    if (av.walking || (av.heroStage && ['walk', 'enter', 'exit', 'approach', 'leave', 'back'].includes(av.heroStage)) || av.busy || av.entering || av.leaving) {
+      return false;
+    }
+    // Người ngồi hoặc quỳ cố định trên bồ đoàn / chỗ ngồi
     return (av.atSeat !== undefined && av.atSeat >= 0) || (av.kneel && av.kneel > 0.3) || Boolean(av.waiting);
   }
 

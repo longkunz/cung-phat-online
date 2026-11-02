@@ -4,14 +4,16 @@
   "description": "TikTok Live RPC Interactive Buddhist Temple (Bun.js + ZeroTTS giọng Mai Chi)",
   "main": "server.js",
   "scripts": {
-    "start": "bun run scripts/run-all.js",
-    "dev": "bun run scripts/run-all.js --dev",
-    "start:gateway": "bun run server.js",
-    "start:tts": "bun run scripts/run-tts.js",
-    "dev:gateway": "bun --watch server.js",
-    "dev:tts": "bun run scripts/run-tts.js --dev",
+    "start": "node scripts/run-all.js",
+    "dev": "node scripts/run-all.js --dev",
+    "start:gateway": "node server.js",
+    "start:tts": "node scripts/run-tts.js",
+    "dev:gateway": "node --watch server.js",
+    "dev:tts": "node scripts/run-tts.js --dev",
+    "start:bun": "bun run scripts/run-all.js",
+    "dev:bun": "bun run scripts/run-all.js --dev",
     "test": "bun test",
-    "test:tts": "pytest tests"
+    "test:tts": "python -m pytest tests"
   },
   "dependencies": {
     "cors": "^2.8.5",

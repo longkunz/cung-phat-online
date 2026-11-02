@@ -48,12 +48,17 @@ def resolve_model_source() -> str:
         if candidate and os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "config.json")):
             return candidate
 
-    # On Windows, HF cache symlinks can fail in ONNX Runtime. Snapshot to local dir if needed.
+    # On Windows or cross-mount Docker volumes, HF cache symlinks can fail. Snapshot to local dir if needed.
     try:
         from huggingface_hub import snapshot_download
-        local_target = Path.home() / ".cache" / "zerotts-local"
+        env_target = os.environ.get("ZEROTTS_MODEL_PATH", "").strip()
+        local_target = Path(env_target) if env_target else (Path.home() / ".cache" / "zerotts-local")
         local_target.mkdir(parents=True, exist_ok=True)
-        snapshot_download(repo_id="zeroweight-ai/ZeroTTS", local_dir=str(local_target))
+        snapshot_download(
+            repo_id="zeroweight-ai/ZeroTTS",
+            local_dir=str(local_target),
+            max_workers=2
+        )
         if (local_target / "config.json").is_file():
             return str(local_target)
     except Exception as exc:

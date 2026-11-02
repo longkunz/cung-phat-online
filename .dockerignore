@@ -1,0 +1,14 @@
+node_modules
+.venv
+data
+models
+dist
+.git
+*.log
+*.m4a
+__pycache__
+*.pyc
+.pytest_cache
+tests
+docs
+tts_worker.py.bak

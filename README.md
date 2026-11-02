@@ -57,52 +57,110 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Chạy Nhanh
+## 🚀 Hướng Dẫn Cài Đặt & Điều Phối Đa Môi Trường
+
+Hệ thống hỗ trợ điều phối toàn diện cho cả **Môi trường Phát triển Cục bộ (Local Dev)** trên Windows/macOS/Linux và **Môi trường Đóng gói Container (Docker Compose)** trên Production VPS Linux.
+
+---
 
 ### 1. Yêu cầu hệ thống
-- [Bun.js](https://bun.sh/) (`>= 1.1`)
-- Python `3.10+` & [`uv`](https://github.com/astral-sh/uv) (để tạo môi trường `.venv` chạy `zerotts`)
+- **Runtime**: [Node.js](https://nodejs.org/) (`>= 18.0`) hoặc [Bun.js](https://bun.sh/) (`>= 1.1`)
+- **Python**: `3.10+` kèm [`uv`](https://github.com/astral-sh/uv) hoặc `pip`
+- **Container (Tùy chọn)**: [Docker](https://docs.docker.com/engine/) & [Docker Compose v2+](https://docs.docker.com/compose/)
 
-### 2. Cài đặt thư viện
+---
+
+### 2. Cài đặt thư viện cục bộ (Local Development)
+
 ```bash
-# Cài đặt dependencies cho Bun / Node
+# Bước 1: Cài đặt dependencies Node.js / Bun
+npm install
+# hoặc nếu dùng Bun:
 bun install
 
-# Tạo môi trường Python .venv và cài đặt thư viện TTS Microservice
+# Bước 2: Tạo môi trường ảo Python và cài đặt TTS Microservice
+# Trên Linux / macOS:
 uv venv .venv
 uv pip install --python .venv/bin/python -r services/tts/requirements.txt
+# (Hoặc dùng python3 -m venv .venv && source .venv/bin/activate && pip install -r services/tts/requirements.txt)
 ```
 
-Trên Windows (PowerShell), dùng đường dẫn Python trong `Scripts`:
-
+Trên **Windows (PowerShell)**:
 ```powershell
 uv venv .venv
 uv pip install --python .venv/Scripts/python.exe -r services/tts/requirements.txt
+# (Hoặc dùng python -m venv .venv && .\.venv\Scripts\Activate.ps1 && pip install -r services/tts/requirements.txt)
 ```
+
+---
 
 ### 3. Khởi chạy Hệ thống
 
-#### Cách 1: Khởi chạy đồng thời cả hai dịch vụ (Khuyên dùng cho Local Dev)
-```bash
-bun start
-# Hoặc chế độ dev tự động reload khi sửa code:
-bun run dev
-```
-Script sẽ tự động khởi động song song cả **TTS Service** (cổng 8008) và **Live Gateway** (cổng 3000), hiển thị log màu riêng biệt và tự động dọn dẹp cả hai tiến trình khi bấm `Ctrl+C`.
+#### 🟢 Cách 1: Một lệnh duy nhất khởi chạy đồng thời (Khuyên dùng cho Local Dev)
 
-#### Cách 2: Khởi chạy qua Docker Compose (Production / VPS)
+Không cần Docker, script điều phối sẽ tự động phát hiện Python ảo (`.venv`), tự chọn runtime (`bun` hoặc `node`), chạy song song cả **TTS Service (cổng 8008)** và **Live Gateway (cổng 3000)** với log màu riêng biệt (`[Gateway]` xanh lam, `[TTS]` tím hoa sen), đệm dòng chống xé chữ, và tự dọn dẹp sạch tiến trình con khi nhấn `Ctrl+C`:
+
 ```bash
-docker compose up --build
+# Chế độ Live Dev (tự động reload khi sửa code server hoặc Python):
+npm run dev
+# (hoặc: bun run dev)
+
+# Chế độ Production Process:
+npm start
+# (hoặc: bun start)
 ```
 
-#### Cách 3: Chạy độc lập từng dịch vụ trong terminal riêng
-```bash
-# Terminal 1: Chạy TTS Service (FastAPI)
-bun run start:tts
+#### 🐳 Cách 2: Điều phối Docker Compose (Production / VPS Linux)
 
-# Terminal 2: Chạy Live Gateway
-bun run start:gateway
+Chạy toàn bộ cụm dịch vụ khép kín qua Docker Compose với mạng cầu nối nội bộ (`chua-online-network`), bộ đệm model weights độc lập (`chua-online-zerotts-cache`) không bị lỗi liên kết tệp (cross-directory symlink), và kiểm tra sức khỏe phụ thuộc (`condition: service_healthy`):
+
+```bash
+# 1. Khởi tạo và chạy nền:
+docker compose up -d --build
+
+# 2. Theo dõi nhật ký gộp hai dịch vụ:
+docker compose logs -f
+
+# 3. Kiểm tra trạng thái sức khỏe hai container:
+docker compose ps
+
+# 4. Dừng hệ thống:
+docker compose down
 ```
+
+**Đặc điểm Docker Compose:**
+- **Mạng nội bộ (`temple-network`)**: Live Gateway kết nối TTS Service qua DNS nội bộ `http://tts-service:8008`, an toàn và cô lập với bên ngoài.
+- **Weights Cache Volume (`zerotts-cache`)**: Mount vào `/root/.cache/zerotts-local` lưu trữ mô hình AI bền vững qua các lần cập nhật container, loại bỏ nguy cơ lỗi phân vùng symlink giữa máy chủ và container.
+- **Automated Healthchecks**:
+  - `tts-service`: Thăm dò định kỳ endpoint `http://localhost:8008/health` (start_period: 30s).
+  - `live-gateway`: Ràng buộc `depends_on: { tts-service: { condition: service_healthy } }`, đảm bảo gateway chỉ bắt đầu định tuyến lưu lượng khi TTS đã sẵn sàng.
+  - Gateway định kỳ tự kiểm tra `http://localhost:3000/health` qua wget.
+
+#### 🔧 Cách 3: Chạy độc lập từng dịch vụ trong terminal riêng
+
+```bash
+# Terminal 1: Chạy riêng TTS Service (FastAPI)
+npm run dev:tts    # hoặc: npm run start:tts
+
+# Terminal 2: Chạy riêng Live Gateway
+npm run dev:gateway # hoặc: npm run start:gateway
+```
+
+---
+
+### 4. Endpoints Kiểm Tra Sức Khỏe & Giám Sát
+
+| Endpoint | Giao thức | Mô tả mục đích | Mã trạng thái |
+| :--- | :--- | :--- | :---: |
+| `GET http://localhost:3000/health` | HTTP | **Liveness Probe**: Kiểm tra Live Gateway còn sống và xem trạng thái kết nối TTS | `200 OK` |
+| `GET http://localhost:3000/ready` | HTTP | **Readiness Probe**: Chỉ trả về 200 khi TTS Service đã nạp xong mô hình và sẵn sàng xử lý | `200` / `503` |
+| `GET http://localhost:8008/health` | HTTP | Kiểm tra microservice TTS độc lập (FastAPI) | `200 OK` |
+| `GET http://localhost:8008/voices` | HTTP | Danh sách giọng đọc hỗ trợ (mặc định: Mai Chi) | `200 OK` |
+
+Mặc định server hiển thị tại cổng `3000`:
+- **Màn hình Live + Điều khiển nhanh**: [http://localhost:3000](http://localhost:3000)
+- **Màn hình OBS Browser Source (Sạch 9:16)**: [http://localhost:3000/?obs=1](http://localhost:3000/?obs=1) *(Đặt kích thước trong OBS là `1080 × 1920`)*
+- **Bảng điều khiển Admin & RPC**: [http://localhost:3000/admin](http://localhost:3000/admin)
 
 Mặc định server chạy tại cổng `3000`:
 - **Màn hình Live + Điều khiển nhanh**: [http://localhost:3000](http://localhost:3000)

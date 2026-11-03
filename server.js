@@ -193,30 +193,34 @@ class ZeroTTSManager {
     };
   }
 
-  async synthesize(text, voiceOverride) {
+  async synthesize(text, voiceOverride, opts = {}) {
     const cleanText = String(text || '').trim();
     if (!cleanText) return { ok: false, error: 'Empty text' };
     const voice = String(voiceOverride || (typeof state !== 'undefined' && state.settings?.ttsVoice) || 'maichi').trim().toLowerCase();
     const dedupKey = `${voice}::${cleanText}`;
 
     // 1. Kiểm tra cache tệp tĩnh trên đĩa (trả về tức thì 0ms, không tốn tải CPU)
+    const isTest = process.env.NODE_ENV === 'test';
+    const allowCache = !opts.skipCache && (!isTest || opts.useCache);
     const cacheKey = crypto.createHash('md5').update(dedupKey).digest('hex');
     const cacheFile = path.join(TTS_CACHE_DIR, `${cacheKey}.json`);
-    try {
-      if (fs.existsSync(cacheFile)) {
-        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-        if (cached && (cached.audio || cached.url)) {
-          return {
-            ok: true,
-            voice: cached.voice || voice,
-            audio: cached.audio || cached.url,
-            url: cached.audio || cached.url,
-            durationSec: cached.durationSec || 0,
-            cached: true
-          };
+    if (allowCache) {
+      try {
+        if (fs.existsSync(cacheFile)) {
+          const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+          if (cached && (cached.audio || cached.url)) {
+            return {
+              ok: true,
+              voice: cached.voice || voice,
+              audio: cached.audio || cached.url,
+              url: cached.audio || cached.url,
+              durationSec: cached.durationSec || 0,
+              cached: true
+            };
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     if (this.inflight.has(dedupKey)) {
       return this.inflight.get(dedupKey);

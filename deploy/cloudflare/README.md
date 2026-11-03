@@ -54,11 +54,10 @@ cp .env.tunnel.example .env
 ```
 Mở file `.env` và cập nhật thông tin:
 - `TUNNEL_TOKEN`: Token lấy từ Cloudflare Zero Trust (xem mục 3 bên dưới).
-*(Tùy chọn)* Đổi mật khẩu đăng nhập `/admin` (mặc định là `admin` / `admin123`):
-```bash
-bun run gen:htpasswd <ten_admin> <mat_khau_moi>
-# hoặc: node scripts/gen-htpasswd.js <ten_admin> <mat_khau_moi>
-```
+- `ADMIN_USER`: Tài khoản quản trị & mở khóa giao diện (mặc định: `admin`).
+- `ADMIN_PASSWORD`: Mật khẩu quản trị & mở khóa giao diện (ví dụ: `MatKhauBaoMatCuaBan123`).
+
+*(Lưu ý: Mật khẩu này dùng chung để bảo vệ cả Trang chủ có panel điều khiển lẫn trang `/admin`).*
 
 ### Bước 2: Khởi chạy toàn bộ hệ thống
 ```bash

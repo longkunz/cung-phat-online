@@ -267,24 +267,23 @@
       </section>
 
       <section class="card">
-        <h2>👥 4. Cài Đặt Biển Người Phía Sau (Biển Phật Tử Hộ Niệm)</h2>
+        <h2>👥 4. Biển Người Phía Sau</h2>
         <form id="crowdSettingsForm">
           <fieldset id="crowdSettingsFields">
             <div class="field">
-              <label for="crowdSeaMode">Chế độ hiển thị biển người</label>
+              <label for="crowdSeaMode">Chế độ</label>
               <select id="crowdSeaMode">
-                <option value="always">Luôn hiển thị tối đa (318 người - FOMO đông đúc ngay từ đầu)</option>
-                <option value="threshold">Chỉ hiện khi đạt ngưỡng số người (mặc định quá 100 người)</option>
-                <option value="scale">Tự động tăng dần theo số người xem (từ ngưỡng trở lên)</option>
-                <option value="off">Tắt hoàn toàn biển người phía sau</option>
+                <option value="always">Luôn hiện tối đa</option>
+                <option value="threshold">Khi &gt; 100 người</option>
+                <option value="scale">Tăng dần theo view</option>
+                <option value="off">Tắt</option>
               </select>
             </div>
             <div class="field" id="thresholdGroup">
-              <label for="crowdSeaThreshold">Ngưỡng kích hoạt (số người)</label>
+              <label for="crowdSeaThreshold">Ngưỡng người xem / chờ</label>
               <input type="number" id="crowdSeaThreshold" min="1" max="5000" step="1" value="100" />
-              <p class="help">Khi chọn chế độ <em>"Chỉ hiện khi đạt ngưỡng"</em> hoặc <em>"Tăng dần"</em>, biển người phía sau sẽ tự động kích hoạt khi số người xem livestream (hoặc hàng chờ) vượt qua con số này (mặc định 100 người).</p>
             </div>
-            <button class="btn gold" type="submit" id="btnSaveCrowdSettings">Lưu cài đặt biển người</button>
+            <button class="btn gold" type="submit" id="btnSaveCrowdSettings">Lưu cài đặt</button>
           </fieldset>
           <p class="feedback" id="crowdSettingsMessage" role="status"></p>
         </form>
@@ -606,7 +605,7 @@
       event.preventDefault();
       crowdSaving = true;
       document.getElementById('crowdSettingsFields').disabled = true;
-      showFeedback('crowdSettingsMessage', 'Đang lưu cài đặt biển người...');
+      showFeedback('crowdSettingsMessage', 'Đang lưu...');
       try {
         const crowdSeaMode = document.getElementById('crowdSeaMode').value;
         const crowdSeaThreshold = Number(document.getElementById('crowdSeaThreshold').value) || 100;
@@ -618,9 +617,9 @@
         crowdDirty = false;
         crowdSaving = false;
         renderCrowdSettings(data.result);
-        showFeedback('crowdSettingsMessage', 'Đã lưu cài đặt biển người thành công!');
+        showFeedback('crowdSettingsMessage', 'Đã lưu.');
       } catch (err) {
-        showFeedback('crowdSettingsMessage', err.message || 'Không lưu được cài đặt biển người.', true);
+        showFeedback('crowdSettingsMessage', err.message || 'Lỗi lưu cài đặt.', true);
       } finally {
         crowdSaving = false;
         document.getElementById('crowdSettingsFields').disabled = false;

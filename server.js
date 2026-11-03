@@ -530,21 +530,43 @@ const Rituals = {
     const user = sanitizeUserName(params.user);
     const uniqueId = params.uniqueId || '';
     const avatar = params.avatar || '';
-    const count = Math.max(1, Math.min(50, Number(params.count) || 1));
+    const maxCount = params.isBatch || Number(params.count) > 50 ? 100000 : 50;
+    const count = Math.max(1, Math.min(maxCount, Number(params.count) || 1));
     const merit = count;
 
     state.woodenFishHits += count;
-    const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
-    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'like');
+
+    let primaryDevotee = null;
+    if (Array.isArray(params.contributors) && params.contributors.length > 0) {
+      for (const c of params.contributors) {
+        const cUser = sanitizeUserName(c.user);
+        const cUid = c.uniqueId || '';
+        const cAvatar = c.avatar || '';
+        const cCount = Math.max(1, Number(c.count) || 1);
+        const dev = recordDevotee(cUser, cUid, cAvatar, cCount, 0, 0);
+        hallEngage(dev.uniqueId, dev.name, dev.avatar, 'like');
+        if (!primaryDevotee || cUid === uniqueId || cUser === user) {
+          primaryDevotee = dev;
+        }
+      }
+    }
+
+    if (!primaryDevotee) {
+      primaryDevotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
+      hallEngage(primaryDevotee.uniqueId, primaryDevotee.name, primaryDevotee.avatar, 'like');
+    }
+
+    const hallStatus = hallEngage(primaryDevotee.uniqueId, primaryDevotee.name, primaryDevotee.avatar, 'like');
 
     const event = pushEventLog({
       type: 'strikeWoodenFish',
-      user: devotee.name,
-      uniqueId: devotee.uniqueId,
-      avatar: devotee.avatar,
+      user: primaryDevotee.name,
+      uniqueId: primaryDevotee.uniqueId,
+      avatar: primaryDevotee.avatar,
       hallStatus,
       count,
       merit,
+      contributors: params.contributors || undefined,
       ttsText: params.ttsText || ''
     });
 
@@ -1369,16 +1391,19 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('quẻ') ||
     /(^|\s)que(\s|$)/.test(lower) // không bắt nhầm "quen", "quét"...
   ) {
+    if (checkRitualCooldown('temple.drawFortune', { uniqueId, user: cleanUser })) return null;
     return Rituals.drawFortune({ user: cleanUser, uniqueId, avatar, topic: cleanWish });
   }
 
   // 2. Thỉnh chuông
   if (lower.includes('chuông') || lower.includes('chuong') || lower.includes('thỉnh chuông')) {
+    if (checkRitualCooldown('temple.ringBell', { uniqueId, user: cleanUser })) return null;
     return Rituals.ringBell({ user: cleanUser, uniqueId, avatar, count: 1, wish: cleanWish, readTts: true });
   }
 
   // 3. Gõ mõ
   if (lower.includes('gõ mõ') || lower.includes('go mo') || lower.includes('tụng kinh')) {
+    if (checkRitualCooldown('temple.strikeWoodenFish', { uniqueId, user: cleanUser })) return null;
     return Rituals.strikeWoodenFish({ user: cleanUser, uniqueId, avatar, count: 3 });
   }
 
@@ -1391,10 +1416,12 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('bái phật') ||
     lower.includes('bai phat')
   ) {
+    if (checkRitualCooldown('temple.burnIncense', { uniqueId, user: cleanUser })) return null;
     return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 3, wish: cleanWish });
   }
 
   // 5. Lời cầu nguyện dài -> Thả đèn hoa đăng + đọc TTS
+  if (checkRitualCooldown('temple.sendPrayer', { uniqueId, user: cleanUser })) return null;
   return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
 }
 
@@ -1456,6 +1483,70 @@ function extractUserFromEvent(data) {
     '';
   return { user, uniqueId, avatar };
 }
+
+// ============================================================================
+// 6b. BÁO TIM TIKTOK & LIKE BATCH ACCUMULATOR
+// ============================================================================
+class LikeBatchAccumulator {
+  constructor(options = {}) {
+    this.windowMs = options.windowMs || 300;
+    this.onFlush = options.onFlush || null;
+    this.timer = null;
+    this.pendingCount = 0;
+    this.contributors = new Map();
+  }
+
+  add(user, uniqueId, avatar, count = 1) {
+    const safeCount = Math.max(1, Number(count) || 1);
+    this.pendingCount += safeCount;
+    const key = uniqueId || user || 'cong_dong';
+    if (!this.contributors.has(key)) {
+      this.contributors.set(key, { user, uniqueId, avatar, count: 0 });
+    }
+    this.contributors.get(key).count += safeCount;
+
+    if (!this.timer) {
+      this.timer = setTimeout(() => this.flush(), this.windowMs);
+    }
+  }
+
+  flush() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.pendingCount <= 0) return null;
+
+    let topDevotee = null;
+    for (const c of this.contributors.values()) {
+      if (!topDevotee || c.count > topDevotee.count) {
+        topDevotee = c;
+      }
+    }
+
+    const contributorsList = Array.from(this.contributors.values()).map((c) => ({ ...c }));
+    const batch = {
+      totalLikes: this.pendingCount,
+      contributorCount: this.contributors.size,
+      topDevotee: topDevotee ? { ...topDevotee } : { user: 'Thí Chủ', uniqueId: 'cong_dong', avatar: '', count: this.pendingCount },
+      contributors: contributorsList
+    };
+
+    this.pendingCount = 0;
+    this.contributors.clear();
+
+    if (typeof this.onFlush === 'function') {
+      try {
+        this.onFlush(batch);
+      } catch (err) {
+        console.error('[LikeBatchAccumulator onFlush error]:', err);
+      }
+    }
+    return batch;
+  }
+}
+
+let activeLikeAccumulator = null;
 
 async function connectTikTokLive(usernameOrUrl) {
   const cleanUser = await resolveTikTokUsername(usernameOrUrl);
@@ -1539,10 +1630,25 @@ async function connectTikTokLive(usernameOrUrl) {
     parseViewerComment(commentText, user, uniqueId, avatar);
   });
 
+  const likeAccumulator = new LikeBatchAccumulator({
+    windowMs: 300,
+    onFlush: (batch) => {
+      Rituals.strikeWoodenFish({
+        user: batch.topDevotee.user,
+        uniqueId: batch.topDevotee.uniqueId,
+        avatar: batch.topDevotee.avatar,
+        count: batch.totalLikes,
+        contributors: batch.contributors,
+        isBatch: true
+      });
+    }
+  });
+  activeLikeAccumulator = likeAccumulator;
+
   on(WebcastEvent.LIKE, (data) => {
     const { user, uniqueId, avatar } = extractUserFromEvent(data);
     const likeCount = Math.min(15, Math.max(1, Number(data?.count ?? data?.likeCount ?? 1)));
-    Rituals.strikeWoodenFish({ user, uniqueId, avatar, count: likeCount });
+    likeAccumulator.add(user, uniqueId, avatar, likeCount);
   });
 
   const handleSocialEvent = (data) => {
@@ -1634,6 +1740,10 @@ async function connectTikTokLive(usernameOrUrl) {
 }
 
 function disconnectTikTokLive() {
+  if (activeLikeAccumulator) {
+    activeLikeAccumulator.flush();
+    activeLikeAccumulator = null;
+  }
   if (tiktokConn) {
     const old = tiktokConn;
     tiktokConn = null;
@@ -1709,9 +1819,45 @@ function configureAutoSim(enabled) {
 }
 
 // ============================================================================
-// 7. JSON-RPC 2.0 DISPATCHER
+// 7. JSON-RPC 2.0 DISPATCHER & RITUAL COOLDOWN GATEKEEPER
 // ============================================================================
+const RITUAL_COOLDOWNS = {
+  'temple.burnIncense': 2000,
+  'temple.sendPrayer': 2000,
+  'temple.ringBell': 3000,
+  'temple.drawFortune': 3500,
+  'temple.strikeWoodenFish': 250
+};
+const ritualCooldownMap = new Map();
+
+function checkRitualCooldown(method, params) {
+  const cooldownMs = RITUAL_COOLDOWNS[method];
+  if (!cooldownMs) return null;
+  const rawKey = String(params?.uniqueId || params?.user || params?.ip || 'anonymous_caller').trim().toLowerCase();
+  const key = `${method}::${rawKey}`;
+  const now = Date.now();
+  const lastAt = ritualCooldownMap.get(key) || 0;
+  const elapsed = now - lastAt;
+  if (elapsed < cooldownMs) {
+    const retryAfterMs = cooldownMs - elapsed;
+    return {
+      ok: false,
+      rateLimited: true,
+      error: `Thao tác quá nhanh. Thí chủ vui lòng tịnh tâm chờ ${Math.ceil(retryAfterMs / 1000)}s nữa.`,
+      retryAfterMs
+    };
+  }
+  ritualCooldownMap.delete(key);
+  ritualCooldownMap.set(key, now);
+  if (ritualCooldownMap.size > 2000) {
+    ritualCooldownMap.delete(ritualCooldownMap.keys().next().value);
+  }
+  return null;
+}
+
 async function handleRpcCall(method, params = {}) {
+  const throttled = checkRitualCooldown(method, params);
+  if (throttled) return throttled;
   switch (method) {
     case 'temple.getState':
       return getPublicState();
@@ -2005,8 +2151,11 @@ app.post('/rpc', async (req, res) => {
       error: { code: -32600, message: 'Invalid JSON-RPC Request: thiếu method' }
     });
   }
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+  const rpcParams = { ...(params || {}) };
+  if (!rpcParams.ip) rpcParams.ip = clientIp;
   try {
-    const result = await handleRpcCall(method, params || {});
+    const result = await handleRpcCall(method, rpcParams);
     res.json({
       jsonrpc: jsonrpc || '2.0',
       id: id ?? null,
@@ -2060,7 +2209,8 @@ function broadcastNotification(method, params) {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const clientIp = req?.headers['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || ws._socket?.remoteAddress || '127.0.0.1';
   ws.send(
     JSON.stringify({
       jsonrpc: '2.0',
@@ -2078,7 +2228,9 @@ wss.on('connection', (ws) => {
     }
     if (!msg || !msg.method) return;
     try {
-      const result = await handleRpcCall(msg.method, msg.params || {});
+      const rpcParams = { ...(msg.params || {}) };
+      if (!rpcParams.ip) rpcParams.ip = clientIp;
+      const result = await handleRpcCall(msg.method, rpcParams);
       if (msg.id !== undefined) {
         ws.send(
           JSON.stringify({
@@ -2137,10 +2289,14 @@ if (!isDirectRun) {
     app,
     server,
     handleRpcCall,
+    LikeBatchAccumulator,
     ZeroTTSManager,
     zeroTts,
     broadcastNotification,
     getPublicState,
-    Rituals
+    Rituals,
+    parseViewerComment,
+    checkRitualCooldown,
+    state
   };
 }

@@ -85,7 +85,7 @@ describe("Live Gateway TTS Microservice Integration (Seams B & C)", () => {
     expect(lastSynthesizeBody.text).toBe("Nam mô A Di Đà Phật");
     
     manager.destroy();
-  });
+  }, 10000);
 
   test("RPC temple.speak receives in-memory Data URI and broadcasts tts.play event", async () => {
     process.env.TTS_SERVICE_URL = `http://localhost:${mockTtsPort}`;

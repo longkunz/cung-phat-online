@@ -544,4 +544,22 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(mockHero.sticks).toBe(0);
     expect(mockHero.handPose).toBeNull();
   });
+
+  test("[Finding P1 Fix] Dense Multi-Agent Relaxation: 8 collinear walkers spaced 0.20m apart strictly relax to >= 0.50m", () => {
+    // 8 walking avatars spaced 0.20m apart: (0, 0), (0.20, 0), (0.40, 0), ..., (1.40, 0)
+    const avatars = [];
+    for (let i = 0; i < 8; i++) {
+      avatars.push(createAvatar(i + 1, i * 0.20, 0, { walking: true }));
+    }
+    CrowdNav.relaxCollisions(avatars);
+
+    let minRecordedDist = 999;
+    for (let i = 0; i < avatars.length; i++) {
+      for (let j = i + 1; j < avatars.length; j++) {
+        const d = Math.hypot(avatars[i].pos.x - avatars[j].pos.x, avatars[i].pos.z - avatars[j].pos.z);
+        if (d < minRecordedDist) minRecordedDist = d;
+      }
+    }
+    expect(minRecordedDist).toBeGreaterThanOrEqual(0.50);
+  });
 });

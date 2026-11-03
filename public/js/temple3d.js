@@ -1447,8 +1447,8 @@ function startPetalRain(sec = 9) {
 //     Mỗi bộ phận 1 InstancedMesh dùng chung -> ~10 draw call cho cả đạo tràng.
 // ============================================================================
 // Kích thước (đơn vị ~ mét). Gốc thân ở "eo": váy áo phía dưới, thân trên + đầu phía trên.
-const SKIRT_H = 0.42; // chiều cao vạt áo từ eo xuống gấu
-const STAND_WAIST = SKIRT_H + 0.05; // đứng: gấu áo cách sàn 5 cm (lộ bàn chân khi bước)
+const SKIRT_H = 0.36; // chiều cao vạt áo từ eo xuống gấu (đủ dài nhưng để hở cổ chân)
+const STAND_WAIST = SKIRT_H + 0.11; // đứng: gấu áo cách sàn 11 cm (lộ cẳng chân và bàn chân khi bước)
 const KNEEL_WAIST = 0.27; // quỳ: thân hạ xuống, vạt áo xòe phẳng trên đệm (mặt đệm ~0.16)
 const TORSO_H = 0.34;
 const HEAD_R = 0.27;
@@ -1483,9 +1483,9 @@ const faceTex = canvasTexture(512, 256, (ctx, w, h) => {
 }).tex;
 
 const partGeos = {
-  // vạt áo dưới eo: hình chuông, gấu tròn mềm (che hoàn toàn chân)
+  // vạt áo dưới eo: dáng áo tràng lam thanh thoát, gấu áo trên cổ chân để lộ cẳng chân và bước chân
   skirt: mergeColored([
-    { geo: lathe([[0, 0.02], [0.2, 0.02], [0.225, -0.1], [0.27, -0.24], [0.32, -0.36], [0.345, -0.405], [0.335, -0.42], [0.2, -0.425], [0, -0.425]], 28), scale: [1, 1, 0.92] }
+    { geo: lathe([[0, 0.02], [0.19, 0.02], [0.205, -0.08], [0.22, -0.18], [0.235, -0.27], [0.245, -0.34], [0.24, -0.36], [0.15, -0.365], [0, -0.365]], 28), scale: [1, 1, 0.92] }
   ]),
   // thân trên: vai tròn, cổ áo sáng màu, đường khuy áo tràng
   torso: mergeColored([
@@ -1512,7 +1512,8 @@ const partGeos = {
   upperArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.062, ARM_L1 - 0.03, 6, 12), pos: [0, -ARM_L1 / 2, 0] }]),
   foreArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.057, ARM_L2 - 0.04, 6, 12), pos: [0, -ARM_L2 / 2 + 0.01, 0] }]),
   hand: mergeColored([{ geo: new THREE.SphereGeometry(0.062, 14, 10), scale: [0.85, 1, 0.7] }]),
-  foot: mergeColored([{ geo: new THREE.SphereGeometry(1, 12, 8), scale: [0.065, 0.04, 0.1], pos: [0, 0.035, -0.03] }]),
+  leg: mergeColored([{ geo: new THREE.CylinderGeometry(0.042, 0.038, 0.12, 12), pos: [0, 0.06, 0] }]),
+  foot: mergeColored([{ geo: new THREE.SphereGeometry(1, 14, 10), scale: [0.052, 0.036, 0.095], pos: [0, 0.024, -0.01] }]),
   // nén nhang cầm tay (3 nén xòe nhẹ), gốc ở giữa 2 bàn tay
   heldIncense: mergeColored([
     { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [-0.03, 0.26, 0], rot: [0, 0, 0.1] },
@@ -1520,7 +1521,7 @@ const partGeos = {
     { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [0.03, 0.26, 0], rot: [0, 0, -0.1] }
   ])
 };
-const PAIRED = { upperArm: true, foreArm: true, hand: true, foot: true };
+const PAIRED = { upperArm: true, foreArm: true, hand: true, leg: true, foot: true };
 partGeos.heldIncense.scale(1.25, 1.2, 1.25);
 // máy quay ở xa (mặc định): nhang to hơn để đọc được động tác
 if (!CLOSEUPS_EARLY) partGeos.heldIncense.scale(1.5, 1.3, 1.5);
@@ -1685,13 +1686,18 @@ function refreshSeats() {
 refreshSeats();
 scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 
-// Chỗ đứng chờ (24 người): bố trí tách biệt hoàn toàn thành 2 cánh ở hai bên (|x| >= 2.4)
-// Tuyệt đối không đứng ở lối đi giữa (hành lang trung tâm x = -2.0..2.0 luôn thông thoáng)
+// Khu vực đứng phía sau chỗ ngồi (tối đa 50 người):
+// Bố trí thành các hàng đứng ngay sát sau hàng ghế cuối (z = 1.55),
+// thẳng hàng với các cột ghế, chắp tay hướng về Tam Bảo, tạo cảm giác đạo tràng đông đúc, tấp nập (FOMO).
+// Hành lang thảm đỏ trung tâm (x = -1.25..1.25) luôn thông thoáng cho người dâng lễ đi lại.
 const WAIT_SPOTS = [];
-for (const z of [3.2, 4.6, 6.0, 7.4]) {
-  // Cánh trái (x <= -2.4) và Cánh phải (x >= 2.4)
-  for (const x of [-5.2, -3.8, -2.4, 2.4, 3.8, 5.2]) {
-    WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.06, 0.06), 0, z + rand(-0.08, 0.08)));
+const STAND_ROW_Z = [2.65, 3.75, 4.85, 5.95, 7.05];
+const STAND_COL_X = [2.05, 3.45, 4.85, 6.25, 7.45];
+for (const z of STAND_ROW_Z) {
+  for (const x of STAND_COL_X) {
+    // Ưu tiên xếp xen kẽ trái / phải từ lối đi giữa ra hai bên vách
+    WAIT_SPOTS.push(new THREE.Vector3(-x + rand(-0.04, 0.04), 0, z + rand(-0.04, 0.04)));
+    WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.04, 0.04), 0, z + rand(-0.04, 0.04)));
   }
 }
 
@@ -2079,6 +2085,10 @@ function goToSeat(a, onArrive) {
   const steps = [];
   if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
   else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
+  else if (a.pos.z > 2.0 && Math.abs(a.pos.x) > LANE_X + 0.2) {
+    // Nếu đang đứng ở hàng chờ phía sau chỗ ngồi, bước ra làn lối đi trước khi tiến về ghế
+    steps.push(moveStep(new THREE.Vector3(Math.sign(a.pos.x) * LANE_X, 0, a.pos.z), WALK_SPEED));
+  }
   steps.push(dynStep((av) => {
     if (av.seat < 0 || av.leaving) return [];
     // đang ở ngoài sân / gần cửa -> vào qua cửa chính trước
@@ -2471,7 +2481,7 @@ function releaseWaitSpot(a) {
   a.waitSpot = -1;
 }
 function sendToWaitSpot(a) {
-  let i = waitSpotTaken.indexOf(a);
+  let i = a.waitSpot >= 0 ? a.waitSpot : waitSpotTaken.indexOf(a);
   if (i < 0) i = waitSpotTaken.indexOf(null);
   if (i < 0) { walkOut(a); return; }
   waitSpotTaken[i] = a;
@@ -2482,7 +2492,11 @@ function sendToWaitSpot(a) {
   const steps = [];
   if (a.atSeat >= 0) steps.push(...pathFromSeat(a.atSeat));
   else if (a.kneel > 0.05) steps.push(kneelStep(0, 0.6));
-  steps.push(moveStep(new THREE.Vector3(Math.sign(spot.x) * LANE_X, 0, spot.z)), moveStep(spot.clone(), 1.1), turnStep(0, 0.5));
+  steps.push(
+    moveStep(new THREE.Vector3(Math.sign(spot.x) * LANE_X, 0, spot.z), WALK_SPEED),
+    moveStep(spot.clone(), 1.2),
+    turnStep(0, 0.45)
+  );
   runScript(a, steps);
 }
 
@@ -2500,21 +2514,39 @@ function syncWaiting(list, count) {
       if (w.name && w.name !== a.name) { a.name = w.name; ensureTag(a); }
       continue;
     }
-    if (waitSpotTaken.indexOf(null) < 0) continue;
+    const emptyIdx = waitSpotTaken.indexOf(null);
+    if (emptyIdx < 0) continue;
     a = allocAvatar();
     if (!a) break;
-    const delay = stagger++ * 380;
+    waitSpotTaken[emptyIdx] = a;
+    a.waitSpot = emptyIdx;
     waitMap.set(w.uid, a);
-    a.queued = true; // giữ chỗ trong pool trong lúc chờ xuất hiện so le
-    setTimeout(() => {
-      a.queued = false;
-      if (waitMap.get(w.uid) !== a) return;
-      spawnAvatar(a, { uid: w.uid, name: w.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
+    const spot = WAIT_SPOTS[emptyIdx];
+    if (!rosterSynced) {
+      // Khi nạp trang ban đầu: đứng sẵn tại chỗ phía sau ghế ngồi, chắp tay trang nghiêm (không dồn ứ ở cửa)
+      spawnAvatar(a, { uid: w.uid, name: w.name, member: false, at: spot.clone() });
+      a.yaw = 0;
       a.tier = w.tier || 'normal';
       a.waiting = true;
       ensureTag(a);
-      sendToWaitSpot(a);
-    }, rosterSynced ? delay : 0);
+    } else {
+      const delay = stagger++ * 380;
+      a.queued = true; // giữ chỗ trong pool trong lúc chờ xuất hiện so le
+      setTimeout(() => {
+        a.queued = false;
+        if (waitMap.get(w.uid) !== a) return;
+        spawnAvatar(a, { uid: w.uid, name: w.name, member: false, at: DOOR_SPAWN.clone(), pop: true });
+        a.tier = w.tier || 'normal';
+        a.waiting = true;
+        ensureTag(a);
+        const steps = [
+          moveStep(new THREE.Vector3(Math.sign(spot.x) * LANE_X, 0, spot.z), WALK_SPEED),
+          moveStep(spot.clone(), 1.2),
+          turnStep(0, 0.45)
+        ];
+        runScript(a, steps);
+      }, delay);
+    }
   }
   for (const [uid, a] of waitMap) {
     if (keep.has(uid)) continue;
@@ -2653,7 +2685,7 @@ function afterGuestRitual(av) {
   return exitSteps();
 }
 
-/** hall.action cho khách (guest: true): đứng ở sân ngay sau cổng ~6 giây với bong bóng / động tác rồi ra về. */
+/** hall.action cho khách (guest: true): đứng vào khu vực phía sau chỗ ngồi ~6.5 giây với bong bóng / động tác rồi ra về. */
 function courtGuest(uid, name, action, text) {
   let a = guestMap.get(uid);
   if (!(a && a.active && !a.fade)) {
@@ -2666,30 +2698,40 @@ function courtGuest(uid, name, action, text) {
     spawnAvatar(a, { uid, name, member: false, at: DOOR_SPAWN.clone(), pop: true });
     a.guestKind = 'court';
     guestMap.set(uid, a);
-    const spot = new THREE.Vector3((countGuests('court') % 2 ? 1 : -1) * rand(1.4, 2.6), 0, COURT_IN.z + rand(-0.6, 0.6));
+    const guestIdx = countGuests('court');
+    const sideX = guestIdx % 2 === 0 ? 1 : -1;
+    // Đứng vào trong phía sau chỗ ngồi (z từ 2.85 đến 4.85, x từ 2.15 đến 4.35), tuyệt đối không đứng ngay cửa
+    const spotZ = 2.85 + (guestIdx % 3) * 0.95 + rand(-0.06, 0.06);
+    const spotX = sideX * (2.15 + rand(0.1, 2.2));
+    const spot = new THREE.Vector3(spotX, 0, spotZ);
     runScript(a, [
-      moveStep(spot, 1.6),
-      turnStep(rand(-0.3, 0.3), 0.4),
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, spotZ), 2.2),
+      moveStep(spot, 1.4),
+      turnStep(0, 0.4),
       waitStep(0.05, (av) => { av.waiting = true; }),
-      waitStep(6),
+      waitStep(6.5),
       waitStep(0.05, (av) => { av.waiting = false; }),
+      turnStep(Math.PI, 0.4),
+      moveStep(new THREE.Vector3(sideX * LANE_X, 0, spotZ), 1.9),
       ...exitSteps(1.8)
     ]);
   }
   return a;
 }
 
-/** Tầng 1 — hall.arrive: người vừa vào live; hiển thị thông báo và đứng vào khu vực chờ 2 bên (không đứng giữa lối đi). */
+/** Tầng 1 — hall.arrive: người vừa vào live; hiển thị thông báo và đứng vào khu vực phía sau chỗ ngồi (không đứng ngay cửa). */
 function arrive(p) {
   const more = Number(p.count) > 1 ? ` và ${Number(p.count) - 1} người khác` : '';
   pushToast(`🙏 ${shortName(p.name || 'Thí Chủ', 18)}${more} vừa vào chùa`, 'arrive');
-  // Nếu có uid và chưa được quản lý bởi waitMap hay uidToAvatar, tự động cho đứng vào chỗ chờ 2 bên
+  // Nếu có uid và chưa được quản lý bởi waitMap hay uidToAvatar, tự động cho đứng vào chỗ chờ phía sau chỗ ngồi
   if (p.uid && !waitMap.has(p.uid) && !memberAvatar(p.uid)) {
     const emptyIdx = waitSpotTaken.indexOf(null);
     if (emptyIdx >= 0) {
       const a = allocAvatar();
       if (a) {
         waitMap.set(p.uid, a);
+        waitSpotTaken[emptyIdx] = a;
+        a.waitSpot = emptyIdx;
         spawnAvatar(a, { uid: p.uid, name: p.name || 'Thí Chủ', member: false, at: DOOR_SPAWN.clone(), pop: true });
         a.tier = 'normal';
         a.waiting = true;
@@ -2703,20 +2745,23 @@ function arrive(p) {
 // Đám đông vô danh (không tên): tăng theo số lượng người xem, dồn sát vào phía sau và hai bên hàng ghế
 const crowd = [];
 function crowdTarget(n) {
-  return Math.max(0, Math.min(12, n));
+  return Math.max(0, Math.min(18, n));
 }
 const CROWD_SPOTS = [
-  [-3.8, 7.8], [3.8, 7.8], [-2.4, 7.8], [2.4, 7.8], [-5.2, 7.8], [5.2, 7.8],
-  [-6.8, -2.4], [6.8, -2.4], [-6.8, -0.6], [6.8, -0.6], [-6.8, 1.2], [6.8, 1.2]
+  // Hàng đứng sau chỗ ngồi xen kẽ với chỗ chờ
+  [-2.75, 3.2], [2.75, 3.2], [-4.15, 3.2], [4.15, 3.2], [-5.55, 3.2], [5.55, 3.2],
+  [-2.75, 4.3], [2.75, 4.3], [-4.15, 4.3], [4.15, 4.3], [-5.55, 4.3], [5.55, 4.3],
+  // Hai bên cánh hông chánh điện
+  [-7.2, -2.4], [7.2, -2.4], [-7.2, -0.6], [7.2, -0.6], [-7.2, 1.2], [7.2, 1.2]
 ];
 function syncCrowd(viewers) {
-  const want = crowdTarget(Math.ceil((Number(viewers) || 0) / 40));
+  const want = crowdTarget(Math.ceil((Number(viewers) || 0) / 30));
   while (crowd.length < want) {
     const a = allocAvatar();
     if (!a) break;
     const [x, z] = CROWD_SPOTS[crowd.length];
     spawnAvatar(a, { uid: '', name: '', member: false, at: new THREE.Vector3(x, 0, z), anon: true });
-    a.yaw = Math.atan2(x, 4);
+    a.yaw = 0;
     a.guestKind = 'crowd';
     a.waiting = true; // chắp tay đứng
     crowd.push(a);
@@ -3053,8 +3098,8 @@ function updateAvatars(dt, t) {
     a.bobY = bob;
     const waistY = lerp(STAND_WAIST, KNEEL_WAIST, k) + bob + breath * 0.004;
     const kc = clamp01(k);
-    const skirtY = Math.max(0.2, (waistY - lerp(0.05, 0.145, kc)) / SKIRT_H);
-    const skirtW = lerp(1, 1.3, kc) * (1 + Math.max(0, k - 1) * 0.6);
+    const skirtY = Math.max(0.2, (waistY - lerp(0.04, 0.13, kc)) / SKIRT_H);
+    const skirtW = lerp(1, 1.35, kc) * (1 + Math.max(0, k - 1) * 0.6);
 
     _root.compose(_pos.set(a.pos.x, 0, a.pos.z), _q.setFromAxisAngle(_v.set(0, 1, 0), a.yaw), _s.set(s, s, s));
     _waist.copy(_root).multiply(mT(0, waistY, 0));
@@ -3089,10 +3134,26 @@ function updateAvatars(dt, t) {
       put('foreArm', limbMatrix(_j2, _torso, _el, H), T.robe);
       _j1.copy(_torso).multiply(_m.compose(H, _qa, _one));
       put('hand', _j1, T.skin);
-      // bàn chân: chỉ ló ra khi bước
-      const fv = Math.max(0.0001, Math.min(1, w * 1.4) * (1 - kc));
+      // chân & bàn chân: lộ bước đi tự nhiên, bước sải nhịp nhàng không bị trôi lướt
       const step = Math.sin(a.phase + (side ? Math.PI : 0));
-      _j1.copy(_root).multiply(mT(sg * 0.1, Math.max(0, -step) * 0.035 * w, -0.04 + step * 0.1 * w)).multiply(_sc.makeScale(fv, fv, fv));
+      const fv = Math.max(0.0001, 1 - kc * 0.96); // đứng & đi: hiển thị đầy đủ; quỳ: ẩn xếp gọn dưới vạt áo
+
+      // Độ nâng chân khi bước (swing phase) và tiếp đất (stance phase)
+      const stepY = Math.max(0, -step) * 0.045 * w;
+      // Quãng sải chân trước/sau (tiến tới -Z khi nhấc bước, lùi về +Z khi trụ sàn)
+      const stepZ = -0.02 - step * 0.16 * w;
+      const legPitch = -step * 0.35 * w;
+
+      // Cẳng chân / ống quần lam: nối từ gấu áo xuống cổ chân
+      const legX = sg * 0.095;
+      const legY = Math.max(0.04, 0.05 + stepY * 0.5);
+      const legZ = -0.01 - step * 0.08 * w;
+      _j1.copy(_root).multiply(mT(legX, legY, legZ)).multiply(_rx.makeRotationX(legPitch)).multiply(_sc.makeScale(fv, fv, fv));
+      put('leg', _j1, T.robe);
+
+      // Bàn chân: tiếp đất vững chãi, nhấc bước có độ chếch tự nhiên
+      const footPitch = -step * 0.22 * w;
+      _j1.copy(_root).multiply(mT(legX, stepY, stepZ)).multiply(_rx.makeRotationX(footPitch)).multiply(_sc.makeScale(fv, fv, fv));
       put('foot', _j1, T.feet);
     }
     // nhang cầm tay

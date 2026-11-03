@@ -46,7 +46,7 @@ Người xem trên TikTok Live tương tác trực tiếp qua **Bình luận (Co
 ### 🛕 Chùa Thiên Mụ 3D — Đại Hùng Bảo Điện & Đạo Tràng Phật tử áo lam (`/temple3d.html`)
 - Mở `http://localhost:3000/temple3d.html` (OBS: `http://localhost:3000/temple3d.html?obs=1`, khung 1080×1920). Mã nguồn: `public/temple3d.html`, `public/js/temple3d.js`, `public/css/temple3d.css`.
 - Chỉ dựng **trong chánh điện** bằng code Three.js (không file model): điện sơn son thếp vàng, sàn gỗ bóng, thảm hồi văn hoa sen, tượng Phật A Di Đà kiết già ôm hoa sen trên tòa sen + hào quang chạm lửa, lư hương, bàn nhang + nến, chuông, mõ; ngoài cửa chính chỉ là vùng sáng. Vật liệu PBR + môi trường phản chiếu (RoomEnvironment), 1 đèn đổ bóng cho vùng đạo tràng.
-- **Phật tử chibi**: đầu tròn to (mặt vẽ: mắt khép, má hồng, miệng cười), áo tràng lam hình chuông che chân, tay tròn; kiểu tóc ngắn / búi / cạo đầu. Chuyển động làm mượt bằng lò xo: đi lạch bạch, quỳ xuống có nảy nhẹ, chắp tay (nháy sáng vàng), lạy 3 lạy (tay lên trán → rạp người, tay úp sàn → lên), thở nhẹ khi ngồi yên.
+- **Phật tử chibi**: đầu tròn to (mặt vẽ: mắt khép, má hồng, miệng cười), áo tràng lam thanh thoát để lộ cẳng chân và bước chân tự nhiên, tay tròn; kiểu tóc ngắn / búi / cạo đầu. Chuyển động làm mượt bằng lò xo: đi lạch bạch tự nhiên với cẳng chân và bàn chân tiếp đất/nhấc bước nhịp nhàng, quỳ xuống có nảy nhẹ, chắp tay (nháy sáng vàng), lạy 3 lạy (tay lên trán → rạp người, tay úp sàn → lên), thở nhẹ khi ngồi yên.
 - **Cảnh chính "thắp nhang"**: người vào từ cửa chính → theo thảm đỏ tới bàn nhang → lấy 3 nén → châm ở ngọn nến → nâng nhang lên trán, vái 3 vái trước lư → cắm nhang vào lư (khói, +Công Đức) → chắp tay vái → về chỗ quỳ, chắp tay (nghi lễ / lệnh lạy thì lạy thêm 3 lạy). Camera bám theo trên thảm → góc thấp chéo thấy người lạy và tượng Phật phía sau → lùi về toàn cảnh. Mỗi lúc chỉ quay 1 người (hàng đợi, quà tặng được chen ngang, cách nhau ≥ 8 giây).
 - **Chỗ ngồi** (`hall.roster`): ghế 0..7 = hàng đầu giữ chỗ cho top 8 người tặng quà (đài sen vàng; trống thì hiện "🎁 Giữ chỗ dâng lễ"), ghế 8..39 = chỗ thường (ghế 8 gần camera nhất). `tier`: đệm gấm / đài sen hồng (đã tặng quà) / đài sen vàng (≥ 100 xu). Hết chỗ: người chờ (`waiting`) đứng dọc tường phía cửa + biển "+N Phật tử đang chờ vào". Khách hành hương (`hallStatus: 'guest'`) vào thắp nhang rồi ra về; người vừa vào live (`hall.arrive`) bước vào cửa vái rồi ra.
 - **Góc máy**: mặc định toàn cảnh trên cao nhìn xuống (~36°) thấy từ cửa chính tới tượng Phật và cả 40 chỗ, trôi/xoay chậm; khi có người thắp nhang chỉ đẩy nhẹ về phía bàn thờ rồi lùi lại; người đang vái/lạy có vòng sáng vàng dưới chân. Cận cảnh (`hall`, `altar`, `side`, `buddha`, quay theo từng nhịp thắp nhang) chỉ bật khi thêm `?closeups=1`. `?cam=<tên>` khóa góc máy, `?director=0` tắt tự đổi.
@@ -218,7 +218,7 @@ curl -X POST http://localhost:3000/rpc \
     "id": 3,
     "method": "live.connect",
     "params": {
-      "username": "@zenfacts_vn"
+      "username": "@longkunz"
     }
   }'
 ```

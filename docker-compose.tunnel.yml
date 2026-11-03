@@ -1,0 +1,105 @@
+services:
+  tts-service:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    container_name: chua-online-tts
+    expose:
+      - "8008"
+    environment:
+      - PORT=8008
+      - OMP_NUM_THREADS=3
+      - OMP_WAIT_POLICY=PASSIVE
+      - HF_HUB_DISABLE_SYMLINKS_WARNING=1
+      - ZEROTTS_MODEL_PATH=/root/.cache/zerotts-local
+    volumes:
+      - zerotts-cache:/root/.cache/zerotts-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/ready"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 180s
+      start_interval: 5s
+    networks:
+      - temple-network
+    restart: unless-stopped
+
+  live-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chua-online-gateway
+    # CƠ CHẾ BẢO VỆ 1: Chỉ mở cổng trên 127.0.0.1 cho OBS Studio máy chủ nội bộ.
+    # Ngăn chặn 100% việc truy cập trực tiếp từ Internet vào IP VPS mà không qua Cloudflare.
+    ports:
+      - "127.0.0.1:${LOCAL_GATEWAY_PORT:-3000}:3000"
+    expose:
+      - "3000"
+    environment:
+      - PORT=3000
+      - TTS_SERVICE_URL=http://tts-service:8008
+    depends_on:
+      tts-service:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      start_interval: 5s
+    networks:
+      - temple-network
+    restart: unless-stopped
+
+  proxy-guard:
+    image: nginx:alpine
+    container_name: chua-online-guard
+    expose:
+      - "80"
+    environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    volumes:
+      - ./deploy/cloudflare/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/cloudflare/.htpasswd:/etc/nginx/.htpasswd
+      - ./deploy/cloudflare/40-generate-htpasswd.sh:/docker-entrypoint.d/40-generate-htpasswd.sh:ro
+    depends_on:
+      live-gateway:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - temple-network
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: chua-online-cloudflared
+    # CƠ CHẾ BẢO VỆ 2: Outbound Tunnel duy nhất, hoàn toàn không cần mở port WAN/Router.
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:-token_chua_duoc_cau_hinh}
+    depends_on:
+      proxy-guard:
+        condition: service_healthy
+        restart: true
+    networks:
+      - temple-network
+    restart: unless-stopped
+
+networks:
+  temple-network:
+    name: chua-online-network
+    driver: bridge
+
+volumes:
+  zerotts-cache:
+    name: chua-online-zerotts-cache

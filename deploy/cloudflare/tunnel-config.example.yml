@@ -1,0 +1,15 @@
+# File cấu hình Cloudflare Tunnel cục bộ (Chỉ dùng khi không dùng TUNNEL_TOKEN)
+# Đường dẫn mặc định khi mount: /etc/cloudflared/config.yml
+tunnel: <YOUR-TUNNEL-UUID>
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  # Route toàn bộ lưu lượng qua proxy-guard (Nginx) để được bảo vệ
+  - hostname: chua.yourdomain.com
+    service: http://proxy-guard:80
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+
+  # Fallback catch-all cho các request không khớp
+  - service: http_status:404

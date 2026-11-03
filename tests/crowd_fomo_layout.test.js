@@ -158,4 +158,23 @@ describe('Đạo Tràng Đông Đúc & FOMO (Standing Crowd Behind Cushions)', (
     expect(templeCode).toMatch(/targetCount = currentCount >= threshold \? DEVOTEE_SEA_COUNT : 0;/);
     expect(templeCode).toMatch(/syncDevoteeSea, templeSettings/);
   });
+  it('12. Đám đông di chuyển lên phía trên thêm 20% (STAND_ROW_Z, REAR_SEA_ROWS, CROWD_SPOTS được dồn về phía trước Tam Bảo)', () => {
+    // STAND_ROW_Z dịch chuyển lên 20% (bắt đầu từ ~2.25 thay vì 2.65, kết thúc ở ~5.05 thay vì 7.05)
+    const rowMatch = templeCode.match(/const STAND_ROW_Z = \[(.*?)\];/);
+    expect(rowMatch).toBeTruthy();
+    const rows = rowMatch[1].split(',').map((s) => parseFloat(s.trim()));
+    expect(rows[0]).toBeLessThanOrEqual(2.3);
+    expect(rows[rows.length - 1]).toBeLessThanOrEqual(5.1);
+
+    // REAR_SEA_ROWS dịch chuyển lên 20% (bắt đầu từ ~5.5 thay vì 7.4, kết thúc ở ~11.35 thay vì 13.25)
+    const seaRowMatch = templeCode.match(/const REAR_SEA_ROWS = \[(.*?)\];/);
+    expect(seaRowMatch).toBeTruthy();
+    const seaRows = seaRowMatch[1].split(',').map((s) => parseFloat(s.trim()));
+    expect(seaRows[0]).toBeLessThanOrEqual(5.6);
+    expect(seaRows[seaRows.length - 1]).toBeLessThanOrEqual(11.5);
+
+    // CROWD_SPOTS dịch chuyển lên 20% (các hàng đứng sau dồn lên z = 2.6 và 3.4 thay vì 3.2 và 4.3)
+    expect(templeCode).toMatch(/\[-2\.75,\s*2\.6\]/);
+    expect(templeCode).toMatch(/\[-2\.75,\s*3\.4\]/);
+  });
 });

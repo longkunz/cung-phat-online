@@ -1691,7 +1691,7 @@ scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 // thẳng hàng với các cột ghế, chắp tay hướng về Tam Bảo, tạo cảm giác đạo tràng đông đúc, tấp nập (FOMO).
 // Hành lang thảm đỏ trung tâm (x = -1.25..1.25) luôn thông thoáng cho người dâng lễ đi lại.
 const WAIT_SPOTS = [];
-const STAND_ROW_Z = [2.65, 3.75, 4.85, 5.95, 7.05];
+const STAND_ROW_Z = [2.25, 2.95, 3.65, 4.35, 5.05];
 const STAND_COL_X = [2.05, 3.45, 4.85, 6.25, 7.45];
 for (const z of STAND_ROW_Z) {
   for (const x of STAND_COL_X) {
@@ -1705,7 +1705,7 @@ for (const z of STAND_ROW_Z) {
 // BIỂN NGƯỜI ĐỨNG PHÍA SAU (Biển Phật Tử Hộ Niệm - Số lượng cố định tối đa)
 // ============================================================================
 // Không gian Chánh Điện bên trong: Biển người đứng ken đặc vai kề vai phía sau
-// các hàng ghế và khu vực đứng tương tác (từ z = 7.7 đến 13.1 và dọc 2 bên vách Chánh Điện).
+// các hàng ghế và khu vực đứng tương tác (từ z = 5.5 đến 11.4 và dọc 2 bên vách Chánh Điện).
 // Dùng 1 THREE.InstancedMesh duy nhất (1 draw call, tối ưu GPU tuyệt đối).
 // Số lượng hiển thị cố định ở mức tối đa ngay từ đầu, không phụ thuộc người xem livestream.
 const SEA_ROBE = 0x718193;
@@ -1751,7 +1751,7 @@ function hash2d(x, z) {
   return s - Math.floor(s);
 }
 
-const REAR_SEA_ROWS = [7.4, 7.85, 8.3, 8.75, 9.2, 9.65, 10.1, 10.55, 11.0, 11.45, 11.9, 12.35, 12.8, 13.25];
+const REAR_SEA_ROWS = [5.5, 5.95, 6.4, 6.85, 7.3, 7.75, 8.2, 8.65, 9.1, 9.55, 10.0, 10.45, 10.9, 11.35];
 const REAR_BASE_XS = [1.62, 2.08, 2.54, 3.0, 3.46, 3.92, 4.38, 4.84, 5.3, 5.76, 6.22, 6.68, 7.14, 7.6, 8.06, 8.52, 8.95];
 
 function isNearColumn(x, z) {
@@ -1796,7 +1796,7 @@ REAR_SEA_ROWS.forEach((baseZ, rIdx) => {
   });
 });
 
-const FLANK_SEA_ZS = [-4.8, -4.3, -3.8, -3.3, -2.8, -2.3, -1.8, -1.3, -0.8, -0.3, 0.2, 0.7, 1.2, 1.7, 2.2, 2.7, 3.2, 3.7, 4.2, 4.7, 5.2, 5.7, 6.2, 6.7, 7.2];
+const FLANK_SEA_ZS = [-5.5, -5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5];
 const FLANK_SEA_XS = [8.05, 8.65];
 FLANK_SEA_ZS.forEach((baseZ) => {
   FLANK_SEA_XS.forEach((bx) => {
@@ -1839,7 +1839,7 @@ DEVOTEE_SEA_PTS.forEach((pt, i) => {
   const baseY = 0;
   DEVOTEE_SEA_BASE_Y.push(baseY);
   _seaV.set(pt.x, baseY, pt.z);
-  const yaw = pt.baseYaw || (pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
+  const yaw = pt.baseYaw || (pt.z < 5.5 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
   _seaQ.setFromEuler(_seaE.set(0, yaw, 0, 'YXZ'));
   const sc = pt.scale || 1.0;
   DEVOTEE_SEA_SCALES.push(sc);
@@ -3018,7 +3018,7 @@ function courtGuest(uid, name, action, text) {
     const guestIdx = countGuests('court');
     const sideX = guestIdx % 2 === 0 ? 1 : -1;
     // Đứng vào trong phía sau chỗ ngồi (z từ 2.85 đến 4.85, x từ 2.15 đến 4.35), tuyệt đối không đứng ngay cửa
-    const spotZ = 2.85 + (guestIdx % 3) * 0.95 + rand(-0.06, 0.06);
+    const spotZ = 2.55 + (guestIdx % 3) * 0.75 + rand(-0.06, 0.06);
     const spotX = sideX * (2.15 + rand(0.1, 2.2));
     const spot = new THREE.Vector3(spotX, 0, spotZ);
     runScript(a, [
@@ -3065,9 +3065,9 @@ function crowdTarget(n) {
   return Math.max(0, Math.min(18, n));
 }
 const CROWD_SPOTS = [
-  // Hàng đứng sau chỗ ngồi xen kẽ với chỗ chờ
-  [-2.75, 3.2], [2.75, 3.2], [-4.15, 3.2], [4.15, 3.2], [-5.55, 3.2], [5.55, 3.2],
-  [-2.75, 4.3], [2.75, 4.3], [-4.15, 4.3], [4.15, 4.3], [-5.55, 4.3], [5.55, 4.3],
+  // Hàng đứng sau chỗ ngồi xen kẽ với chỗ chờ (dịch chuyển lên phía trước 20%)
+  [-2.75, 2.6], [2.75, 2.6], [-4.15, 2.6], [4.15, 2.6], [-5.55, 2.6], [5.55, 2.6],
+  [-2.75, 3.4], [2.75, 3.4], [-4.15, 3.4], [4.15, 3.4], [-5.55, 3.4], [5.55, 3.4],
   // Hai bên cánh hông chánh điện
   [-7.2, -2.4], [7.2, -2.4], [-7.2, -0.6], [7.2, -0.6], [-7.2, 1.2], [7.2, 1.2]
 ];
@@ -4072,7 +4072,7 @@ function updateEnvironment(dt, t) {
       // Hạ thân người khi cúi vái + nhịp thở
       const bobY = (DEVOTEE_SEA_BASE_Y[i] || 0) + Math.sin(t * 1.8 + p3) * 0.014 - bowPitch * 0.05;
       // Xoay người tự nhiên (yaw) kết hợp hướng đứng cơ bản và liếc nhìn xung quanh
-      const baseYaw = pt.baseYaw || (pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
+      const baseYaw = pt.baseYaw || (pt.z < 5.5 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
       const turnYaw = Math.sin(t * 0.5 + p4) * 0.14 + Math.sin(t * 1.1 + p1) * 0.05;
       // Nghiêng hông/vai theo chân trụ (roll tilt)
       const tiltRoll = Math.sin(t * 0.8 + p1) * 0.025 + shift * 0.03;

@@ -141,4 +141,81 @@ describe("High-Concurrency Interaction Guard (Seam: handleRpcCall)", () => {
     clickHandler();
     expect(callCount).toBe(2);
   });
+
+  test("[Finding P1 Fix] Batch LIKE preserves full merit without 50 cap", async () => {
+    const { Rituals, state } = await import("../server.js");
+    const initialHits = state.woodenFishHits;
+
+    const res = Rituals.strikeWoodenFish({
+      user: "Thí Chủ Đại Công Đức",
+      uniqueId: "uid_large_batch_1",
+      count: 150,
+      isBatch: true
+    });
+
+    expect(res.event.count).toBe(150);
+    expect(res.event.merit).toBe(150);
+    expect(state.woodenFishHits).toBe(initialHits + 150);
+
+    const devotee = state.devotees["uid_large_batch_1"];
+    expect(devotee).toBeDefined();
+    expect(devotee.merit).toBeGreaterThanOrEqual(150);
+  });
+
+  test("[Finding P1 Fix] Multi-contributor batch preserves individual merit for every devotee", async () => {
+    const { Rituals, state } = await import("../server.js");
+
+    const batchContributors = [
+      { user: "Phật tử A", uniqueId: "uid_contrib_A", avatar: "", count: 10 },
+      { user: "Phật tử B", uniqueId: "uid_contrib_B", avatar: "", count: 5 }
+    ];
+
+    Rituals.strikeWoodenFish({
+      user: "Phật tử A",
+      uniqueId: "uid_contrib_A",
+      count: 15,
+      contributors: batchContributors,
+      isBatch: true
+    });
+
+    const devA = state.devotees["uid_contrib_A"];
+    const devB = state.devotees["uid_contrib_B"];
+
+    expect(devA).toBeDefined();
+    expect(devB).toBeDefined();
+    expect(devA.merit).toBe(10);
+    expect(devB.merit).toBe(5);
+  });
+
+  test("[Finding P1 Fix] Anonymous RPC throttled on rapid calls", async () => {
+    const { handleRpcCall } = await import("../server.js");
+
+    let accepted = 0;
+    let throttled = 0;
+
+    for (let i = 0; i < 100; i++) {
+      const res = await handleRpcCall("temple.burnIncense", { ip: "192.168.1.50", count: 1 });
+      if (res && res.rateLimited) {
+        throttled++;
+      } else {
+        accepted++;
+      }
+    }
+
+    expect(accepted).toBe(1);
+    expect(throttled).toBe(99);
+  });
+
+  test("[Finding P2 Fix] Cross-channel cooldown: RPC call throttles immediate Chat comment for same devotee", async () => {
+    const { handleRpcCall, parseViewerComment } = await import("../server.js");
+
+    const uid = "uid_cross_channel_devotee";
+    const user = "Phật Tử Nhất Quán";
+
+    const rpcRes = await handleRpcCall("temple.burnIncense", { uniqueId: uid, user, count: 3 });
+    expect(rpcRes.ok !== false).toBe(true);
+
+    const chatRes = parseViewerComment("con xin thắp hương bái Phật", user, uid, "");
+    expect(chatRes).toBeNull();
+  });
 });

@@ -186,11 +186,14 @@
   }
 
   function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
+    const isSameDevotee = Boolean(keep && keep.uid === uid);
     const kept = keep ? {
       seat: keep.seat,
       tier: keep.tier,
       vipRank: keep.vipRank,
-      flashOnArrive: keep.flashOnArrive
+      flashOnArrive: keep.flashOnArrive,
+      tones: isSameDevotee ? keep.tones : undefined,
+      hairStyle: isSameDevotee ? keep.hairStyle : undefined
     } : {};
     Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
     a.active = true;
@@ -209,8 +212,12 @@
     a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
     a.speedMult = typeof rand === 'function' ? rand(0.92, 1.08) : 1.0;
 
-    // Luôn tính và gán màu diện mạo theo danh tính UID mới (tránh nhận nhầm màu slot cũ)
-    assignTones(a);
+    if (kept.tones) {
+      a.tones = kept.tones;
+      a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
+    } else {
+      assignTones(a);
+    }
 
     a.anon = anon;
     if (anon) {

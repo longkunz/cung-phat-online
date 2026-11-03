@@ -1739,13 +1739,14 @@ function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
 function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
+  const isSameDevotee = Boolean(keep && keep.uid === uid);
   const kept = keep ? {
     seat: keep.seat,
     tier: keep.tier,
     vipRank: keep.vipRank,
     flashOnArrive: keep.flashOnArrive,
-    tones: keep.tones,
-    hairStyle: keep.hairStyle
+    tones: isSameDevotee ? keep.tones : undefined,
+    hairStyle: isSameDevotee ? keep.hairStyle : undefined
   } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;

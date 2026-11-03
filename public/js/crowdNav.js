@@ -193,7 +193,7 @@
     if (!Array.isArray(avatars) || avatars.length < 2) return;
 
     const count = avatars.length;
-    const ITERATIONS = 8;
+    const ITERATIONS = 24;
 
     // Phân kỳ sơ bộ các avatar trùng khít tọa độ hoàn toàn (coincident spawns)
     for (let i = 0; i < count; i++) {

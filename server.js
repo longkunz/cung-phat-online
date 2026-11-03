@@ -530,21 +530,43 @@ const Rituals = {
     const user = sanitizeUserName(params.user);
     const uniqueId = params.uniqueId || '';
     const avatar = params.avatar || '';
-    const count = Math.max(1, Math.min(50, Number(params.count) || 1));
+    const maxCount = params.isBatch || Number(params.count) > 50 ? 100000 : 50;
+    const count = Math.max(1, Math.min(maxCount, Number(params.count) || 1));
     const merit = count;
 
     state.woodenFishHits += count;
-    const devotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
-    const hallStatus = hallEngage(devotee.uniqueId, devotee.name, devotee.avatar, 'like');
+
+    let primaryDevotee = null;
+    if (Array.isArray(params.contributors) && params.contributors.length > 0) {
+      for (const c of params.contributors) {
+        const cUser = sanitizeUserName(c.user);
+        const cUid = c.uniqueId || '';
+        const cAvatar = c.avatar || '';
+        const cCount = Math.max(1, Number(c.count) || 1);
+        const dev = recordDevotee(cUser, cUid, cAvatar, cCount, 0, 0);
+        hallEngage(dev.uniqueId, dev.name, dev.avatar, 'like');
+        if (!primaryDevotee || cUid === uniqueId || cUser === user) {
+          primaryDevotee = dev;
+        }
+      }
+    }
+
+    if (!primaryDevotee) {
+      primaryDevotee = recordDevotee(user, uniqueId, avatar, merit, 0, 0);
+      hallEngage(primaryDevotee.uniqueId, primaryDevotee.name, primaryDevotee.avatar, 'like');
+    }
+
+    const hallStatus = hallEngage(primaryDevotee.uniqueId, primaryDevotee.name, primaryDevotee.avatar, 'like');
 
     const event = pushEventLog({
       type: 'strikeWoodenFish',
-      user: devotee.name,
-      uniqueId: devotee.uniqueId,
-      avatar: devotee.avatar,
+      user: primaryDevotee.name,
+      uniqueId: primaryDevotee.uniqueId,
+      avatar: primaryDevotee.avatar,
       hallStatus,
       count,
       merit,
+      contributors: params.contributors || undefined,
       ttsText: params.ttsText || ''
     });
 
@@ -1369,16 +1391,19 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('quẻ') ||
     /(^|\s)que(\s|$)/.test(lower) // không bắt nhầm "quen", "quét"...
   ) {
+    if (checkRitualCooldown('temple.drawFortune', { uniqueId, user: cleanUser })) return null;
     return Rituals.drawFortune({ user: cleanUser, uniqueId, avatar, topic: cleanWish });
   }
 
   // 2. Thỉnh chuông
   if (lower.includes('chuông') || lower.includes('chuong') || lower.includes('thỉnh chuông')) {
+    if (checkRitualCooldown('temple.ringBell', { uniqueId, user: cleanUser })) return null;
     return Rituals.ringBell({ user: cleanUser, uniqueId, avatar, count: 1, wish: cleanWish, readTts: true });
   }
 
   // 3. Gõ mõ
   if (lower.includes('gõ mõ') || lower.includes('go mo') || lower.includes('tụng kinh')) {
+    if (checkRitualCooldown('temple.strikeWoodenFish', { uniqueId, user: cleanUser })) return null;
     return Rituals.strikeWoodenFish({ user: cleanUser, uniqueId, avatar, count: 3 });
   }
 
@@ -1391,10 +1416,12 @@ function parseViewerComment(commentText, user, uniqueId, avatar) {
     lower.includes('bái phật') ||
     lower.includes('bai phat')
   ) {
+    if (checkRitualCooldown('temple.burnIncense', { uniqueId, user: cleanUser })) return null;
     return Rituals.burnIncense({ user: cleanUser, uniqueId, avatar, count: 3, wish: cleanWish });
   }
 
   // 5. Lời cầu nguyện dài -> Thả đèn hoa đăng + đọc TTS
+  if (checkRitualCooldown('temple.sendPrayer', { uniqueId, user: cleanUser })) return null;
   return Rituals.sendPrayer({ user: cleanUser, uniqueId, avatar, wish: cleanWish });
 }
 
@@ -1497,10 +1524,12 @@ class LikeBatchAccumulator {
       }
     }
 
+    const contributorsList = Array.from(this.contributors.values()).map((c) => ({ ...c }));
     const batch = {
       totalLikes: this.pendingCount,
       contributorCount: this.contributors.size,
-      topDevotee: topDevotee || { user: 'Thí Chủ', uniqueId: 'cong_dong', avatar: '', count: this.pendingCount }
+      topDevotee: topDevotee ? { ...topDevotee } : { user: 'Thí Chủ', uniqueId: 'cong_dong', avatar: '', count: this.pendingCount },
+      contributors: contributorsList
     };
 
     this.pendingCount = 0;
@@ -1608,7 +1637,9 @@ async function connectTikTokLive(usernameOrUrl) {
         user: batch.topDevotee.user,
         uniqueId: batch.topDevotee.uniqueId,
         avatar: batch.topDevotee.avatar,
-        count: batch.totalLikes
+        count: batch.totalLikes,
+        contributors: batch.contributors,
+        isBatch: true
       });
     }
   });
@@ -1802,8 +1833,7 @@ const ritualCooldownMap = new Map();
 function checkRitualCooldown(method, params) {
   const cooldownMs = RITUAL_COOLDOWNS[method];
   if (!cooldownMs) return null;
-  const rawKey = String(params?.uniqueId || params?.user || params?.ip || '').trim().toLowerCase();
-  if (!rawKey) return null;
+  const rawKey = String(params?.uniqueId || params?.user || params?.ip || 'anonymous_caller').trim().toLowerCase();
   const key = `${method}::${rawKey}`;
   const now = Date.now();
   const lastAt = ritualCooldownMap.get(key) || 0;
@@ -2121,8 +2151,11 @@ app.post('/rpc', async (req, res) => {
       error: { code: -32600, message: 'Invalid JSON-RPC Request: thiếu method' }
     });
   }
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+  const rpcParams = { ...(params || {}) };
+  if (!rpcParams.ip) rpcParams.ip = clientIp;
   try {
-    const result = await handleRpcCall(method, params || {});
+    const result = await handleRpcCall(method, rpcParams);
     res.json({
       jsonrpc: jsonrpc || '2.0',
       id: id ?? null,
@@ -2176,7 +2209,8 @@ function broadcastNotification(method, params) {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const clientIp = req?.headers['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || ws._socket?.remoteAddress || '127.0.0.1';
   ws.send(
     JSON.stringify({
       jsonrpc: '2.0',
@@ -2194,7 +2228,9 @@ wss.on('connection', (ws) => {
     }
     if (!msg || !msg.method) return;
     try {
-      const result = await handleRpcCall(msg.method, msg.params || {});
+      const rpcParams = { ...(msg.params || {}) };
+      if (!rpcParams.ip) rpcParams.ip = clientIp;
+      const result = await handleRpcCall(msg.method, rpcParams);
       if (msg.id !== undefined) {
         ws.send(
           JSON.stringify({
@@ -2258,6 +2294,9 @@ if (!isDirectRun) {
     zeroTts,
     broadcastNotification,
     getPublicState,
-    Rituals
+    Rituals,
+    parseViewerComment,
+    checkRitualCooldown,
+    state
   };
 }

@@ -2118,13 +2118,19 @@ if (process.env.NO_SERVER_LISTEN !== '1') {
 });
 }
 
-module.exports = {
-  app,
-  server,
-  handleRpcCall,
-  ZeroTTSManager,
-  zeroTts,
-  broadcastNotification,
-  getPublicState,
-  Rituals
-};
+// Chỉ export khi được file khác import/require (ví dụ: bun test)
+// Tránh export { app } khi chạy trực tiếp để Bun không kích hoạt nhầm Bun.serve()
+const isDirectRun = Boolean(require.main === module);
+
+if (!isDirectRun) {
+  module.exports = {
+    app,
+    server,
+    handleRpcCall,
+    ZeroTTSManager,
+    zeroTts,
+    broadcastNotification,
+    getPublicState,
+    Rituals
+  };
+}

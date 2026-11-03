@@ -1470,7 +1470,7 @@ scene.add(blobMesh);
 const ROBE_TONES = [0x7790a8, 0x6f879e, 0x8297ab, 0x6a8299, 0x8a9db0, 0x7a8ca0];
 const PANTS_TONES = [0x2a2e38, 0x3a4250, 0x1e2026, 0x56677a];
 const SKIN_TONES = [0xf0c49c, 0xe8b88e, 0xdba47c, 0xf4ccaa, 0xe2ad84];
-const HAIR_TONES = [0x1d1612, 0x2a1d16, 0x3a2a20, 0x1a1a1e, 0x8c8784, 0x4a3324, 0xb8b4b0];
+const HAIR_TONES = [0x1a1a1d, 0x221a15, 0x2c1f18, 0x38261c, 0x181716, 0x422f22, 0x7a7470];
 
 // Chỗ ngồi: đệm gấm thường | đài sen hồng (đã tặng quà) | đài sen vàng phát sáng (≥ 100 xu)
 const cushionGeo = mergeColored([
@@ -1644,22 +1644,70 @@ function newAvatar(i) {
     anon: false
   };
 }
-function assignTones(a) {
-  const s = toneSeed++ * 7 + Math.floor(Math.random() * 1000);
-  a.tones = {
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+const devoteeTonesCache = new Map();
+const MAX_TONES_CACHE = 2000;
+
+function getOrCreateTones(key, fallbackIdx = 0) {
+  if (key && devoteeTonesCache.has(key)) {
+    return devoteeTonesCache.get(key);
+  }
+  const s = key ? hashString(key) : Math.abs((fallbackIdx * 37 + 101) | 0);
+  const tones = {
     robe: new THREE.Color(ROBE_TONES[s % ROBE_TONES.length]),
     pants: new THREE.Color(PANTS_TONES[(s >> 2) % PANTS_TONES.length]),
     skin: new THREE.Color(SKIN_TONES[(s >> 1) % SKIN_TONES.length]),
     hair: new THREE.Color(HAIR_TONES[(s >> 3) % HAIR_TONES.length]),
-    feet: new THREE.Color(0x3a2418)
+    feet: new THREE.Color(0x3a2418),
+    hairStyle: ((s >> 4) % 7) < 3 ? 0 : ((s >> 4) % 7) < 6 ? 1 : 2
   };
-  // kiểu tóc: 0 tóc ngắn, 1 búi tóc, 2 cạo đầu (ít hơn)
-  const r = (s >> 4) % 7;
-  a.hairStyle = r < 3 ? 0 : r < 6 ? 1 : 2;
+  if (key) {
+    if (devoteeTonesCache.size >= MAX_TONES_CACHE) {
+      const oldestKey = devoteeTonesCache.keys().next().value;
+      devoteeTonesCache.delete(oldestKey);
+    }
+    devoteeTonesCache.set(key, tones);
+  }
+  return tones;
 }
 
-function setGlow(a, intensity, color = 0xffd27a) {
+function assignTones(a) {
+  const key = a.uid || (a.name && a.name !== 'Thí Chủ' ? a.name : '');
+  const toneData = getOrCreateTones(key, a.idx);
+  a.tones = {
+    robe: toneData.robe.clone(),
+    pants: toneData.pants.clone(),
+    skin: toneData.skin.clone(),
+    hair: toneData.hair.clone(),
+    feet: toneData.feet.clone()
+  };
+  a.hairStyle = toneData.hairStyle;
+}
+
+function isVipDevotee(a) {
+  if (!a) return false;
+  return Boolean(
+    (a.vipRank && a.vipRank > 0) ||
+    (a.tier && a.tier !== 'normal') ||
+    a.goldTrail ||
+    a.flashOnArrive ||
+    a.heroKind === 'gift' ||
+    a.heroKind === 'grand' ||
+    a.guestKind === 'gift' ||
+    a.guestKind === 'grand'
+  );
+}
+
+function setGlow(a, intensity, color = 0xffd27a, force = false) {
   if (!a) return;
+  if (!force && !isVipDevotee(a)) return;
   a.glow = Math.max(a.glow, intensity);
   a.glowColor.set(color);
 }
@@ -1691,7 +1739,14 @@ function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
 function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
-  const kept = keep ? { seat: keep.seat, tier: keep.tier, vipRank: keep.vipRank, flashOnArrive: keep.flashOnArrive } : {};
+  const kept = keep ? {
+    seat: keep.seat,
+    tier: keep.tier,
+    vipRank: keep.vipRank,
+    flashOnArrive: keep.flashOnArrive,
+    tones: keep.tones,
+    hairStyle: keep.hairStyle
+  } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;
   a.uid = uid;
@@ -1706,7 +1761,15 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
-  assignTones(a);
+  // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
+  a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
+  a.speedMult = rand(0.92, 1.08);
+  if (kept.tones) {
+    a.tones = kept.tones;
+    a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
+  } else {
+    assignTones(a);
+  }
   a.anon = anon;
   if (anon) { if (a.tag) { a.tag.el.style.display = 'none'; a.tag.shown = false; } } else ensureTag(a);
   touch(a);
@@ -1727,16 +1790,22 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
+  if (typeof CrowdNav !== 'undefined') {
+    return CrowdNav.createMoveStep(target, speed, keepYaw, avatars);
+  }
   let from = null;
   let dur = 1;
+  let arrived = false;
   return {
     start(a) {
       from = a.pos.clone();
       from.y = 0;
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
+      arrived = false;
     },
     get dur() { return dur; },
+    isDone(a) { return arrived; },
     update(a, k, dt) {
       const px = a.pos.x;
       const pz = a.pos.z;
@@ -1744,9 +1813,11 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       const dx = target.x - from.x;
       const dz = target.z - from.z;
       if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
-      // chân không trượt: pha bước tăng đúng theo quãng đường đi được
       a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
-      if (k >= 1) a.walking = false;
+      if (k >= 1) {
+        a.walking = false;
+        arrived = true;
+      }
     }
   };
 }
@@ -1766,7 +1837,38 @@ function turnStep(yaw, dur = 0.5) {
 }
 /** Bước động: khi tới lượt, gọi fn(a) để sinh tiếp các bước (vd. đường về chỗ ngồi vừa được cấp). */
 const dynStep = (fn) => ({ dur: 0, dynamic: fn });
+function handleAvatarMoveFailure(a) {
+  if (!a) return;
+  a.script = null;
+  a.busy = false;
+  a.walking = false;
+  a.stuck = true;
+  a.entering = false;
+  a.heroStage = '';
+  a.bowSpot = -1;
+  a.goldTrail = false;
+  a.glow = 0;
+  a.handPose = null;
+  a.sticks = 0;
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.cleanupAvatarRitual === 'function') {
+    CrowdNav.cleanupAvatarRitual(a);
+  }
+  if (a.member && a.seat >= 0) {
+    if (typeof seatPos !== 'undefined' && seatPos[a.seat]) a.pos.copy(seatPos[a.seat]);
+    a.yaw = 0;
+    a.kneel = 1;
+    a.atSeat = a.seat;
+    if (typeof onSeatArrive === 'function') onSeatArrive(a);
+  } else if (a.leaving || !a.member) {
+    if (typeof despawn === 'function') despawn(a);
+  }
+}
+
 function runScript(a, steps, onDone) {
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.runScript(a, steps, onDone);
+    return;
+  }
   a.script = { steps: steps.slice(), i: -1, t: 0, onDone };
   a.busy = true;
   nextStep(a);
@@ -1796,6 +1898,12 @@ function nextStep(a) {
   }
 }
 function tickScript(a, dt) {
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.tickScript === 'function') {
+    CrowdNav.tickScript(a, dt, avatars, (av) => {
+      handleAvatarMoveFailure(av);
+    });
+    return;
+  }
   const s = a.script;
   if (!s) return;
   if (s.waiting) { nextStep(a); return; }
@@ -1804,7 +1912,13 @@ function tickScript(a, dt) {
   s.t += dt;
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
-  if (k >= 1) nextStep(a);
+  if (step.isFailed ? step.isFailed(a) : false) {
+    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, dọn nghi lễ
+    handleAvatarMoveFailure(a);
+    return;
+  }
+  const done = step.isDone ? step.isDone(a) : (k >= 1);
+  if (done) nextStep(a);
 }
 
 // Đường đi giữa chỗ ngồi và thảm: lùi ra lối giữa 2 hàng (phía cửa) -> ra làn đi bên mép thảm
@@ -2767,6 +2881,13 @@ function updateAvatars(dt, t) {
     if (!a.active) continue;
     if (a.script) tickScript(a, dt);
     a.walk += ((a.walking ? 1 : 0) - a.walk) * smoothK(6, dt);
+  }
+  // Vòng đệm đàn hồi mềm: chống xuyên thấu và chống đè thân
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.relaxCollisions(avatars);
+  }
+  for (const a of avatars) {
+    if (!a.active) continue;
 
     if (a.fade) {
       a.scale = Math.max(0, a.scale - dt * 2.2);
@@ -3774,7 +3895,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS
@@ -3794,7 +3915,11 @@ async function callRpc(method, params = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    return await res.json();
+    const data = await res.json();
+    if (data?.result?.rateLimited) {
+      pushEventFeed(`⏳ ${data.result.error}`);
+    }
+    return data;
   } catch (err) {
     console.warn('[RPC Error]', method, err);
   }
@@ -3815,6 +3940,25 @@ function pushEventFeed(text) {
   item.textContent = `${new Date().toLocaleTimeString('vi-VN')} • ${text}`;
   feed.prepend(item);
   while (feed.children.length > 25) feed.removeChild(feed.lastChild);
+}
+
+function attachDebouncedAction(btnId, cooldownMs, actionFn) {
+  const btn = typeof document !== 'undefined' ? document.getElementById(btnId) : null;
+  if (!btn) return;
+  let locked = false;
+  btn.addEventListener('click', (e) => {
+    if (locked) {
+      if (typeof e?.preventDefault === 'function') e.preventDefault();
+      return;
+    }
+    locked = true;
+    btn.classList.add('btn-locked');
+    setTimeout(() => {
+      locked = false;
+      btn.classList.remove('btn-locked');
+    }, cooldownMs);
+    actionFn();
+  });
 }
 
 function initQuickDock() {
@@ -3906,32 +4050,32 @@ function initQuickDock() {
     }
   });
 
-  // RPC action buttons
-  document.getElementById('btnRpcIncense')?.addEventListener('click', () => {
+  // RPC action buttons with client-side interaction debouncing
+  attachDebouncedAction('btnRpcIncense', 1500, () => {
     callRpc('temple.burnIncense', { user: getDevoteeName(), wish: getDevoteeWish(), count: 3 });
     pushEventFeed(`${getDevoteeName()} dâng 3 nén hương`);
   });
-  document.getElementById('btnRpcLantern')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcLantern', 1500, () => {
     callRpc('temple.sendPrayer', { user: getDevoteeName(), wish: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} thả đèn hoa đăng cầu nguyện`);
   });
-  document.getElementById('btnRpcWoodenFish')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcWoodenFish', 250, () => {
     callRpc('temple.strikeWoodenFish', { user: getDevoteeName(), count: 5 });
     pushEventFeed(`${getDevoteeName()} gõ mõ tích công đức`);
   });
-  document.getElementById('btnRpcBell')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcBell', 2500, () => {
     callRpc('temple.ringBell', { user: getDevoteeName(), count: 1, wish: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} thỉnh Đại Hồng Chung`);
   });
-  document.getElementById('btnRpcFortune')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcFortune', 3000, () => {
     callRpc('temple.drawFortune', { user: getDevoteeName(), topic: getDevoteeWish() });
     pushEventFeed(`${getDevoteeName()} gieo quẻ Linh Xăm`);
   });
-  document.getElementById('btnRpcGiftLotus')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcGiftLotus', 400, () => {
     callRpc('temple.offerGift', { user: getDevoteeName(), giftType: 'lotus', coins: 15, giftName: 'Hoa Sen Vàng' });
     pushEventFeed(`${getDevoteeName()} dâng Hoa Sen Vàng`);
   });
-  document.getElementById('btnRpcGrandCeremony')?.addEventListener('click', () => {
+  attachDebouncedAction('btnRpcGrandCeremony', 600, () => {
     callRpc('temple.grandCeremony', { user: getDevoteeName(), coins: 100, giftName: 'Kim Long Chầu Phật' });
     pushEventFeed(`Đại Lễ Kim Long Chầu Phật kích hoạt!`);
   });

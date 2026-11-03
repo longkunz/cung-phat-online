@@ -20,6 +20,13 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from '/vendor/three-addons/environments/RoomEnvironment.js';
 
+if (typeof window !== 'undefined') {
+  window.THREE = THREE;
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.setThree === 'function') {
+    AvatarRules.setThree(THREE);
+  }
+}
+
 const params = new URLSearchParams(window.location.search);
 const CLOSEUPS_EARLY = params.get('closeups') === '1';
 const OBS = params.get('obs') === '1';
@@ -95,9 +102,9 @@ const camera = new THREE.PerspectiveCamera(55, STAGE_W / STAGE_H, 0.1, 140);
 camera.position.set(0, 10.4, 12.6);
 
 scene.add(new THREE.HemisphereLight(0xffd9b0, 0x2a140c, 0.55));
-// Đèn chính ấm từ phía bàn thờ (có đổ bóng, chỉ vùng đạo tràng)
+// Đèn chính ấm từ phía bàn thờ (chiếu cân đối, có đổ bóng cho vùng đạo tràng)
 const keyLight = new THREE.DirectionalLight(0xffc98a, 1.7);
-keyLight.position.set(-5, 16, -14);
+keyLight.position.set(-1.2, 18, -13.5);
 keyLight.target.position.set(0, 0, -2);
 keyLight.castShadow = SHADOWS;
 if (SHADOWS) {
@@ -389,24 +396,71 @@ TEX.stone = canvasTexture(512, 512, (ctx, w, h) => {
   }
   ctx.globalAlpha = 1;
 }, { repeat: [10, 8] }).tex;
-// Gấm bồ đoàn
-TEX.brocade = canvasTexture(128, 128, (ctx, w, h) => {
-  ctx.fillStyle = '#b31e1a';
+// Gấm bồ đoàn: hoa văn dệt chìm hoa sen & chữ Vạn kim tuyến trên nền gấm đỏ trầm
+TEX.brocade = canvasTexture(256, 256, (ctx, w, h) => {
+  // Nền gấm đỏ trầm ấm
+  ctx.fillStyle = '#8f1c19';
   ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(245,190,90,0.75)';
-  ctx.lineWidth = 2;
-  for (let x = 0; x <= w; x += 32) {
-    for (let y = 0; y <= h; y += 32) {
+
+  // Vân lụa dệt chìm vi mô
+  ctx.fillStyle = 'rgba(110, 15, 15, 0.35)';
+  for (let y = 0; y < h; y += 4) {
+    ctx.fillRect(0, y, w, 2);
+  }
+
+  // Khung họa tiết hình thoi gấm dệt (damask trellis)
+  ctx.strokeStyle = 'rgba(235, 185, 75, 0.4)';
+  ctx.lineWidth = 1.5;
+  const step = 64;
+  for (let x = -step; x <= w + step; x += step) {
+    for (let y = -step; y <= h + step; y += step) {
       ctx.beginPath();
-      ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(x + 16, y + 16, 4, 0, Math.PI * 2);
+      ctx.moveTo(x, y - step / 2);
+      ctx.lineTo(x + step / 2, y);
+      ctx.lineTo(x, y + step / 2);
+      ctx.lineTo(x - step / 2, y);
+      ctx.closePath();
       ctx.stroke();
     }
   }
-  noiseFill(ctx, w, h, 1200, 0.12, ['#000', '#ffd090']);
-}, { repeat: [3, 1] }).tex;
+
+  // Họa tiết hoa sen & chữ Vạn kim tuyến
+  for (let cx = 32; cx < w; cx += step) {
+    for (let cy = 32; cy < h; cy += step) {
+      // Vòng tròn hào quang tâm
+      ctx.strokeStyle = 'rgba(250, 210, 95, 0.75)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Cánh sen 8 hướng cách điệu
+      ctx.fillStyle = 'rgba(255, 225, 120, 0.85)';
+      for (let k = 0; k < 8; k++) {
+        const rad = (k * Math.PI) / 4;
+        const px = cx + Math.cos(rad) * 11;
+        const py = cy + Math.sin(rad) * 11;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Hạt nhụy tâm sen
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Điểm xuyết vân chữ Vạn / ngọc ở giao điểm
+      ctx.fillStyle = 'rgba(240, 195, 80, 0.6)';
+      ctx.beginPath();
+      ctx.arc(cx - step / 2, cy - step / 2, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Bụi kim tuyến vàng nhẹ
+  noiseFill(ctx, w, h, 1400, 0.08, ['#500505', '#ffe090']);
+}, { repeat: [4, 2] }).tex;
 // Tường gạch tháp (vàng đất) có ô cửa vòm
 TEX.towerWall = canvasTexture(128, 128, (ctx, w, h) => {
   ctx.fillStyle = '#b8895a';
@@ -763,34 +817,17 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     return m;
   };
   // ============================================================================
-  // TÒA SEN THUẦN TÚY (Pure Lotus Pedestal — loại bỏ đài bát giác)
-  // Liên hoa đài tròn uy nghiêm: chân đế tròn, tầng cánh sen úp (phục liên),
-  // eo thắt chuỗi ngọc liên hoa, 3 tầng cánh sen ngửa (ngưỡng liên), và gương sen.
+  // TÒA SEN THANH TỊNH (Pure Lotus Pedestal — Tối giản, trang nghiêm, thanh thoát)
+  // Loại bỏ các chi tiết cánh sen úp gây rối mắt; chân đế tròn 1 cấp thanh nhã,
+  // 2 tầng cánh sen ngửa nở đều ôm nhẹ lấy tôn tượng và gương sen thếp vàng.
   // ============================================================================
-  // 1. Chân đế đài sen tròn thanh thoát tiếp giáp mặt bệ thờ
-  add(buddha, new THREE.CylinderGeometry(1.72, 1.95, 0.18, 64), GOLD.dark, [0, 0.09, 0]);
-  add(buddha, new THREE.TorusGeometry(1.88, 0.04, 16, 64), GOLD.skin, [0, 0.18, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
-  // 2. Tầng cánh sen úp (hạ liên đài / phục liên): 18 cánh sen úp chúc nhẹ xuống chân đế
-  {
-    const downGeo = petalGeometry(0.70, 0.35, 0.18, -0.16);
-    const downIm = new THREE.InstancedMesh(downGeo, GOLD.dark, 18);
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2;
-      _e.set(2.18, a, 0, 'YXZ');
-      _m.compose(_v.set(Math.sin(a) * 1.66, 0.38, Math.cos(a) * 1.66), _q.setFromEuler(_e), _s.set(1, 1, 1));
-      downIm.setMatrixAt(i, _m);
-    }
-    buddha.add(downIm);
-  }
-  // 3. Eo đài sen thắt tròn có chuỗi ngọc liên hoa thếp vàng
-  add(buddha, new THREE.CylinderGeometry(1.35, 1.48, 0.30, 64), GOLD.dark, [0, 0.52, 0]);
-  add(buddha, new THREE.TorusGeometry(1.42, 0.045, 16, 64), GOLD.petalGold, [0, 0.67, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
-  add(buddha, new THREE.CylinderGeometry(1.50, 1.38, 0.28, 64), GOLD.dark, [0, 0.80, 0]);
-  // Tòa sen: 3 vòng cánh cong (instanced), vòng trong vàng
+  // 1. Chân đế đài sen tròn 1 cấp vững chãi, thanh thoát tiếp giáp mặt bệ thờ
+  add(buddha, new THREE.CylinderGeometry(1.58, 1.85, 0.68, 64), GOLD.dark, [0, 0.34, 0]);
+  add(buddha, new THREE.TorusGeometry(1.60, 0.045, 16, 64), GOLD.petalGold, [0, 0.68, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  // 2. Tòa sen ngửa thanh nhã: 2 tầng cánh sen nở đều ôm trọn lấy tôn tượng
   const rings = [
-    { n: 18, r: 1.78, y: 0.82, tilt: 1.05, len: 0.95, w: 0.36, mat: GOLD.petal },
-    { n: 16, r: 1.6, y: 1.0, tilt: 0.72, len: 0.85, w: 0.36, mat: GOLD.petal },
-    { n: 14, r: 1.42, y: 1.2, tilt: 0.42, len: 0.6, w: 0.34, mat: GOLD.petalGold }
+    { n: 16, r: 1.68, y: 0.88, tilt: 0.95, len: 0.95, w: 0.40, mat: GOLD.petal },
+    { n: 14, r: 1.45, y: 1.12, tilt: 0.50, len: 0.72, w: 0.36, mat: GOLD.petalGold }
   ];
   rings.forEach((d, ri) => {
     const geo = petalGeometry(d.len, d.w, 0.2, 0.22);
@@ -803,7 +840,8 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     }
     buddha.add(im);
   });
-  add(buddha, new THREE.CylinderGeometry(1.48, 1.5, 0.18, 64), GOLD.petalGold, [0, 1.52, 0]);
+  // 3. Gương sen thếp vàng quỳ phẳng mượt nâng đỡ tôn tượng kiết già
+  add(buddha, new THREE.CylinderGeometry(1.48, 1.50, 0.20, 64), GOLD.petalGold, [0, 1.50, 0]);
 
   const body = new THREE.Group();
   body.position.y = 1.6;
@@ -843,34 +881,16 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     // vạt tay áo rủ từ cẳng tay xuống lòng
     add(body, new THREE.SphereGeometry(0.2, 32, 16), GOLD.robePlain, [side * 0.6, 0.94, 0.44], [1.8, 0.62, 0.8], [0, side * 0.62, side * 0.5]);
   }
-  // ấn thiền định: 2 bàn tay ngửa lồng nhau, các ngón tay thon dài búp măng, 2 ngón cái chạm đỉnh (Tam muội ấn)
-  // Lòng & mu bàn tay dưới (tay trái) và bàn tay trên (tay phải)
-  add(body, new THREE.SphereGeometry(0.24, 32, 16), S, [0, 0.81, 0.65], [1.14, 0.22, 0.76]);
-  add(body, new THREE.SphereGeometry(0.22, 32, 16), S, [0, 0.87, 0.67], [1.04, 0.20, 0.71]);
-  // 4 ngón tay búp măng bàn tay dưới (cong nhẹ nâng đỡ)
-  const fingersLower = [
-    { x: -0.11, len: 0.16, r: 0.022, rotZ: 0.10 },
-    { x: -0.04, len: 0.19, r: 0.023, rotZ: 0.03 },
-    { x: 0.04, len: 0.19, r: 0.023, rotZ: -0.03 },
-    { x: 0.11, len: 0.16, r: 0.022, rotZ: -0.10 }
-  ];
-  fingersLower.forEach((f) => {
-    add(body, new THREE.CapsuleGeometry(f.r, f.len, 8, 16), S, [f.x, 0.815, 0.78], [1, 1, 0.9], [0.18, 0, f.rotZ]);
-  });
-  // 4 ngón tay búp măng bàn tay trên (thon thả đặt khép nhẹ)
-  const fingersUpper = [
-    { x: -0.09, len: 0.15, r: 0.021, rotZ: 0.08 },
-    { x: -0.03, len: 0.18, r: 0.022, rotZ: 0.02 },
-    { x: 0.03, len: 0.18, r: 0.022, rotZ: -0.02 },
-    { x: 0.09, len: 0.15, r: 0.021, rotZ: -0.08 }
-  ];
-  fingersUpper.forEach((f) => {
-    add(body, new THREE.CapsuleGeometry(f.r, f.len, 8, 16), S, [f.x, 0.875, 0.79], [1, 1, 0.9], [0.14, 0, f.rotZ]);
-  });
-  // Hai ngón tay cái uốn cong chạm nhau ở đỉnh tạo thành vòng Tam Muội thanh khiết
+  // ấn thiền định (Dhyāna mudrā / Tam Muội ấn): hai bàn tay ngửa lồng nhau mềm mại, ngón cái chạm đỉnh thanh tịnh
+  // Khối lòng bàn tay dưới (tay trái) và bàn tay trên (tay phải) được tạo hình liền khối, thanh thoát
+  add(body, new THREE.SphereGeometry(0.25, 32, 16), S, [0, 0.82, 0.65], [1.18, 0.24, 0.80]);
+  add(body, new THREE.SphereGeometry(0.23, 32, 16), S, [0, 0.88, 0.67], [1.08, 0.22, 0.75]);
+  // Khối ngón tay thiền định mềm mại, khép kín tự nhiên nâng đỡ (tối giản, loại bỏ các capsule ngón rời vụn vặt)
+  add(body, new THREE.SphereGeometry(0.19, 32, 16), S, [0, 0.825, 0.77], [1.12, 0.17, 0.82]);
+  add(body, new THREE.SphereGeometry(0.17, 32, 16), S, [0, 0.885, 0.78], [1.02, 0.15, 0.78]);
+  // Hai ngón tay cái uốn cong mềm mại chạm nhau ở đỉnh tạo thành vòng cung Tam Muội thanh khiết
   for (const side of [-1, 1]) {
-    add(body, new THREE.CapsuleGeometry(0.027, 0.12, 8, 16), S, [side * 0.125, 0.93, 0.74], [1, 1, 1], [0.32, side * 0.22, side * 0.72]);
-    add(body, new THREE.CapsuleGeometry(0.023, 0.10, 8, 16), S, [side * 0.045, 1.00, 0.79], [1, 1, 1], [0.14, 0, side * 1.15]);
+    add(body, new THREE.CapsuleGeometry(0.026, 0.16, 12, 24), S, [side * 0.08, 0.96, 0.77], [1, 1, 1], [0.18, side * 0.10, side * 1.05]);
   }
   // hoa sen nhỏ trên tay
   {
@@ -1548,22 +1568,39 @@ const PANTS_TONES = [0x2a2e38, 0x3a4250, 0x1e2026, 0x56677a];
 const SKIN_TONES = [0xf0c49c, 0xe8b88e, 0xdba47c, 0xf4ccaa, 0xe2ad84];
 const HAIR_TONES = [0x1a1a1d, 0x221a15, 0x2c1f18, 0x38261c, 0x181716, 0x422f22, 0x7a7470];
 
-// Chỗ ngồi: đệm gấm thường | đài sen hồng (đã tặng quà) | đài sen vàng phát sáng (≥ 100 xu)
+// Chỗ ngồi: bồ đoàn gấm tròn tối giản (dáng tròn phồng êm ái, viền nẹp chỉ vàng tinh xảo, dập nổi gấm sen chữ Vạn)
 const cushionGeo = mergeColored([
-  { geo: new THREE.CylinderGeometry(0.46, 0.5, 0.16, 20), pos: [0, 0.08, 0] },
-  { geo: new THREE.TorusGeometry(0.46, 0.035, 4, 20), color: 0xf2c35b, pos: [0, 0.16, 0], rot: [Math.PI / 2, 0, 0] },
-  ...Array.from({ length: 8 }, (_, i) => {
-    const a = (i / 8) * Math.PI * 2;
-    return { geo: new THREE.SphereGeometry(0.16, 6, 4), color: i % 2 ? 0xffb0b8 : 0xff8f9c, pos: [Math.sin(a) * 0.5, 0.06, Math.cos(a) * 0.5], rot: [0, a, 0], scale: [0.7, 0.35, 1.2] };
-  })
+  // Thân bồ đoàn tròn phồng đệm êm (lathe biên dạng cong phồng mềm mại, đế phẳng tiếp đất)
+  {
+    geo: lathe([
+      [0, 0],
+      [0.44, 0],
+      [0.485, 0.025],
+      [0.51, 0.08],
+      [0.485, 0.135],
+      [0.44, 0.16],
+      [0.26, 0.168],
+      [0, 0.172]
+    ], 28),
+    pos: [0, 0, 0]
+  },
+  // Nẹp viền chỉ vàng tinh xảo chạy quanh mép trên
+  { geo: new THREE.TorusGeometry(0.445, 0.016, 6, 28), color: 0xf4c860, pos: [0, 0.155, 0], rot: [Math.PI / 2, 0, 0] },
+  // Nẹp viền chỉ vàng chân đế chạy quanh mép dưới
+  { geo: new THREE.TorusGeometry(0.47, 0.014, 6, 28), color: 0xdfa640, pos: [0, 0.02, 0], rot: [Math.PI / 2, 0, 0] },
+  // Nút tâm đệm hoa sen vàng khâu chìm tinh tế
+  { geo: new THREE.CylinderGeometry(0.045, 0.045, 0.012, 16), color: 0xf8d26c, pos: [0, 0.17, 0] }
 ]);
 const thronePetal = petalGeometry(0.34, 0.3, 0.2, 0.2, 2, 4);
-// Đài sen: đế + 2 vòng cánh cong nở ra (xoay theo thứ tự YXZ rồi mới gộp)
+// Đài sen: đế bồ đoàn tròn + 2 vòng cánh cong nở ra + nẹp chỉ vàng thếp ngọc
 const throneGeo = (() => {
   const petalsSpec = [];
   for (let i = 0; i < 12; i++) petalsSpec.push([(i / 12) * Math.PI * 2, 1.05, 1, 0.5, 0.0, i % 2 ? 0xff8fa8 : 0xff6f90]);
   for (let i = 0; i < 10; i++) petalsSpec.push([((i + 0.5) / 10) * Math.PI * 2, 0.55, 0.8, 0.44, 0.08, 0xffb3c4]);
-  const list = [{ geo: new THREE.CylinderGeometry(0.44, 0.5, 0.16, 24), color: 0xf6a0b4, pos: [0, 0.08, 0] }];
+  const list = [
+    { geo: new THREE.CylinderGeometry(0.44, 0.5, 0.16, 24), color: 0xf6a0b4, pos: [0, 0.08, 0] },
+    { geo: new THREE.TorusGeometry(0.445, 0.018, 6, 24), color: 0xf6c860, pos: [0, 0.16, 0], rot: [Math.PI / 2, 0, 0] }
+  ];
   for (const [a, tilt, sc, r, y, color] of petalsSpec) {
     const g = thronePetal.clone();
     g.applyMatrix4(_m.compose(_v.set(Math.sin(a) * r, y, Math.cos(a) * r), _q.setFromEuler(_e.set(tilt, a, 0, 'YXZ')), _s.set(sc, sc, sc)));
@@ -1571,7 +1608,7 @@ const throneGeo = (() => {
   }
   return mergeColored(list);
 })();
-const cushionMat = new THREE.MeshStandardMaterial({ map: TEX.brocade, vertexColors: true, roughness: 0.75 });
+const cushionMat = new THREE.MeshStandardMaterial({ map: TEX.brocade, vertexColors: true, roughness: 0.65 });
 const cushions = new THREE.InstancedMesh(cushionGeo, cushionMat, SEATS + BOW_SPOTS.length);
 const pinkThrones = new THREE.InstancedMesh(throneGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide, emissive: 0x401018, emissiveIntensity: 0.4 }), SEATS);
 const goldThrones = new THREE.InstancedMesh(throneGeo, new THREE.MeshStandardMaterial({ color: 0xffd36a, metalness: 1, roughness: 0.3, side: THREE.DoubleSide, emissive: 0x8a5200, emissiveIntensity: 0.7 }), SEATS);
@@ -1590,12 +1627,12 @@ for (const m of [pinkThrones, goldThrones, throneGlow]) {
 // Bố trí: 8 ghế VIP hàng đầu đối xứng hai bên mép thảm (không đặt ghế giữa lối đi)
 // Ghế 0..7: xen kẽ phải/trái mép thảm ra ngoài, thảm đỏ trung tâm (x = -1.15..1.15) hoàn toàn thông thoáng
 const VIP_SEATS = 8;
-const VIP_Z = -6.0;
-const VIP_X = [1.85, -1.85, 3.15, -3.15, 4.45, -4.45, 5.75, -5.75];
-// Ghế thường: 4 hàng x 8 chỗ, dãn cách rộng rãi (COL_X bước 1.3m, ROW_Z bước 1.8m) không bị dí sát
-const ROW_Z = [1.2, -0.6, -2.4, -4.2];
-const COL_X = [1.85, 3.15, 4.45, 5.75];
-const LANE_X = 1.1; // làn đi bộ hai bên mép thảm
+const VIP_Z = -7.05;
+const VIP_X = [2.05, -2.05, 3.50, -3.50, 4.95, -4.95, 6.40, -6.40];
+// Ghế thường: 4 hàng x 8 chỗ, dãn cách rộng rãi (COL_X bước 1.45m, ROW_Z bước 2.15m) thẳng hàng chuẩn đạo tràng
+const ROW_Z = [1.55, -0.60, -2.75, -4.90];
+const COL_X = [2.05, 3.50, 4.95, 6.40];
+const LANE_X = 1.25; // làn đi bộ hai bên mép thảm
 const seatPos = [];
 for (let i = 0; i < SEATS; i++) {
   if (i < VIP_SEATS) {
@@ -1609,7 +1646,7 @@ for (let i = 0; i < SEATS; i++) {
   const col = Math.floor(k / 2);
   seatPos.push(new THREE.Vector3(side * COL_X[col], 0, ROW_Z[row]));
 }
-const ROW_GAP = 0.9; // lối đi giữa 2 hàng (phía cửa)
+const ROW_GAP = 1.05; // lối đi giữa 2 hàng (phía cửa)
 const seatState = Array.from({ length: SEATS }, () => ({ occupied: false, tier: 'normal' }));
 /** Vẽ lại toàn bộ chỗ ngồi (gọi khi roster đổi). Gói các instance đang dùng liền nhau -> không tốn đỉnh cho chỗ ẩn. */
 function refreshSeats() {
@@ -1619,20 +1656,20 @@ function refreshSeats() {
   let nl = 0;
   const putC = (p, sc, bright) => {
     cushions.setMatrixAt(nc, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(sc[0], sc[1], sc[0])));
-    cushions.setColorAt(nc++, bright ? _c.setRGB(1, 1, 1) : _c.setRGB(0.22, 0.15, 0.13));
+    cushions.setColorAt(nc++, bright ? _c.setRGB(1, 1, 1) : _c.setRGB(0.68, 0.58, 0.54));
   };
   for (let i = 0; i < SEATS; i++) {
     const p = seatPos[i];
     const { occupied, tier } = seatState[i];
     const vip = i < VIP_SEATS;
-    // Hàng đầu trống = đài sen vàng giữ chỗ (mờ); chỗ thường trống = đệm nhỏ tối
+    // Hàng đầu trống = đài sen vàng giữ chỗ (mờ); chỗ thường trống = bồ đoàn tròn trang nhã chờ đón người tĩnh tọa
     const kind = vip && !occupied ? 'goldDim' : !occupied ? 'empty' : tier === 'goldLotus' ? 'gold' : tier === 'lotus' ? 'pink' : 'cushion';
-    if (kind === 'empty') putC(p, [0.78, 0.6], false);
+    if (kind === 'empty') putC(p, [0.96, 0.96], false);
     else if (kind === 'cushion') putC(p, [1, 1], true);
-    else if (kind === 'pink') pinkThrones.setMatrixAt(np++, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.85, 0.8, 0.85)));
+    else if (kind === 'pink') pinkThrones.setMatrixAt(np++, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.88, 0.82, 0.88)));
     else {
-      goldThrones.setMatrixAt(ng, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.82, 0.75, 0.82)));
-      goldThrones.setColorAt(ng++, kind === 'goldDim' ? _c.setRGB(0.45, 0.38, 0.3) : _c.setRGB(1, 1, 1));
+      goldThrones.setMatrixAt(ng, _m.compose(_v.set(p.x, 0, p.z), _q.identity(), _s.set(0.85, 0.78, 0.85)));
+      goldThrones.setColorAt(ng++, kind === 'goldDim' ? _c.setRGB(0.52, 0.44, 0.35) : _c.setRGB(1, 1, 1));
       if (kind === 'gold') throneGlow.setMatrixAt(nl++, _m.makeTranslation(p.x, 0.03, p.z));
     }
   }
@@ -1651,7 +1688,7 @@ scene.add(cushions, pinkThrones, goldThrones, throneGlow);
 // Chỗ đứng chờ (24 người): bố trí tách biệt hoàn toàn thành 2 cánh ở hai bên (|x| >= 2.4)
 // Tuyệt đối không đứng ở lối đi giữa (hành lang trung tâm x = -2.0..2.0 luôn thông thoáng)
 const WAIT_SPOTS = [];
-for (const z of [2.2, 3.6, 5.0, 6.4]) {
+for (const z of [3.2, 4.6, 6.0, 7.4]) {
   // Cánh trái (x <= -2.4) và Cánh phải (x >= 2.4)
   for (const x of [-5.2, -3.8, -2.4, 2.4, 3.8, 5.2]) {
     WAIT_SPOTS.push(new THREE.Vector3(x + rand(-0.06, 0.06), 0, z + rand(-0.08, 0.08)));
@@ -1824,6 +1861,7 @@ function spawnAvatar(a, spec) {
     return AvatarRules.spawnAvatar(a, spec, {
       elapsed: clock.elapsed,
       speedMult: rand(0.92, 1.08),
+      THREE,
       ensureTag,
       touch
     });
@@ -3498,11 +3536,11 @@ function updateOverlay() {
   placed.push(...bubbleRects);
   for (const a of tagCands) {
     const tg = a.tag;
-    const sc = Math.max(CLOSEUPS ? 0.55 : 0.82, Math.min(1.3, 13 / tg.dist));
+    const sc = Math.max(CLOSEUPS ? 0.55 : 0.72, Math.min(1.25, 12 / tg.dist));
     const w = tg.w * sc;
-    const h = 30 * sc;
+    const h = 28 * sc;
     const x0 = tg.px - w / 2;
-    const y0 = tg.py - 6 - h;
+    const y0 = tg.py - 2 - h;
     const forced = recentSet.has(a) || a.vipRank > 0 || (!a.member && !a.waiting);
     const tr = [x0 - 6, y0 - 4, x0 + w + 6, y0 + h + 4];
     // nhãn ưu tiên chỉ nhường bong bóng; nhãn thường nhường cả nhãn khác
@@ -3514,7 +3552,7 @@ function updateOverlay() {
     placed.push([x0, y0, x0 + w, y0 + h]);
     if (!tg.shown) { tg.el.style.display = ''; tg.shown = true; }
     const x = Math.round(tg.px);
-    const y = Math.round(tg.py - 6);
+    const y = Math.round(tg.py - 2);
     const sr = Math.round(sc * 20) / 20;
     if (x !== tg.x || y !== tg.y || sr !== tg.s) {
       tg.el.style.transform = `translate(${x}px, ${y}px) scale(${sr})`;

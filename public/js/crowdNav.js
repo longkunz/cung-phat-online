@@ -56,6 +56,8 @@
       a.pos.z = tZ;
       a.walking = false;
       a.detourSign = 0;
+      a.smoothAvoidX = 0;
+      a.smoothAvoidZ = 0;
       return true;
     }
 
@@ -96,11 +98,25 @@
         // Độ lệch trên trục bên phải (projRight)
         // > 0: vật cản bên phải; < 0: vật cản bên trái
         const projRight = relX * rightX + relZ * rightZ;
-        if (Math.abs(projRight) > SENSORY_CORRIDOR) continue; // Nằm ngoài hành lang đi
+        const absProjRight = Math.abs(projRight);
+        const bStatic = isAvatarStatic(b);
+        const bIsHero = isHeroAvatar(b);
+
+        // Nhận diện vật cản tĩnh hai bên lối đi để phát hiện nút thắt đối xứng (quét trước ngưỡng hành lang để không bị chập chờn khi né)
+        if (forward > 0 && d < 1.8 && (bStatic || b.walking === false)) {
+          if (projRight < -0.04) hasLeftObstacle = true;
+          if (projRight > 0.04) hasRightObstacle = true;
+          if (d < minForwardDist) minForwardDist = d;
+        }
+
+        if (absProjRight > SENSORY_CORRIDOR) continue; // Nằm ngoài hành lang đi
+
+        // Giảm dần lực né mượt mà theo khoảng cách ngang tới mép hành lang cảm quan
+        // Triệt tiêu dao động giật cục (limit-cycle chattering) khi avatar chạm mép 0.70m
+        const corridorRatio = absProjRight / SENSORY_CORRIDOR;
+        const latFalloff = 1.0 - corridorRatio * corridorRatio;
 
         const prox = (SENSORY_RANGE - d) / SENSORY_RANGE;
-        const bIsHero = isHeroAvatar(b);
-        const bStatic = isAvatarStatic(b);
 
         // Nhận diện hàng người đứng chờ (Queueing):
         // Chỉ áp dụng cho người thường xếp hàng; Hero làm đại lễ không bị nghẽn sau người chờ
@@ -113,23 +129,16 @@
           }
         }
 
-        // Nhận diện vật cản tĩnh hai bên lối đi để phát hiện nút thắt đối xứng
-        if (forward > 0 && d < 1.8 && (bStatic || b.walking === false)) {
-          if (projRight < -0.04) hasLeftObstacle = true;
-          if (projRight > 0.04) hasRightObstacle = true;
-          if (d < minForwardDist) minForwardDist = d;
-        }
-
         // Chọn hướng lách:
-        // Nếu vật cản bên phải (projRight > 0.02) -> Lách sang trái (-right)
-        // Nếu vật cản bên trái (projRight < -0.02) -> Lách sang phải (+right)
-        // Nếu đối đầu trực diện (|projRight| <= 0.02) -> Lách sang phải theo thói quen (+right)
+        // Nếu vật cản bên phải (projRight > 0.04) -> Lách sang trái (-right)
+        // Nếu vật cản bên trái (projRight < -0.04) -> Lách sang phải (+right)
+        // Nếu đối đầu trực diện (|projRight| <= 0.04) -> Lách sang phải theo thói quen (+right)
         let steerSide = 1;
-        if (projRight > 0.02) steerSide = -1;
-        else if (projRight < -0.02) steerSide = 1;
+        if (projRight > 0.04) steerSide = -1;
+        else if (projRight < -0.04) steerSide = 1;
         else steerSide = a.dodgePref !== undefined ? a.dodgePref : 1;
 
-        let avoidStrength = Math.pow(prox, 1.2) * 2.8;
+        let avoidStrength = Math.pow(prox, 1.2) * 2.8 * latFalloff;
 
         // Ưu tiên nhường đường và xử lý chướng ngại vật:
         if (bStatic) {
@@ -156,10 +165,10 @@
           avoidZ += rightZ * steerSide * avoidStrength;
         }
 
-        // Cơ chế "Đứng chờ": nếu có người chắn ngay sát trước mặt (< 0.75m) và khoảng né hẹp
+        // Cơ chế "Đứng chờ" & nhường bước: nếu có người chắn ngay sát trước mặt (< 0.75m) trong hành lang hẹp
         if (!a.detourSign && !aIsHero && !bStatic && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
-          if (!b.walking) {
-            const decel = Math.max(0.12, (d - 0.42) / 0.33);
+          if (!b.walking || d < 0.60) {
+            const decel = Math.max(0.08, (d - 0.42) / 0.33);
             if (decel < throttle) throttle = decel;
           }
         }
@@ -187,8 +196,13 @@
     // Tốc độ thực tế sau khi tính toán
     const speed = baseSpeed * (a.speedMult || 1.0) * throttle;
 
-    let moveVx = dirX + avoidX;
-    let moveVz = dirZ + avoidZ;
+    // Lọc mượt lực né (Exponential Moving Average) để triệt tiêu sốc gia tốc và hiện tượng giật rung giữa các khung hình
+    const avoidK = Math.min(1, dt * 10.0);
+    a.smoothAvoidX = (a.smoothAvoidX || 0) + (avoidX - (a.smoothAvoidX || 0)) * avoidK;
+    a.smoothAvoidZ = (a.smoothAvoidZ || 0) + (avoidZ - (a.smoothAvoidZ || 0)) * avoidK;
+
+    let moveVx = dirX + a.smoothAvoidX;
+    let moveVz = dirZ + a.smoothAvoidZ;
     const vLen = Math.hypot(moveVx, moveVz);
 
     if (vLen > 0.0001) {
@@ -213,11 +227,11 @@
     const actualMoved = Math.hypot(stepDx, stepDz);
     a.phase = (a.phase || 0) + (actualMoved * Math.PI) / STRIDE;
 
-    // Xoay mặt mềm mại theo hướng chuyển động thực tế (trừ khi có cờ keepYaw)
-    if (actualMoved > 0.001) {
+    // Xoay mặt mềm mại theo hướng chuyển động thực tế (chỉ xoay khi quãng đường di chuyển đủ rõ ràng để tránh giật góc khi đứng gần như tại chỗ)
+    if (actualMoved > 0.006) {
       if (!keepYaw) {
         const targetYaw = Math.atan2(-stepDx, -stepDz);
-        a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 6.0));
+        a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 5.0));
       }
       a.walking = true;
     } else if (throttle <= 0.05) {
@@ -270,10 +284,15 @@
       for (let i = 0; i < count; i++) {
         const a = avatars[i];
         if (!a || !a.active || a.fade) continue;
+        const aStatic = isAvatarStatic(a);
 
         for (let j = i + 1; j < count; j++) {
           const b = avatars[j];
           if (!b || !b.active || b.fade) continue;
+          const bStatic = isAvatarStatic(b);
+
+          // Cả 2 đều tĩnh (ngồi/quỳ/chờ): không ai di chuyển, bỏ qua sớm để tối ưu hiệu năng
+          if (aStatic && bStatic) continue;
 
           const dx = a.pos.x - b.pos.x;
           const dz = a.pos.z - b.pos.z;
@@ -294,20 +313,13 @@
           const overlap = MIN_SEPARATION - (dist < 0.001 ? 0 : dist);
           if (overlap > maxOverlap) maxOverlap = overlap;
 
-          const aStatic = isAvatarStatic(a);
-          const bStatic = isAvatarStatic(b);
           const aHero = isHeroAvatar(a);
           const bHero = isHeroAvatar(b);
 
           // Trạng thái tĩnh (người ngồi/quỳ trên bồ đoàn) có ưu tiên tuyệt đối cao nhất (vật cố định):
-          // 1. Cả 2 đều tĩnh: không ai dịch chuyển
-          // 2. Một bên tĩnh: bên còn lại (kể cả hero) phải dạt ra 100%
-          // 3. Cả 2 đều di chuyển: xét quyền ưu tiên của hero (hero đẩy người thường)
-          // 4. Cùng thứ bậc: chia đều lực đẩy 50/50
-          if (aStatic && bStatic) {
-            continue;
-          }
-
+          // 1. Một bên tĩnh: bên còn lại (kể cả hero) phải dạt ra 100%
+          // 2. Cả 2 đều di chuyển: xét quyền ưu tiên của hero (hero đẩy người thường)
+          // 3. Cùng thứ bậc: chia đều lực đẩy (50% mỗi bên khi cả 2 đang di chuyển để không nảy lò xo)
           if (aStatic) {
             b.pos.x -= nx * overlap;
             b.pos.z -= nz * overlap;
@@ -352,6 +364,8 @@
     a.stuck = true;
     a.script = null;
     a.detourSign = 0;
+    a.smoothAvoidX = 0;
+    a.smoothAvoidZ = 0;
   }
 
   /**
@@ -371,6 +385,8 @@
         arrived = false;
         failed = false;
         elapsed = 0;
+        a.smoothAvoidX = 0;
+        a.smoothAvoidZ = 0;
       },
       get dur() { return dur; },
       isDone(a) { return arrived; },

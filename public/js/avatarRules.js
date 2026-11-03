@@ -46,18 +46,51 @@
     clone() {
       return new SimpleVec3(this.x, this.y, this.z);
     }
+    lerp(v, alpha) {
+      if (!v) return this;
+      this.x += (v.x - this.x) * alpha;
+      this.y += (v.y - this.y) * alpha;
+      this.z += (v.z - this.z) * alpha;
+      return this;
+    }
+    subVectors(a, b) {
+      this.x = (a?.x || 0) - (b?.x || 0);
+      this.y = (a?.y || 0) - (b?.y || 0);
+      this.z = (a?.z || 0) - (b?.z || 0);
+      return this;
+    }
+    applyMatrix4(m) {
+      if (!m || !m.elements) return this;
+      const e = m.elements;
+      const x = this.x, y = this.y, z = this.z;
+      const w = 1 / ((e[3] * x + e[7] * y + e[11] * z + e[15]) || 1);
+      this.x = (e[0] * x + e[4] * y + e[8] * z + e[12]) * w;
+      this.y = (e[1] * x + e[5] * y + e[9] * z + e[13]) * w;
+      this.z = (e[2] * x + e[6] * y + e[10] * z + e[14]) * w;
+      return this;
+    }
   }
 
   class SimpleColor {
     constructor(hex = 0xffffff) {
-      this.hex = hex;
+      this.setHex(hex);
     }
-    set(hex) {
-      this.hex = hex;
+    set(val) {
+      if (typeof val === 'number') return this.setHex(val);
+      if (val && typeof val.getHex === 'function') return this.setHex(val.getHex());
+      if (val && val.hex !== undefined) return this.setHex(val.hex);
+      if (val && typeof val.r === 'number') {
+        this.r = val.r; this.g = val.g; this.b = val.b;
+        this.hex = Math.round(this.r * 255) << 16 | Math.round(this.g * 255) << 8 | Math.round(this.b * 255);
+        return this;
+      }
       return this;
     }
     setHex(hex) {
       this.hex = hex;
+      this.r = ((hex >> 16) & 255) / 255;
+      this.g = ((hex >> 8) & 255) / 255;
+      this.b = (hex & 255) / 255;
       return this;
     }
     getHex() {
@@ -70,26 +103,47 @@
       return new SimpleColor(this.hex);
     }
     copy(c) {
-      if (c && c.hex !== undefined) {
-        this.hex = c.hex;
-      } else if (c && typeof c.getHex === 'function') {
-        this.hex = c.getHex();
+      if (c && typeof c.getHex === 'function') {
+        this.setHex(c.getHex());
+      } else if (c && c.hex !== undefined) {
+        this.setHex(c.hex);
+      } else if (c && typeof c.r === 'number') {
+        this.r = c.r; this.g = c.g; this.b = c.b;
+        this.hex = Math.round(this.r * 255) << 16 | Math.round(this.g * 255) << 8 | Math.round(this.b * 255);
       }
       return this;
     }
+    toArray(array = [], offset = 0) {
+      array[offset] = this.r;
+      array[offset + 1] = this.g;
+      array[offset + 2] = this.b;
+      return array;
+    }
   }
 
-  function getVec3Class() {
-    if (typeof THREE !== 'undefined' && THREE.Vector3) {
-      return THREE.Vector3;
-    }
+  let activeThree = null;
+
+  function setThree(threeObj) {
+    if (threeObj) activeThree = threeObj;
+  }
+
+  function getVec3Class(helpers) {
+    if (helpers?.THREE?.Vector3) return helpers.THREE.Vector3;
+    if (helpers?.Vector3) return helpers.Vector3;
+    if (activeThree?.Vector3) return activeThree.Vector3;
+    if (typeof THREE !== 'undefined' && THREE.Vector3) return THREE.Vector3;
+    if (typeof window !== 'undefined' && window.THREE?.Vector3) return window.THREE.Vector3;
+    if (typeof globalThis !== 'undefined' && globalThis.THREE?.Vector3) return globalThis.THREE.Vector3;
     return SimpleVec3;
   }
 
-  function getColorClass() {
-    if (typeof THREE !== 'undefined' && THREE.Color) {
-      return THREE.Color;
-    }
+  function getColorClass(helpers) {
+    if (helpers?.THREE?.Color) return helpers.THREE.Color;
+    if (helpers?.Color) return helpers.Color;
+    if (activeThree?.Color) return activeThree.Color;
+    if (typeof THREE !== 'undefined' && THREE.Color) return THREE.Color;
+    if (typeof window !== 'undefined' && window.THREE?.Color) return window.THREE.Color;
+    if (typeof globalThis !== 'undefined' && globalThis.THREE?.Color) return globalThis.THREE.Color;
     return SimpleColor;
   }
 
@@ -182,9 +236,9 @@
     return (bowing || heroRing) ? 1 : 0;
   }
 
-  function newAvatar(i) {
-    const Vec3 = getVec3Class();
-    const ColorClass = getColorClass();
+  function newAvatar(i, helpers = {}) {
+    const Vec3 = getVec3Class(helpers);
+    const ColorClass = getColorClass(helpers);
 
     return {
       idx: i,
@@ -255,13 +309,22 @@
       vipRank: keep.vipRank,
       flashOnArrive: keep.flashOnArrive
     } : {};
-    Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
+    const fresh = newAvatar(a.idx, helpers);
+    if (a.pos && typeof a.pos.copy === 'function' && fresh.pos) fresh.pos = a.pos;
+    if (a.head && typeof a.head.copy === 'function' && fresh.head) fresh.head = a.head;
+    if (a.glowColor && typeof a.glowColor.copy === 'function' && fresh.glowColor) fresh.glowColor = a.glowColor;
+    if (Array.isArray(a.hands) && a.hands.length === 2 && Array.isArray(fresh.hands)) {
+      if (a.hands[0] && typeof a.hands[0].copy === 'function') fresh.hands[0] = a.hands[0];
+      if (a.hands[1] && typeof a.hands[1].copy === 'function') fresh.hands[1] = a.hands[1];
+    }
+    Object.assign(a, fresh, { tag: a.tag }, kept);
     a.active = true;
     a.uid = uid;
     a.name = name || 'Thí Chủ';
     a.member = member;
     if (at) {
       if (a.pos && typeof a.pos.copy === 'function') a.pos.copy(at);
+      else if (a.pos && typeof a.pos.set === 'function') a.pos.set(at.x || 0, at.y || 0, at.z || 0);
       else a.pos = { x: at.x || 0, y: at.y || 0, z: at.z || 0, copy(p) { this.x = p.x; this.y = p.y; this.z = p.z; return this; } };
     }
     a.yaw = yaw;
@@ -280,7 +343,7 @@
       a.tones = kept.tones;
       a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
     } else {
-      assignTones(a);
+      assignTones(a, getColorClass(helpers));
     }
 
     a.anon = anon;
@@ -306,6 +369,9 @@
     HAND_POSES,
     SimpleVec3,
     SimpleColor,
+    setThree,
+    getVec3Class,
+    getColorClass,
     hashString,
     devoteeTonesCache,
     clearTonesCache,

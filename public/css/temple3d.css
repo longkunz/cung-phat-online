@@ -135,6 +135,28 @@ body.obs-mode .quick-dock { display: none !important; }
 /* Người đứng chờ ngoài sân */
 .tag.waiting .tag-inner { background: rgba(225, 232, 240, 0.9); border-color: #6f8ba4; color: #22303c; }
 
+/* Nhãn tên biển Phật tử phía sau — bay nhẹ lên, cho phép đè nhau */
+.tag.sea-tag {
+  pointer-events: none;
+  z-index: 2;
+  will-change: transform, opacity;
+}
+.tag.sea-tag .tag-inner {
+  background: rgba(255, 248, 232, 0.88);
+  border: 1.2px solid #b87a38;
+  color: #3b281c;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 1px 7px 1px 5px;
+  border-radius: 4px 10px 4px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+.tag.sea-tag .tag-inner::before {
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, #e67e3a, #b3421b);
+}
+
 .fixed-label { position: absolute; left: 0; top: 0; will-change: transform; transform-origin: 0 0; z-index: 3; }
 .fixed-label-inner {
   transform: translate(-50%, -100%);

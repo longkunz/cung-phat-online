@@ -1743,6 +1743,7 @@ seaTorsoGeo.dispose();
 
 const DEVOTEE_SEA_PTS = [];
 const DEVOTEE_SEA_BASE_Y = [];
+const DEVOTEE_SEA_SCALES = [];
 
 const REAR_SEA_ROWS = [7.7, 8.3, 8.9, 9.5, 10.1, 10.7, 11.3, 11.9, 12.5, 13.1];
 const REAR_BASE_XS = [1.65, 2.25, 2.85, 3.45, 4.05, 4.65, 5.25, 5.85, 6.45, 7.05, 7.65, 8.25, 8.85];
@@ -1808,6 +1809,7 @@ DEVOTEE_SEA_PTS.forEach((pt, i) => {
   const yaw = pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : rand(-0.04, 0.04);
   _seaQ.setFromEuler(_seaE.set(0, yaw, 0, 'YXZ'));
   const sc = rand(0.96, 1.04);
+  DEVOTEE_SEA_SCALES.push(sc);
   _seaS.set(sc, sc, sc);
   _m.compose(_seaV, _seaQ, _seaS);
   devoteeSea.setMatrixAt(i, _m);
@@ -1820,6 +1822,123 @@ DEVOTEE_SEA_PTS.forEach((pt, i) => {
 devoteeSea.instanceMatrix.needsUpdate = true;
 if (devoteeSea.instanceColor) devoteeSea.instanceColor.needsUpdate = true;
 scene.add(devoteeSea);
+
+// ============================================================================
+// NHÃN TÊN BIỂN PHẬT TỬ (Đè tên nhau & Dịch chuyển bay lên trên mỗi ~10 giây)
+// ============================================================================
+const SEA_DHARMA_NAMES = [
+  'Diệu Tâm', 'Trí Huệ', 'Quang Minh', 'Tâm An', 'Minh Đức',
+  'Như Ý', 'Phúc Lộc', 'Huệ Duyên', 'Diệu Âm', 'Thanh Tịnh',
+  'Tường Vân', 'Hạnh Phúc', 'Đức Trí', 'Chân Tâm', 'Vạn An',
+  'Thiện Duyên', 'Bảo Châu', 'Phước Điền', 'Tuệ Lâm', 'Liên Hoa',
+  'Viên Mãn', 'Chí Thiện', 'Huyền Diệu', 'An Nhiên', 'Minh Tuệ',
+  'Thiện Chí', 'Diệu Quang', 'Đại Từ', 'Phước Lành', 'Giác Ngộ',
+  'Thí Chủ Minh Khang', 'Thí Chủ Ngọc Anh', 'Thí Chủ Hoài Nam',
+  'Thí Chủ Lan Anh', 'Thí Chủ Thanh Hương', 'Thí Chủ Hoàng Long',
+  'Phật tử Diệu Hạnh', 'Phật tử Phúc Nghiêm', 'Phật tử Giác Viên'
+];
+
+const seaTags = [];
+const SEA_TAGS_COUNT = 32;
+let lastSeaNameUpdate = -999;
+const SEA_NAME_CYCLE = 10.0; // Cập nhật tên chậm khoảng 10s một lần
+let seaNameCursor = 0;
+
+function initSeaTags() {
+  if (typeof document === 'undefined' || !overlay) return;
+  for (let i = 0; i < SEA_TAGS_COUNT; i++) {
+    const el = document.createElement('div');
+    el.className = 'tag sea-tag';
+    el.style.display = 'none';
+    el.innerHTML = '<div class="tag-inner"></div>';
+    overlay.appendChild(el);
+    seaTags.push({
+      el,
+      inner: el.firstChild,
+      seaIdx: -1,
+      name: '',
+      born: 0,
+      dur: SEA_NAME_CYCLE,
+      driftDist: 38,
+      active: false
+    });
+  }
+}
+
+function updateSeaTags(t) {
+  if (typeof document === 'undefined' || !overlay) return;
+  if (seaTags.length === 0) initSeaTags();
+
+  // Cập nhật tên chậm khoảng 10 giây một lần
+  if (t - lastSeaNameUpdate >= SEA_NAME_CYCLE) {
+    lastSeaNameUpdate = t;
+    const stepStride = Math.max(1, Math.floor(DEVOTEE_SEA_COUNT / SEA_TAGS_COUNT));
+    for (let i = 0; i < seaTags.length; i++) {
+      const tag = seaTags[i];
+      const candidate = (i * stepStride + Math.floor(Math.random() * stepStride)) % DEVOTEE_SEA_COUNT;
+      tag.seaIdx = candidate;
+
+      // Ưu tiên xen kẽ tên người tham gia phòng nếu có, hoặc danh sách pháp danh
+      const liveNames = avatars.filter((a) => a.active && a.name && a.name !== 'Thí Chủ').map((a) => a.name);
+      if (liveNames.length > 0 && Math.random() < 0.35) {
+        tag.name = liveNames[Math.floor(Math.random() * liveNames.length)];
+      } else {
+        tag.name = SEA_DHARMA_NAMES[(seaNameCursor++) % SEA_DHARMA_NAMES.length];
+      }
+
+      tag.inner.textContent = tag.name;
+      tag.born = t;
+      tag.dur = SEA_NAME_CYCLE;
+      tag.driftDist = rand(32, 50); // Khoảng cách dịch chuyển bay lên
+      tag.active = true;
+    }
+  }
+
+  // Cập nhật vị trí hiển thị: bay lên trên và cho phép đè tên nhau
+  const _headPt = _seaV;
+  for (let i = 0; i < seaTags.length; i++) {
+    const tag = seaTags[i];
+    if (!tag.active || tag.seaIdx < 0 || tag.seaIdx >= DEVOTEE_SEA_COUNT) {
+      if (tag.el.style.display !== 'none') tag.el.style.display = 'none';
+      continue;
+    }
+
+    const pt = DEVOTEE_SEA_PTS[tag.seaIdx];
+    const p1 = tag.seaIdx * 0.73, p2 = tag.seaIdx * 1.37, p3 = tag.seaIdx * 2.11;
+    const curX = pt.x + Math.sin(t * 0.8 + p1) * 0.035;
+    const curY = (DEVOTEE_SEA_BASE_Y[tag.seaIdx] || 0) + Math.sin(t * 1.8 + p3) * 0.014;
+    const curZ = pt.z + Math.cos(t * 0.6 + p2) * 0.025;
+
+    _headPt.set(curX, curY + 1.25, curZ);
+    toStage(_headPt, _sp);
+
+    if (!_sp.vis) {
+      if (tag.el.style.display !== 'none') tag.el.style.display = 'none';
+      continue;
+    }
+
+    const progress = clamp01((t - tag.born) / tag.dur);
+    // Dịch chuyển lên trên theo thời gian
+    const curDriftY = progress * tag.driftDist;
+
+    // Fade in mượt mà đầu chu kỳ, fade out cuối chu kỳ 10s
+    let alpha = 1.0;
+    if (progress < 0.12) {
+      alpha = progress / 0.12;
+    } else if (progress > 0.82) {
+      alpha = (1.0 - progress) / 0.18;
+    }
+
+    const sc = Math.max(0.48, Math.min(0.95, 10 / _sp.dist));
+    const x = Math.round(_sp.x);
+    const y = Math.round(_sp.y - curDriftY * sc);
+
+    // Cho phép đè tên nhau (không lọc qua placed / rectHit)
+    tag.el.style.display = '';
+    tag.el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${sc.toFixed(2)})`;
+    tag.el.style.opacity = alpha.toFixed(2);
+  }
+}
 
 // ----------------------------------------------------------------------------
 // Trạng thái Phật tử
@@ -3774,6 +3893,7 @@ function updateOverlay() {
       f.el.style.transform = `translate(${Math.round(fx)}px, ${Math.round(_sp.y - f.dy)}px)`;
     }
   }
+  updateSeaTags(clock.elapsed);
 }
 
 // ============================================================================
@@ -3860,11 +3980,31 @@ function updateEnvironment(dt, t) {
     petals.instanceMatrix.needsUpdate = true;
   }
 
-  // Nhịp thở / niệm Phật nhấp nhô nhẹ nhàng của biển Phật tử hộ niệm phía sau
+  // Chuyển động lay động, di chuyển nhẹ, xoay người tương tác và cúi đầu niệm Phật của biển Phật tử
   if (devoteeSea && devoteeSea.instanceMatrix) {
-    const seaArr = devoteeSea.instanceMatrix.array;
     for (let i = 0; i < DEVOTEE_SEA_COUNT; i++) {
-      seaArr[i * 16 + 13] = DEVOTEE_SEA_BASE_Y[i] + Math.sin(t * 1.6 + i * 0.45) * 0.012;
+      const pt = DEVOTEE_SEA_PTS[i];
+      const p1 = i * 0.73, p2 = i * 1.37, p3 = i * 2.11, p4 = i * 0.91;
+      // Di chuyển qua lại và trước sau nhẹ nhàng (dồn trọng tâm đổi chân)
+      const swayX = Math.sin(t * 0.8 + p1) * 0.035;
+      const swayZ = Math.cos(t * 0.6 + p2) * 0.025;
+      // Nhịp thở / niệm Phật nhấp nhô
+      const bobY = DEVOTEE_SEA_BASE_Y[i] + Math.sin(t * 1.8 + p3) * 0.014;
+      // Xoay nhẹ tương tác (yaw)
+      const baseYaw = pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0;
+      const turnYaw = Math.sin(t * 0.5 + p4) * 0.14 + Math.sin(t * 1.1 + p1) * 0.05;
+      // Cúi đầu tụng niệm (bow pitch)
+      const bowPitch = Math.max(0, Math.sin(t * 1.5 + p2)) * 0.07;
+      // Nghiêng mình nhẹ (tilt roll)
+      const tiltRoll = Math.sin(t * 0.8 + p1) * 0.025;
+
+      _seaV.set(pt.x + swayX, bobY, pt.z + swayZ);
+      _seaE.set(bowPitch, baseYaw + turnYaw, tiltRoll, 'YXZ');
+      _seaQ.setFromEuler(_seaE);
+      const sc = DEVOTEE_SEA_SCALES[i] || 1;
+      _seaS.set(sc, sc, sc);
+      _m.compose(_seaV, _seaQ, _seaS);
+      devoteeSea.setMatrixAt(i, _m);
     }
     devoteeSea.instanceMatrix.needsUpdate = true;
   }
@@ -4214,7 +4354,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null, devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null, devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT, seaTags, updateSeaTags, SEA_NAME_CYCLE };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

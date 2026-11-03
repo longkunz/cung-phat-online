@@ -106,12 +106,34 @@ describe('Đạo Tràng Đông Đúc & FOMO (Standing Crowd Behind Cushions)', (
     expect(templeCode).toMatch(/if \(isNearInteractiveWait\(x, z\)\) return;/);
   });
 
-  it('9. Biển người có hiệu ứng nhịp thở/niệm Phật nhấp nhô nhẹ và được xuất ra Temple3D', () => {
-    // Nhịp thở Math.sin() cập nhật instanceMatrix.array[i * 16 + 13]
-    expect(templeCode).toMatch(/seaArr\[i \* 16 \+ 13\] = DEVOTEE_SEA_BASE_Y\[i\] \+ Math\.sin\(t \* 1\.6 \+ i \* 0\.45\) \* 0\.012;/);
+  it('9. Biển người có animation di chuyển nhẹ, xoay người tương tác và cúi đầu niệm Phật thay vì đứng yên', () => {
+    // Di chuyển qua lại và trước sau (swayX, swayZ)
+    expect(templeCode).toMatch(/const swayX = Math\.sin\(t \* 0\.8 \+ p1\) \* 0\.035;/);
+    expect(templeCode).toMatch(/const swayZ = Math\.cos\(t \* 0\.6 \+ p2\) \* 0\.025;/);
+    // Xoay nhẹ tương tác (turnYaw) và cúi đầu tụng niệm (bowPitch)
+    expect(templeCode).toMatch(/const turnYaw = Math\.sin\(t \* 0\.5 \+ p4\) \* 0\.14 \+ Math\.sin\(t \* 1\.1 \+ p1\) \* 0\.05;/);
+    expect(templeCode).toMatch(/const bowPitch = Math\.max\(0, Math\.sin\(t \* 1\.5 \+ p2\)\) \* 0\.07;/);
     expect(templeCode).toMatch(/devoteeSea\.instanceMatrix\.needsUpdate = true;/);
+  });
 
-    // Xuất ra window.Temple3D để kiểm thử và điều khiển
-    expect(templeCode).toMatch(/devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT/);
+  it('10. Thêm nhãn tên Phật tử bay lên trên, cho phép đè tên nhau và cập nhật chậm mỗi ~10s', () => {
+    // Chu kỳ cập nhật chậm 10s một lần
+    const cycleMatch = templeCode.match(/const SEA_NAME_CYCLE = ([\d.]+);/);
+    expect(cycleMatch).toBeTruthy();
+    expect(parseFloat(cycleMatch[1])).toBeCloseTo(10.0, 1);
+
+    // Danh sách pháp danh Phật tử phong phú
+    expect(templeCode).toMatch(/const SEA_DHARMA_NAMES = \[/);
+    expect(templeCode).toMatch(/'Diệu Tâm'/);
+
+    // Nhãn tên dịch chuyển bay lên trên theo tiến độ thời gian
+    expect(templeCode).toMatch(/const curDriftY = progress \* tag\.driftDist;/);
+    expect(templeCode).toMatch(/tag\.el\.style\.transform = `translate3d\(\${x}px, \${y}px, 0\) scale\(\${sc\.toFixed\(2\)}\)`;/);
+
+    // Cho phép đè tên nhau (không gọi placed / rectHit để lọc ẩn)
+    expect(templeCode).not.toMatch(/hit = placed\.find.*seaTags/);
+
+    // Xuất ra window.Temple3D để kiểm thử
+    expect(templeCode).toMatch(/seaTags, updateSeaTags, SEA_NAME_CYCLE/);
   });
 });

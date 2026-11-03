@@ -6,7 +6,10 @@ Hệ thống **Chùa Thiên Mụ** gồm hai dịch vụ phối hợp nhịp nh�
 - **Live Gateway** (Bun.js, cổng `3000`): Điều phối Chánh Điện 3D, tiếp nhận JSON-RPC 2.0, kết nối TikTok Live và broadcast sự kiện qua WebSocket.
 - **TTS Service** (Python FastAPI ZeroTTS, cổng `8008`): Tổng hợp giọng đọc tâm linh tiếng Việt hoàn toàn trong bộ nhớ (in-memory Base64 Data URI).
 
-Tùy theo nhu cầu, bạn có thể chọn **Cách 1 (Khuyên dùng cho máy cá nhân / Local Dev)** hoặc **Cách 2 (Khuyên dùng cho Production / VPS Linux qua Docker Compose)**.
+Tùy theo nhu cầu, bạn có thể chọn:
+- **Cách 1 (Khuyên dùng cho máy cá nhân / Local Dev)**: Chạy trực tiếp qua Bun.js + uv Python.
+- **Cách 2 (Khuyên dùng cho Production / VPS Linux)**: Đóng gói khép kín qua Docker Compose.
+- **Cách 3 (Khuyên dùng khi Public Internet & OBS từ xa)**: Kết hợp Docker, Cloudflare Tunnel và Nginx Proxy Guard bảo vệ đa lớp.
 
 ---
 
@@ -86,6 +89,47 @@ docker compose down
 
 ---
 
+### 🛡️ Cách 3: Khởi chạy Docker + Cloudflare Tunnel (Public Internet & OBS từ xa)
+
+Phù hợp nhất khi triển khai trên VPS / Server đám mây để phát trực tiếp hoặc chia sẻ cho streamer từ xa. Hệ thống kết hợp **Docker Compose**, **Cloudflare Tunnel (`cloudflared`)** và **Nginx Proxy Guard** tạo nên cơ chế bảo vệ đa lớp (Defense in Depth):
+- 🔒 **Zero Inbound Port**: Không cần mở port 80/443 trên Router/VPS, tránh bị scan port IP gốc.
+- 🛡️ **Nginx Proxy Guard**: Khôi phục `CF-Connecting-IP`, giới hạn tần suất gọi RPC (`/rpc`: 10 req/s, burst 20) chống spam/DDoS, khóa trang `/admin` bằng HTTP Basic Auth.
+- 🌐 **Cloudflare Edge (WAF & Zero Trust)**: Tận dụng DDoS protection miễn phí của Cloudflare và có thể kích hoạt Cloudflare Access (Email OTP/Google SSO) bảo vệ `/admin`.
+- 📺 **OBS Studio linh hoạt**:
+  - **OBS trên máy tính từ xa**: Thêm Browser Source link `https://chua.yourdomain.com/?obs=1` (1080×1920) để live từ bất kỳ đâu.
+  - **OBS trên cùng máy chủ Docker**: Dùng link `http://localhost:3000/?obs=1` (độ trễ 0ms).
+
+#### Bước 1: Chuẩn bị file môi trường
+```bash
+cp .env.tunnel.example .env
+```
+Cập nhật thông tin trong `.env`:
+- `TUNNEL_TOKEN`: Token lấy từ [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) (Networks ➔ Tunnels).
+- `ADMIN_USER` & `ADMIN_PASSWORD`: Tài khoản đăng nhập trang quản trị `/admin`.
+
+#### Bước 2: Khởi chạy
+```bash
+# 1. Khởi chạy toàn bộ 4 container (TTS, Gateway, Nginx Guard, Cloudflared):
+docker compose -f docker-compose.tunnel.yml up -d --build
+
+# 2. Xem log kết nối tunnel và trạng thái hoạt động:
+docker compose -f docker-compose.tunnel.yml logs -f cloudflared
+
+# 3. Khi cần dừng hệ thống:
+docker compose -f docker-compose.tunnel.yml down
+```
+
+#### Bước 3: Cấu hình Public Hostname trên Cloudflare Dashboard
+1. Vào **Cloudflare Zero Trust** ➔ **Networks** ➔ **Tunnels** ➔ chọn tunnel của bạn ➔ **Configure**.
+2. Thêm **Public Hostname** (ví dụ: `chua.yourdomain.com`):
+   - **Type**: `HTTP`
+   - **URL**: `proxy-guard:80` *(Lưu ý: trỏ qua container proxy-guard để đi qua Nginx bảo vệ)*.
+3. *(Khuyên dùng)* Bật thêm **Cloudflare Access** cho path `admin*` để yêu cầu xác thực OTP email trước khi truy cập.
+
+> Xem hướng dẫn chi tiết từng bước tại [**`deploy/cloudflare/README.md`**](deploy/cloudflare/README.md).
+
+---
+
 ### 🌐 Bảng Địa Chỉ Truy Cập & Giám Sát
 
 Sau khi hệ thống khởi động thành công, bạn có thể truy cập các đường dẫn sau:
@@ -93,7 +137,8 @@ Sau khi hệ thống khởi động thành công, bạn có thể truy cập cá
 | Mục đích sử dụng | Địa chỉ URL | Ghi chú |
 | :--- | :--- | :--- |
 | **Chánh Điện 3D & Điều Khiển Nhanh** | [http://localhost:3000](http://localhost:3000) | Giao diện Chánh Điện 3D Three.js chuẩn 9:16 kèm Bảng Điều Khiển Nhanh (Quick Dock) |
-| **OBS Browser Source 3D (Khung 9:16 Sạch)** | [http://localhost:3000/?obs=1](http://localhost:3000/?obs=1) | Chế độ sạch cho OBS Studio / TikTok Live Studio (kích thước `1080 × 1920`) |
+| **OBS Browser Source Cục bộ** | [http://localhost:3000/?obs=1](http://localhost:3000/?obs=1) | OBS Studio chạy trên cùng máy chủ Docker (độ trễ 0ms) |
+| **OBS Browser Source từ xa** | `https://chua.yourdomain.com/?obs=1` | OBS Studio chạy từ bất kỳ máy tính nào qua Internet |
 | **Chánh Điện 3D URL Dự phòng** | [http://localhost:3000/temple3d.html](http://localhost:3000/temple3d.html) | Tự động chuyển hướng (HTTP 301) về `/` |
 | **Bảng Quản Trị JSON-RPC & Âm Thanh** | [http://localhost:3000/admin](http://localhost:3000/admin) | Cài đặt nhạc nền, âm lượng, danh sách phát, gieo quẻ, kết nối live |
 | **Liveness Probe (Live Gateway)** | `GET http://localhost:3000/health` | Kiểm tra Live Gateway còn hoạt động (`HTTP 200`) |

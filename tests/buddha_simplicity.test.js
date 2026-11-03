@@ -16,10 +16,13 @@ describe('Đơn giản hóa Tôn tượng Phật, Đài sen và Bàn tay (Buddha
     expect(code).toMatch(/tam muội/i);
   });
 
-  it('2. Đài sen: Loại bỏ tầng cánh sen úp (phục liên) nhọn hoắt gây rối mắt, tối giản đài sen thanh tịnh', () => {
+  it('2. Đài sen: Loại bỏ tầng cánh sen úp (phục liên) nhọn hoắt gây rối mắt, chân đế 1 cấp thanh tịnh', () => {
     // Không còn tầng cánh sen chúc ngược xuống gây rối mắt
     expect(code).not.toMatch(/downIm/);
     expect(code).not.toMatch(/hạ liên đài \/ phục liên/i);
+
+    // Chân đế 1 cấp thanh thoát, không chồng cấp rườm rà
+    expect(code).toMatch(/chân đế.*?1 cấp/i);
 
     // Đài sen giữ lại kết cấu thanh thoát: bệ đỡ tròn uy nghiêm, tầng cánh sen ngửa trang nhã và gương sen
     expect(code).toMatch(/TÒA SEN THANH TỊNH|TÒA SEN THUẦN TÚY/i);

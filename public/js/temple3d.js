@@ -818,16 +818,13 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
   };
   // ============================================================================
   // TÒA SEN THANH TỊNH (Pure Lotus Pedestal — Tối giản, trang nghiêm, thanh thoát)
-  // Loại bỏ các chi tiết cánh sen úp gây rối mắt; giữ lại chân đế tròn thanh nhã,
+  // Loại bỏ các chi tiết cánh sen úp gây rối mắt; chân đế tròn 1 cấp thanh nhã,
   // 2 tầng cánh sen ngửa nở đều ôm nhẹ lấy tôn tượng và gương sen thếp vàng.
   // ============================================================================
-  // 1. Chân đế đài sen tròn thanh thoát tiếp giáp mặt bệ thờ
-  add(buddha, new THREE.CylinderGeometry(1.72, 1.95, 0.22, 64), GOLD.dark, [0, 0.11, 0]);
-  add(buddha, new THREE.TorusGeometry(1.86, 0.045, 16, 64), GOLD.petalGold, [0, 0.22, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
-  // 2. Cổ đài sen thon gọn, thanh thoát nối lên tòa sen
-  add(buddha, new THREE.CylinderGeometry(1.42, 1.55, 0.38, 64), GOLD.dark, [0, 0.50, 0]);
-  add(buddha, new THREE.TorusGeometry(1.46, 0.04, 16, 64), GOLD.skin, [0, 0.69, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
-  // 3. Tòa sen ngửa thanh nhã: 2 tầng cánh sen nở đều ôm trọn lấy tôn tượng
+  // 1. Chân đế đài sen tròn 1 cấp vững chãi, thanh thoát tiếp giáp mặt bệ thờ
+  add(buddha, new THREE.CylinderGeometry(1.58, 1.85, 0.68, 64), GOLD.dark, [0, 0.34, 0]);
+  add(buddha, new THREE.TorusGeometry(1.60, 0.045, 16, 64), GOLD.petalGold, [0, 0.68, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  // 2. Tòa sen ngửa thanh nhã: 2 tầng cánh sen nở đều ôm trọn lấy tôn tượng
   const rings = [
     { n: 16, r: 1.68, y: 0.88, tilt: 0.95, len: 0.95, w: 0.40, mat: GOLD.petal },
     { n: 14, r: 1.45, y: 1.12, tilt: 0.50, len: 0.72, w: 0.36, mat: GOLD.petalGold }
@@ -843,7 +840,7 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     }
     buddha.add(im);
   });
-  // 4. Gương sen thếp vàng quỳ phẳng mượt nâng đỡ tôn tượng kiết già
+  // 3. Gương sen thếp vàng quỳ phẳng mượt nâng đỡ tôn tượng kiết già
   add(buddha, new THREE.CylinderGeometry(1.48, 1.50, 0.20, 64), GOLD.petalGold, [0, 1.50, 0]);
 
   const body = new THREE.Group();

@@ -415,6 +415,10 @@ class TempleAudioEngine {
     this.stopLocalBgAudio();
   }
 
+  setPlaylist(_list = []) {
+    // Tương thích ngược: danh sách phát thủ công đã được thay thế bằng YouTube URL / nhạc thiền mặc định
+  }
+
   setMusicEnabled(enabled) {
     const v = Boolean(enabled);
     if (v === this.bgMusicEnabled) return;

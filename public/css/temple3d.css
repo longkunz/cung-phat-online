@@ -97,12 +97,12 @@ body.obs-mode .quick-dock { display: none !important; }
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px 3px 7px;
+  padding: 2px 9px 2px 6px;
   border-radius: 6px 14px 6px 14px;
   background: rgba(255, 246, 226, 0.92);
   border: 1.5px solid #b3261b;
   color: var(--ink);
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 700;
   line-height: 1.15;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);

@@ -152,4 +152,36 @@ describe("Avatar Visual Rules & Deterministic Hair/Glow (Production AvatarRules)
     });
     expect(slot.tones.hair.getHex()).toBe(prevHair);
   });
+
+  test("Avatar structural integrity: hands, head, pos, and tones must support Three.js vector and color methods", () => {
+    // Regression test for runtime crash: TypeError: a.hands[s].lerp is not a function
+    const avatar = newAvatar(2);
+    expect(avatar.hands).toBeDefined();
+    expect(Array.isArray(avatar.hands)).toBe(true);
+    expect(avatar.hands.length).toBe(2);
+
+    // Hands must support .lerp() for updatePose animation
+    expect(typeof avatar.hands[0].lerp).toBe("function");
+    expect(typeof avatar.hands[1].lerp).toBe("function");
+
+    const targetPos = new THREE.Vector3(0.5, 0.5, 0.5);
+    avatar.hands[0].lerp(targetPos, 0.5);
+    expect(Number.isFinite(avatar.hands[0].x)).toBe(true);
+
+    // Head must support .applyMatrix4()
+    expect(typeof avatar.head.applyMatrix4).toBe("function");
+
+    // Spawn avatar and verify hands.lerp and head.applyMatrix4 are preserved
+    spawnAvatar(avatar, {
+      uid: "test-devotee-1",
+      name: "Test Devotee",
+      member: true,
+      at: new THREE.Vector3(1, 0, 1)
+    }, { THREE });
+
+    expect(typeof avatar.hands[0].lerp).toBe("function");
+    expect(typeof avatar.head.applyMatrix4).toBe("function");
+    expect(typeof avatar.tones.robe.toArray).toBe("function");
+    expect(avatar.tones.robe instanceof THREE.Color).toBe(true);
+  });
 });

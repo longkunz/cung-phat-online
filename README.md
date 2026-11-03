@@ -1,20 +1,5 @@
 # 🪷 Chùa Thiên Mụ — TikTok Live RPC (9:16 Interactive Buddhist Sanctuary)
 
-## 📸 Hình Ảnh Demo Giao Diện
-
-### 1. Màn hình Chánh Điện 9:16 & Bảng Điều Khiển Nhanh (`http://localhost:3000`)
-![Màn hình Chánh Điện và Điều Khiển Nhanh](docs/demo/demo-main-stage.png)
-
-### 2. Chế độ OBS Browser Source 9:16 Sạch (`http://localhost:3000/?obs=1`) & Gieo Quẻ Linh Xăm
-| Màn hình OBS 9:16 (`?obs=1`) | Tờ Giải Quẻ Linh Xăm (Đồng bộ Giọng Đọc) |
-| :---: | :---: |
-| ![OBS 9:16 Mode](docs/demo/demo-obs-9x16.png) | ![Fortune Oracle Modal](docs/demo/demo-fortune-oracle.png) |
-
-### 3. Bảng Điều Khiển JSON-RPC 2.0 & Admin (`http://localhost:3000/admin`)
-![Admin JSON-RPC Panel](docs/demo/demo-admin-panel.png)
-
----
-
 ## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
 Hệ thống **Chùa Thiên Mụ** gồm hai dịch vụ phối hợp nhịp nhàng:

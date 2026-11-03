@@ -82,4 +82,36 @@ describe('Đạo Tràng Đông Đúc & FOMO (Standing Crowd Behind Cushions)', (
     // Khi !rosterSynced: spawn ngay tại spot.clone(), yaw = 0
     expect(templeCode).toMatch(/if \(!rosterSynced\) \{[\s\S]*?spawnAvatar\(a, \{ uid: w\.uid, name: w\.name, member: false, at: spot\.clone\(\) \}\);/);
   });
+
+  it('7. Biển Phật tử hộ niệm phía sau (devoteeSea) cố định số lượng tối đa (>= 200 người), không theo lượt join livestream', () => {
+    // DEVOTEE_SEA_COUNT và devoteeSea được khởi tạo với số lượng lớn
+    expect(templeCode).toMatch(/const devoteeSea = new THREE\.InstancedMesh\(seaDevoteeGeo, devoteeSeaMat, DEVOTEE_SEA_COUNT\);/);
+    expect(templeCode).toMatch(/devoteeSea\.count = DEVOTEE_SEA_COUNT;/);
+
+    // Kiểm tra số lượng Phật tử nền được tính toán >= 200
+    const countMatch = templeCode.match(/const DEVOTEE_SEA_COUNT = DEVOTEE_SEA_PTS\.length;/);
+    expect(countMatch).toBeTruthy();
+
+    // Hàng đứng biển người phủ từ z = 7.7 đến 13.1 (sát cửa z = 14 nhưng bên trong Chánh Điện)
+    expect(templeCode).toMatch(/const REAR_SEA_ROWS = \[(.*?)\];/);
+    expect(templeCode).toMatch(/const FLANK_SEA_ZS = \[(.*?)\];/);
+  });
+
+  it('8. Biển Phật tử đứng chừa hành lang thảm đỏ (|x| >= 1.45) và né cột trụ Chánh Điện', () => {
+    // Hành lang giữa thông thoáng cho người hành lễ
+    expect(templeCode).toMatch(/if \(Math\.abs\(x\) < 1\.45 \|\| Math\.abs\(x\) > 9\.15\) return;/);
+    // Né các cột trụ trong chùa
+    expect(templeCode).toMatch(/if \(isNearColumn\(x, z\)\) return;/);
+    // Né các vị trí tương tác của người đang chờ
+    expect(templeCode).toMatch(/if \(isNearInteractiveWait\(x, z\)\) return;/);
+  });
+
+  it('9. Biển người có hiệu ứng nhịp thở/niệm Phật nhấp nhô nhẹ và được xuất ra Temple3D', () => {
+    // Nhịp thở Math.sin() cập nhật instanceMatrix.array[i * 16 + 13]
+    expect(templeCode).toMatch(/seaArr\[i \* 16 \+ 13\] = DEVOTEE_SEA_BASE_Y\[i\] \+ Math\.sin\(t \* 1\.6 \+ i \* 0\.45\) \* 0\.012;/);
+    expect(templeCode).toMatch(/devoteeSea\.instanceMatrix\.needsUpdate = true;/);
+
+    // Xuất ra window.Temple3D để kiểm thử và điều khiển
+    expect(templeCode).toMatch(/devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT/);
+  });
 });

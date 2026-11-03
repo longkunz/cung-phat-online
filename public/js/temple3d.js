@@ -1701,6 +1701,126 @@ for (const z of STAND_ROW_Z) {
   }
 }
 
+// ============================================================================
+// BIỂN NGƯỜI ĐỨNG PHÍA SAU (Biển Phật Tử Hộ Niệm - Số lượng cố định tối đa)
+// ============================================================================
+// Không gian Chánh Điện bên trong: Biển người đứng ken đặc vai kề vai phía sau
+// các hàng ghế và khu vực đứng tương tác (từ z = 7.7 đến 13.1 và dọc 2 bên vách Chánh Điện).
+// Dùng 1 THREE.InstancedMesh duy nhất (1 draw call, tối ưu GPU tuyệt đối).
+// Số lượng hiển thị cố định ở mức tối đa ngay từ đầu, không phụ thuộc người xem livestream.
+const SEA_ROBE = 0x718193;
+const SEA_COLLAR = 0xd8e2ec;
+const SEA_SKIN = 0xf5d0b5;
+const SEA_HAIR = 0x241d1a;
+
+const seaSkirtGeo = lathe([[0, 0.02], [0.19, 0.02], [0.205, -0.08], [0.22, -0.18], [0.235, -0.27], [0.245, -0.34], [0.24, -0.36], [0.15, -0.365], [0, -0.365]], 12);
+const seaTorsoGeo = lathe([[0, -0.02], [0.205, -0.02], [0.21, 0.1], [0.195, 0.22], [0.155, 0.305], [0.075, 0.345], [0, 0.35]], 12);
+
+const seaDevoteeGeo = mergeColored([
+  // Váy áo tràng
+  { geo: seaSkirtGeo, color: SEA_ROBE, pos: [0, 0.47, 0], scale: [1, 1, 0.92] },
+  // Thân áo
+  { geo: seaTorsoGeo, color: SEA_ROBE, pos: [0, 0.47, 0], scale: [1, 1, 0.9] },
+  // Cổ áo trắng
+  { geo: new THREE.TorusGeometry(0.075, 0.018, 6, 12), color: SEA_COLLAR, pos: [0, 0.47 + 0.335, 0], rot: [Math.PI / 2, 0, 0] },
+  // Đầu
+  { geo: new THREE.SphereGeometry(0.24, 12, 10), color: SEA_SKIN, pos: [0, 0.47 + 0.56, 0] },
+  // Tóc
+  { geo: new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), color: SEA_HAIR, pos: [0, 0.47 + 0.57, 0.02], rot: [0.42, 0, 0] },
+  // Cánh tay áo tràng chắp tay trước ngực
+  { geo: limb([-0.18, 0.47 + 0.27, 0], [-0.07, 0.47 + 0.16, -0.12], 0.055, 0.05, 6), color: SEA_ROBE },
+  { geo: limb([0.18, 0.47 + 0.27, 0], [0.07, 0.47 + 0.16, -0.12], 0.055, 0.05, 6), color: SEA_ROBE },
+  { geo: limb([-0.07, 0.47 + 0.16, -0.12], [0, 0.47 + 0.23, -0.18], 0.05, 0.045, 6), color: SEA_ROBE },
+  { geo: limb([0.07, 0.47 + 0.16, -0.12], [0, 0.47 + 0.23, -0.18], 0.05, 0.045, 6), color: SEA_ROBE },
+  // Bàn tay búp sen (Anjali Mudra)
+  { geo: new THREE.SphereGeometry(0.065, 8, 8), color: SEA_SKIN, pos: [0, 0.47 + 0.24, -0.19], scale: [0.6, 1.1, 0.8], rot: [-0.25, 0, 0] },
+  // Chân
+  { geo: new THREE.SphereGeometry(1, 6, 6), color: SEA_SKIN, pos: [-0.08, 0.03, -0.01], scale: [0.048, 0.03, 0.08] },
+  { geo: new THREE.SphereGeometry(1, 6, 6), color: SEA_SKIN, pos: [0.08, 0.03, -0.01], scale: [0.048, 0.03, 0.08] }
+]);
+seaSkirtGeo.dispose();
+seaTorsoGeo.dispose();
+
+const DEVOTEE_SEA_PTS = [];
+const DEVOTEE_SEA_BASE_Y = [];
+
+const REAR_SEA_ROWS = [7.7, 8.3, 8.9, 9.5, 10.1, 10.7, 11.3, 11.9, 12.5, 13.1];
+const REAR_BASE_XS = [1.65, 2.25, 2.85, 3.45, 4.05, 4.65, 5.25, 5.85, 6.45, 7.05, 7.65, 8.25, 8.85];
+
+function isNearColumn(x, z) {
+  return COL_Z.some((cz) => Math.hypot(Math.abs(x) - 7.0, z - cz) < 0.75);
+}
+
+function isNearInteractiveWait(x, z) {
+  for (const wz of STAND_ROW_Z) {
+    for (const wx of STAND_COL_X) {
+      if (Math.hypot(Math.abs(x) - wx, z - wz) < 0.45) return true;
+    }
+  }
+  return false;
+}
+
+REAR_SEA_ROWS.forEach((z, rIdx) => {
+  const xOffset = rIdx % 2 === 1 ? 0.28 : 0;
+  REAR_BASE_XS.forEach((bx) => {
+    for (const side of [-1, 1]) {
+      const x = side * (bx + xOffset);
+      if (Math.abs(x) < 1.45 || Math.abs(x) > 9.15) return;
+      if (isNearColumn(x, z)) return;
+      if (isNearInteractiveWait(x, z)) return;
+      DEVOTEE_SEA_PTS.push({ x: Number(x.toFixed(3)), z: Number(z.toFixed(3)), side });
+    }
+  });
+});
+
+const FLANK_SEA_ZS = [-4.5, -3.8, -3.1, -2.4, -1.7, -1.0, -0.3, 0.4, 1.1, 1.8, 2.5, 3.2, 3.9, 4.6, 5.3, 6.0, 6.7];
+const FLANK_SEA_XS = [8.15, 8.75];
+FLANK_SEA_ZS.forEach((z) => {
+  FLANK_SEA_XS.forEach((bx) => {
+    for (const side of [-1, 1]) {
+      const x = side * bx;
+      if (isNearColumn(x, z)) return;
+      if (isNearInteractiveWait(x, z)) return;
+      DEVOTEE_SEA_PTS.push({ x: Number(x.toFixed(3)), z: Number(z.toFixed(3)), side });
+    }
+  });
+});
+
+const DEVOTEE_SEA_COUNT = DEVOTEE_SEA_PTS.length;
+const devoteeSeaMat = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  roughness: 0.8,
+  metalness: 0.05
+});
+const devoteeSea = new THREE.InstancedMesh(seaDevoteeGeo, devoteeSeaMat, DEVOTEE_SEA_COUNT);
+devoteeSea.frustumCulled = false;
+devoteeSea.count = DEVOTEE_SEA_COUNT; // Luôn hiển thị tối đa, không phụ thuộc số lượng join livestream
+
+const _seaV = new THREE.Vector3();
+const _seaQ = new THREE.Quaternion();
+const _seaE = new THREE.Euler();
+const _seaS = new THREE.Vector3();
+
+DEVOTEE_SEA_PTS.forEach((pt, i) => {
+  const baseY = 0;
+  DEVOTEE_SEA_BASE_Y.push(baseY);
+  _seaV.set(pt.x + rand(-0.03, 0.03), baseY, pt.z + rand(-0.03, 0.03));
+  const yaw = pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : rand(-0.04, 0.04);
+  _seaQ.setFromEuler(_seaE.set(0, yaw, 0, 'YXZ'));
+  const sc = rand(0.96, 1.04);
+  _seaS.set(sc, sc, sc);
+  _m.compose(_seaV, _seaQ, _seaS);
+  devoteeSea.setMatrixAt(i, _m);
+
+  const tint = rand(0.95, 1.05);
+  _c.setRGB(tint * rand(0.97, 1.03), tint * rand(0.97, 1.03), tint * rand(0.98, 1.05));
+  devoteeSea.setColorAt(i, _c);
+});
+
+devoteeSea.instanceMatrix.needsUpdate = true;
+if (devoteeSea.instanceColor) devoteeSea.instanceColor.needsUpdate = true;
+scene.add(devoteeSea);
+
 // ----------------------------------------------------------------------------
 // Trạng thái Phật tử
 // ----------------------------------------------------------------------------
@@ -3739,6 +3859,15 @@ function updateEnvironment(dt, t) {
     petals.userData.live = live > 0;
     petals.instanceMatrix.needsUpdate = true;
   }
+
+  // Nhịp thở / niệm Phật nhấp nhô nhẹ nhàng của biển Phật tử hộ niệm phía sau
+  if (devoteeSea && devoteeSea.instanceMatrix) {
+    const seaArr = devoteeSea.instanceMatrix.array;
+    for (let i = 0; i < DEVOTEE_SEA_COUNT; i++) {
+      seaArr[i * 16 + 13] = DEVOTEE_SEA_BASE_Y[i] + Math.sin(t * 1.6 + i * 0.45) * 0.012;
+    }
+    devoteeSea.instanceMatrix.needsUpdate = true;
+  }
 }
 
 let rafId = 0;
@@ -4085,7 +4214,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null, devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
@@ -116,7 +117,7 @@ class ZeroTTSManager {
     this.baseUrl = (baseUrl || process.env.TTS_SERVICE_URL || 'http://localhost:8008').replace(/\/+$/, '');
     this.synthTimeoutMs = (options && options.synthTimeoutMs)
       || Number(process.env.TTS_SYNTH_TIMEOUT_MS)
-      || (process.env.NODE_ENV === 'test' ? 6000 : 35000);
+      || (process.env.NODE_ENV === 'test' ? 6000 : 50000);
     this.ready = false;
     this.status = 'loading';
     this.voice = 'maichi';
@@ -198,6 +199,25 @@ class ZeroTTSManager {
     const voice = String(voiceOverride || (typeof state !== 'undefined' && state.settings?.ttsVoice) || 'maichi').trim().toLowerCase();
     const dedupKey = `${voice}::${cleanText}`;
 
+    // 1. Kiểm tra cache tệp tĩnh trên đĩa (trả về tức thì 0ms, không tốn tải CPU)
+    const cacheKey = crypto.createHash('md5').update(dedupKey).digest('hex');
+    const cacheFile = path.join(TTS_CACHE_DIR, `${cacheKey}.json`);
+    try {
+      if (fs.existsSync(cacheFile)) {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+        if (cached && (cached.audio || cached.url)) {
+          return {
+            ok: true,
+            voice: cached.voice || voice,
+            audio: cached.audio || cached.url,
+            url: cached.audio || cached.url,
+            durationSec: cached.durationSec || 0,
+            cached: true
+          };
+        }
+      }
+    } catch (_) {}
+
     if (this.inflight.has(dedupKey)) {
       return this.inflight.get(dedupKey);
     }
@@ -221,13 +241,17 @@ class ZeroTTSManager {
 
         const data = await res.json().catch(() => ({ ok: false, error: 'Invalid JSON response from TTS service' }));
         if (res.ok && data.ok) {
-          return {
+          const result = {
             ok: true,
             voice: data.voice || voice,
             audio: data.audio,
             url: data.audio,
             durationSec: data.durationSec
           };
+          try {
+            fs.writeFileSync(cacheFile, JSON.stringify(result), 'utf8');
+          } catch (_) {}
+          return result;
         }
         return { ok: false, error: data?.error || `TTS Service error (${res.status})` };
       } catch (err) {

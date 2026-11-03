@@ -136,4 +136,26 @@ describe('Đạo Tràng Đông Đúc & FOMO (Standing Crowd Behind Cushions)', (
     // Xuất ra window.Temple3D để kiểm thử
     expect(templeCode).toMatch(/seaTags, updateSeaTags, SEA_NAME_CYCLE/);
   });
+
+  it('11. Cài đặt Admin và Temple3D hỗ trợ các chế độ hiển thị biển người (always, threshold, scale, off)', () => {
+    const adminPath = path.resolve(import.meta.dir, '../public/admin.html');
+    const adminCode = fs.readFileSync(adminPath, 'utf-8');
+
+    // Server hỗ trợ crowdSeaMode và crowdSeaThreshold
+    expect(serverCode).toMatch(/crowdSeaMode:\s*'always'/);
+    expect(serverCode).toMatch(/crowdSeaThreshold:\s*100/);
+    expect(serverCode).toMatch(/params\.crowdSeaMode !== undefined/);
+
+    // Admin UI có form cài đặt biển người
+    expect(adminCode).toMatch(/id="crowdSettingsForm"/);
+    expect(adminCode).toMatch(/id="crowdSeaMode"/);
+    expect(adminCode).toMatch(/id="crowdSeaThreshold"/);
+    expect(adminCode).toMatch(/id="btnSaveCrowdSettings"/);
+    expect(adminCode).toMatch(/temple\.updateSettings/);
+
+    // Temple3D có hàm syncDevoteeSea điều khiển devoteeSea.count theo cài đặt
+    expect(templeCode).toMatch(/function syncDevoteeSea()/);
+    expect(templeCode).toMatch(/targetCount = currentCount >= threshold \? DEVOTEE_SEA_COUNT : 0;/);
+    expect(templeCode).toMatch(/syncDevoteeSea, templeSettings/);
+  });
 });

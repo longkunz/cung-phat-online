@@ -267,7 +267,31 @@
       </section>
 
       <section class="card">
-        <h2>🙏 4. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
+        <h2>👥 4. Cài Đặt Biển Người Phía Sau (Biển Phật Tử Hộ Niệm)</h2>
+        <form id="crowdSettingsForm">
+          <fieldset id="crowdSettingsFields">
+            <div class="field">
+              <label for="crowdSeaMode">Chế độ hiển thị biển người</label>
+              <select id="crowdSeaMode">
+                <option value="always">Luôn hiển thị tối đa (318 người - FOMO đông đúc ngay từ đầu)</option>
+                <option value="threshold">Chỉ hiện khi đạt ngưỡng số người (mặc định quá 100 người)</option>
+                <option value="scale">Tự động tăng dần theo số người xem (từ ngưỡng trở lên)</option>
+                <option value="off">Tắt hoàn toàn biển người phía sau</option>
+              </select>
+            </div>
+            <div class="field" id="thresholdGroup">
+              <label for="crowdSeaThreshold">Ngưỡng kích hoạt (số người)</label>
+              <input type="number" id="crowdSeaThreshold" min="1" max="5000" step="1" value="100" />
+              <p class="help">Khi chọn chế độ <em>"Chỉ hiện khi đạt ngưỡng"</em> hoặc <em>"Tăng dần"</em>, biển người phía sau sẽ tự động kích hoạt khi số người xem livestream (hoặc hàng chờ) vượt qua con số này (mặc định 100 người).</p>
+            </div>
+            <button class="btn gold" type="submit" id="btnSaveCrowdSettings">Lưu cài đặt biển người</button>
+          </fieldset>
+          <p class="feedback" id="crowdSettingsMessage" role="status"></p>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>🙏 5. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
         <div class="row">
           <input type="text" id="rpcUser" value="Đại Thí Chủ Minh Tâm" placeholder="Tên người xem..." />
           <input type="text" id="rpcWish" value="Cầu gia đạo bình an, tài lộc vượng phát" placeholder="Lời cầu nguyện..." />
@@ -285,7 +309,7 @@
       </section>
 
       <section class="card">
-        <h2>💬 5. Giả Lập Bình Luận Người Xem TikTok</h2>
+        <h2>💬 6. Giả Lập Bình Luận Người Xem TikTok</h2>
         <div class="row">
           <input type="text" id="simComment" value="Con xin gieo quẻ cầu tài lộc đầu tháng ạ" placeholder="Nhập nội dung bình luận TikTok..." />
           <button class="btn gold" id="btnSendComment">Gửi Comment</button>
@@ -296,7 +320,7 @@
       </section>
 
       <section class="card log-card">
-        <h2>🔌 6. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
+        <h2>🔌 7. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
         <pre id="rpcOutput">{ "status": "Sẵn sàng nhận lệnh JSON-RPC 2.0" }</pre>
       </section>
     </div>
@@ -543,6 +567,63 @@
       } finally {
         audioSaving = false;
         document.getElementById('audioSettingsFields').disabled = false;
+      }
+    };
+
+    
+
+    let crowdDirty = false;
+    let crowdSaving = false;
+
+    function renderCrowdSettings(st) {
+      const s = st.settings || {};
+      if (crowdDirty || crowdSaving) return;
+      const mode = s.crowdSeaMode || 'always';
+      document.getElementById('crowdSeaMode').value = mode;
+      document.getElementById('crowdSeaThreshold').value = String(s.crowdSeaThreshold || 100);
+      const thresholdGroup = document.getElementById('thresholdGroup');
+      if (thresholdGroup) {
+        thresholdGroup.style.display = (mode === 'threshold' || mode === 'scale') ? '' : 'none';
+      }
+    }
+
+    document.getElementById('crowdSeaMode').addEventListener('change', () => {
+      const mode = document.getElementById('crowdSeaMode').value;
+      const thresholdGroup = document.getElementById('thresholdGroup');
+      if (thresholdGroup) {
+        thresholdGroup.style.display = (mode === 'threshold' || mode === 'scale') ? '' : 'none';
+      }
+      crowdDirty = true;
+      showFeedback('crowdSettingsMessage', 'Có thay đổi chưa lưu.');
+    });
+
+    document.getElementById('crowdSeaThreshold').addEventListener('input', () => {
+      crowdDirty = true;
+      showFeedback('crowdSettingsMessage', 'Có thay đổi chưa lưu.');
+    });
+
+    document.getElementById('crowdSettingsForm').onsubmit = async (event) => {
+      event.preventDefault();
+      crowdSaving = true;
+      document.getElementById('crowdSettingsFields').disabled = true;
+      showFeedback('crowdSettingsMessage', 'Đang lưu cài đặt biển người...');
+      try {
+        const crowdSeaMode = document.getElementById('crowdSeaMode').value;
+        const crowdSeaThreshold = Number(document.getElementById('crowdSeaThreshold').value) || 100;
+        const data = await sendRpc('temple.updateSettings', {
+          crowdSeaMode,
+          crowdSeaThreshold
+        });
+        if (data.error) throw new Error(data.error.message);
+        crowdDirty = false;
+        crowdSaving = false;
+        renderCrowdSettings(data.result);
+        showFeedback('crowdSettingsMessage', 'Đã lưu cài đặt biển người thành công!');
+      } catch (err) {
+        showFeedback('crowdSettingsMessage', err.message || 'Không lưu được cài đặt biển người.', true);
+      } finally {
+        crowdSaving = false;
+        document.getElementById('crowdSettingsFields').disabled = false;
       }
     };
 

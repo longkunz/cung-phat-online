@@ -1824,6 +1824,45 @@ if (devoteeSea.instanceColor) devoteeSea.instanceColor.needsUpdate = true;
 scene.add(devoteeSea);
 
 // ============================================================================
+// ĐIỀU KHIỂN CHẾ ĐỘ BIỂN PHẬT TỬ (TỪ CÀI ĐẶT ADMIN)
+// ============================================================================
+const templeSettings = {
+  crowdSeaMode: 'always',
+  crowdSeaThreshold: 100
+};
+
+function syncDevoteeSea() {
+  if (!devoteeSea) return;
+  const mode = templeSettings.crowdSeaMode || 'always';
+  const threshold = templeSettings.crowdSeaThreshold || 100;
+  const activeAvatars = avatars.filter((a) => a.active).length;
+  const currentCount = Math.max(Number(tiktokInfo.viewerCount) || 0, activeAvatars + waitingCount);
+
+  let targetCount = DEVOTEE_SEA_COUNT;
+  if (mode === 'off') {
+    targetCount = 0;
+  } else if (mode === 'always') {
+    targetCount = DEVOTEE_SEA_COUNT;
+  } else if (mode === 'threshold') {
+    targetCount = currentCount >= threshold ? DEVOTEE_SEA_COUNT : 0;
+  } else if (mode === 'scale') {
+    if (currentCount < threshold) {
+      targetCount = 0;
+    } else {
+      const extra = currentCount - threshold;
+      targetCount = Math.min(DEVOTEE_SEA_COUNT, Math.max(30, Math.floor(extra * 1.5) + 30));
+    }
+  }
+
+  devoteeSea.count = targetCount;
+  if (targetCount === 0 && Array.isArray(seaTags)) {
+    for (const tag of seaTags) {
+      if (tag.el && tag.el.style.display !== 'none') tag.el.style.display = 'none';
+    }
+  }
+}
+
+// ============================================================================
 // NHÃN TÊN BIỂN PHẬT TỬ (Đè tên nhau & Dịch chuyển bay lên trên mỗi ~10 giây)
 // ============================================================================
 const SEA_DHARMA_NAMES = [
@@ -1868,6 +1907,12 @@ function initSeaTags() {
 function updateSeaTags(t) {
   if (typeof document === 'undefined' || !overlay) return;
   if (seaTags.length === 0) initSeaTags();
+  if (devoteeSea && devoteeSea.count === 0) {
+    for (const tag of seaTags) {
+      if (tag.el && tag.el.style.display !== 'none') tag.el.style.display = 'none';
+    }
+    return;
+  }
 
   // Cập nhật tên chậm khoảng 10 giây một lần
   if (t - lastSeaNameUpdate >= SEA_NAME_CYCLE) {
@@ -4225,6 +4270,11 @@ function updateState(st) {
     if (!giftFeedSeeded) { st.giftFeed.forEach((g) => seenGiftIds.add(g.id)); giftFeedSeeded = true; }
   }
   const s = st.settings;
+  if (s) {
+    if (s.crowdSeaMode) templeSettings.crowdSeaMode = s.crowdSeaMode;
+    if (typeof s.crowdSeaThreshold === 'number') templeSettings.crowdSeaThreshold = s.crowdSeaThreshold;
+    syncDevoteeSea();
+  }
   // Giọng đọc, nhạc nền (danh sách phát tối đa 3 bài), hiệu ứng âm thanh — cài đặt ở trang Admin
   if (s && audio) audio.applySettings(s);
   if (s) {
@@ -4259,6 +4309,7 @@ let tiktokInfo = { connected: false, username: '', viewerCount: 0 };
 function updateStatus(tt) {
   tiktokInfo = { ...tiktokInfo, ...tt };
   syncCrowd(tiktokInfo.viewerCount);
+  syncDevoteeSea();
   const pill = document.getElementById('statusPill');
   if (pill) pill.classList.toggle('live', Boolean(tiktokInfo.connected));
   const textEl = document.getElementById('statusText');
@@ -4354,7 +4405,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null, devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT, seaTags, updateSeaTags, SEA_NAME_CYCLE };
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null, devoteeSea, devoteeSeaCount: DEVOTEE_SEA_COUNT, seaTags, updateSeaTags, SEA_NAME_CYCLE, syncDevoteeSea, templeSettings };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

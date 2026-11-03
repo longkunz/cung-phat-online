@@ -451,7 +451,6 @@
     // ------------------------------------------------------------------
     // ÂM THANH & NHẠC NỀN
     // ------------------------------------------------------------------
-    const MAX_PLAYLIST = 3;
     const SFX_LIST = [
       { key: 'bell', label: '🔔 Đại Hồng Chung (thỉnh chuông, dâng lễ)', play: (a) => a.playTempleBell(1) },
       { key: 'woodfish', label: '🪵 Mõ gỗ (thả tim)', play: (a) => a.playWoodenFish() },
@@ -461,7 +460,6 @@
     // Bộ máy âm thanh riêng của trang admin chỉ để nghe thử hiệu ứng (không phát nhạc nền)
     const previewAudio = new TempleAudioEngine();
     previewAudio.setMusicEnabled(false);
-    previewAudio.setPlaylist([]);
 
     let audioDirty = false;
     let audioSaving = false;

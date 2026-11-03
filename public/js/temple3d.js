@@ -1644,10 +1644,7 @@ function newAvatar(i) {
     anon: false
   };
 }
-const AR = typeof AvatarRules !== 'undefined' ? AvatarRules : null;
-
 function hashString(str) {
-  if (AR) return AR.hashString(str);
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
@@ -1655,11 +1652,10 @@ function hashString(str) {
   return Math.abs(h);
 }
 
-const devoteeTonesCache = AR ? AR.devoteeTonesCache : new Map();
+const devoteeTonesCache = new Map();
 const MAX_TONES_CACHE = 2000;
 
 function getOrCreateTones(key, fallbackIdx = 0) {
-  if (AR) return AR.getOrCreateTones(key, fallbackIdx, THREE.Color);
   if (key && devoteeTonesCache.has(key)) {
     return devoteeTonesCache.get(key);
   }
@@ -1683,10 +1679,6 @@ function getOrCreateTones(key, fallbackIdx = 0) {
 }
 
 function assignTones(a) {
-  if (AR) {
-    AR.assignTones(a, THREE.Color);
-    return;
-  }
   const key = a.uid || (a.name && a.name !== 'Thí Chủ' ? a.name : '');
   const toneData = getOrCreateTones(key, a.idx);
   a.tones = {
@@ -1700,7 +1692,6 @@ function assignTones(a) {
 }
 
 function isVipDevotee(a) {
-  if (AR) return AR.isVipDevotee(a);
   if (!a) return false;
   return Boolean(
     (a.vipRank && a.vipRank > 0) ||
@@ -1715,10 +1706,15 @@ function isVipDevotee(a) {
 }
 
 function setGlow(a, intensity, color = 0xffd27a, force = false) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.setGlow === 'function') {
+    AvatarRules.setGlow(a, intensity, color, force);
+    return;
+  }
   if (!a) return;
   if (!force && !isVipDevotee(a)) return;
-  a.glow = Math.max(a.glow, intensity);
-  a.glowColor.set(color);
+  a.glow = Math.max(a.glow || 0, intensity);
+  a.glowTarget = intensity;
+  if (a.glowColor && typeof a.glowColor.set === 'function') a.glowColor.set(color);
 }
 function touch(a) {
   if (a) a.lastActive = performance.now();
@@ -1747,12 +1743,24 @@ function ensureTag(a) {
 function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
-function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
+function spawnAvatar(a, spec) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.spawnAvatar === 'function') {
+    return AvatarRules.spawnAvatar(a, spec, {
+      elapsed: clock.elapsed,
+      speedMult: rand(0.92, 1.08),
+      ensureTag,
+      touch
+    });
+  }
+  const { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false } = spec;
+  const isSameDevotee = Boolean(keep && keep.uid === uid);
   const kept = keep ? {
     seat: keep.seat,
     tier: keep.tier,
     vipRank: keep.vipRank,
-    flashOnArrive: keep.flashOnArrive
+    flashOnArrive: keep.flashOnArrive,
+    tones: isSameDevotee ? keep.tones : undefined,
+    hairStyle: isSameDevotee ? keep.hairStyle : undefined
   } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;
@@ -1768,13 +1776,14 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
-  // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
   a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
   a.speedMult = rand(0.92, 1.08);
-
-  // Luôn gán màu diện mạo theo danh tính UID mới (ngăn slot tái sử dụng mang tóc cũ)
-  assignTones(a);
-
+  if (kept.tones) {
+    a.tones = kept.tones;
+    a.hairStyle = kept.hairStyle ?? a.hairStyle ?? 0;
+  } else {
+    assignTones(a);
+  }
   a.anon = anon;
   if (anon) { if (a.tag) { a.tag.el.style.display = 'none'; a.tag.shown = false; } } else ensureTag(a);
   touch(a);
@@ -1795,11 +1804,12 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
+  if (typeof CrowdNav !== 'undefined') {
+    return CrowdNav.createMoveStep(target, speed, keepYaw, avatars);
+  }
   let from = null;
   let dur = 1;
   let arrived = false;
-  let failed = false;
-  let elapsed = 0;
   return {
     start(a) {
       from = a.pos.clone();
@@ -1807,39 +1817,20 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
       arrived = false;
-      failed = false;
-      elapsed = 0;
     },
     get dur() { return dur; },
     isDone(a) { return arrived; },
-    isFailed(a) { return failed; },
     update(a, k, dt) {
-      elapsed += dt;
-      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường (tôn trọng keepYaw và cự ly thực tế)
-      if (typeof CrowdNav !== 'undefined') {
-        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars, keepYaw);
-        // Failsafe timeout: nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
-        const timedOut = elapsed > dur * 4.0 + 4.0;
-        if (arrived) {
-          a.walking = false;
-        } else if (timedOut) {
-          // Bị mắc kẹt hoặc không thể tới đích: đánh dấu thất bại, không báo đã tới đích
-          a.walking = false;
-          a.stuck = true;
-          failed = true;
-        }
-      } else {
-        const px = a.pos.x;
-        const pz = a.pos.z;
-        a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
-        const dx = target.x - from.x;
-        const dz = target.z - from.z;
-        if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
-        a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
-        if (k >= 1) {
-          a.walking = false;
-          arrived = true;
-        }
+      const px = a.pos.x;
+      const pz = a.pos.z;
+      a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
+      const dx = target.x - from.x;
+      const dz = target.z - from.z;
+      if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
+      a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
+      if (k >= 1) {
+        a.walking = false;
+        arrived = true;
       }
     }
   };
@@ -1860,7 +1851,38 @@ function turnStep(yaw, dur = 0.5) {
 }
 /** Bước động: khi tới lượt, gọi fn(a) để sinh tiếp các bước (vd. đường về chỗ ngồi vừa được cấp). */
 const dynStep = (fn) => ({ dur: 0, dynamic: fn });
+function handleAvatarMoveFailure(a) {
+  if (!a) return;
+  a.script = null;
+  a.busy = false;
+  a.walking = false;
+  a.stuck = true;
+  a.entering = false;
+  a.heroStage = '';
+  a.bowSpot = -1;
+  a.goldTrail = false;
+  a.glow = 0;
+  a.handPose = null;
+  a.sticks = 0;
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.cleanupAvatarRitual === 'function') {
+    CrowdNav.cleanupAvatarRitual(a);
+  }
+  if (a.member && a.seat >= 0) {
+    if (typeof seatPos !== 'undefined' && seatPos[a.seat]) a.pos.copy(seatPos[a.seat]);
+    a.yaw = 0;
+    a.kneel = 1;
+    a.atSeat = a.seat;
+    if (typeof onSeatArrive === 'function') onSeatArrive(a);
+  } else if (a.leaving || !a.member) {
+    if (typeof despawn === 'function') despawn(a);
+  }
+}
+
 function runScript(a, steps, onDone) {
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.runScript(a, steps, onDone);
+    return;
+  }
   a.script = { steps: steps.slice(), i: -1, t: 0, onDone };
   a.busy = true;
   nextStep(a);
@@ -1890,6 +1912,12 @@ function nextStep(a) {
   }
 }
 function tickScript(a, dt) {
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.tickScript === 'function') {
+    CrowdNav.tickScript(a, dt, avatars, (av) => {
+      handleAvatarMoveFailure(av);
+    });
+    return;
+  }
   const s = a.script;
   if (!s) return;
   if (s.waiting) { nextStep(a); return; }
@@ -1899,11 +1927,8 @@ function tickScript(a, dt) {
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
   if (step.isFailed ? step.isFailed(a) : false) {
-    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, không gọi s.onDone
-    a.script = null;
-    a.busy = false;
-    a.walking = false;
-    a.stuck = true;
+    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, dọn nghi lễ
+    handleAvatarMoveFailure(a);
     return;
   }
   const done = step.isDone ? step.isDone(a) : (k >= 1);
@@ -1951,14 +1976,16 @@ function goToSeat(a, onArrive) {
 function onSeatArrive(av) {
   av.entering = false;
   if (av.flashOnArrive) {
-    setGlow(av, 1.8, 0xffe27a, true);
     av.flashOnArrive = false;
+    setGlow(av, 1.8, 0xffe27a);
     for (let i = 0; i < 18; i++) {
       const ang = Math.random() * Math.PI * 2;
       sparks.spawn(av.pos.x, 0.9, av.pos.z, Math.cos(ang) * rand(0.4, 1.4), rand(1.5, 3), Math.sin(ang) * rand(0.4, 1.4), rand(0.7, 1.3), i % 2 ? 0xffe27a : 0xfff4c0);
     }
     const f = makeFloater(av.vipRank ? `⭐ Hàng đầu · hạng ${av.vipRank}` : '⭐ Vào chỗ mới', 'merit', 3000);
     f.anchor = () => av.head;
+  } else {
+    setGlow(av, 1.0);
   }
 }
 
@@ -2171,12 +2198,7 @@ function walkToBurner(a, kind, ev) {
 }
 
 function ritualClimax(a, kind, ev) {
-  if (a) {
-    const isGiftOrGrand = kind === 'gift' || kind === 'grand';
-    if (isGiftOrGrand || isVipDevotee(a)) {
-      setGlow(a, 1.3, isGiftOrGrand ? 0xffe27a : 0xffb35a, true);
-    }
-  }
+  if (a) setGlow(a, 1.3, kind === 'gift' || kind === 'grand' ? 0xffe27a : 0xffb35a);
   burstIncense(kind === 'grand' ? 2 : 1);
   const f = makeFloater(ev?.merit ? `+${ev.merit} Công Đức` : '+ Công Đức', 'merit', 3200);
   const p = new THREE.Vector3(BURNER.x, BURNER_TOP + 1.4, BURNER.z);
@@ -2982,7 +3004,7 @@ function updateAvatars(dt, t) {
 
     // vòng sáng dưới chân khi đang vái / lạy (mờ vào/ra mượt)
     const bowing = t - a.bowAt >= 0 && t - a.bowAt < a.bowCount * (a.kneel > 0.9 ? BOW_KNEEL_DUR : BOW_STAND_DUR) + 0.2;
-    const ringOn = bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0;
+    const ringOn = typeof AvatarRules !== 'undefined' && typeof AvatarRules.isBowRingActive === 'function' ? AvatarRules.isBowRingActive(a, t) : (bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0);
     a.ringS = (a.ringS || 0) + (ringOn - (a.ringS || 0)) * smoothK(4, dt);
     if (a.ringS > 0.02) {
       const rs = (1.15 + Math.sin(t * 3 + a.idx) * 0.06) * s;
@@ -2990,19 +3012,17 @@ function updateAvatars(dt, t) {
       bowRings.setColorAt(nr, _c);
       bowRings.setMatrixAt(nr++, _m.compose(_pos.set(a.pos.x, 0.03 + 0.17 * kc, a.pos.z), _q.identity(), _s.set(rs, 1, rs)));
     }
-    // hào quang (chỉ VIP / khách quý mới có hào quang phát sáng, người thường không có)
+    // hào quang (cộng sáng; cường độ = màu)
     a.glow = Math.max(0, a.glow - dt * 0.55);
-    if (isVipDevotee(a)) {
-      const chanting = t < a.chantUntil;
-      let aura = a.glow;
-      if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
-      if (aura > 0.01) {
-        const sz = (1.5 + aura * 0.6) * s;
-        _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
-        auraMesh.setColorAt(na, _c);
-        auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
-        na++;
-      }
+    const chanting = t < a.chantUntil;
+    let aura = a.glow;
+    if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
+    if (aura > 0.01) {
+      const sz = (1.5 + aura * 0.6) * s;
+      _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
+      auraMesh.setColorAt(na, _c);
+      auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
+      na++;
     }
   }
   for (const [name, im] of Object.entries(parts)) {
@@ -3889,26 +3909,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = {
-  scene,
-  camera,
-  renderer,
-  avatars,
-  director,
-  step: stepSim,
-  clock,
-  applyHallAction,
-  handleEvent,
-  syncRoster,
-  updateStatus,
-  arrive,
-  SHOTS,
-  CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null,
-  isVipDevotee,
-  getOrCreateTones,
-  assignTones,
-  setGlow
-};
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

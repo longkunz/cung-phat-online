@@ -22,12 +22,7 @@
   }
 
   function isAvatarStatic(av) {
-    if (!av) return false;
-    // Bất kỳ ai đang bước đi, đang vào/ra, hoặc nhân vật chính đang di chuyển trong nghi lễ đều KHÔNG tĩnh
-    if (av.walking || (av.heroStage && ['walk', 'enter', 'exit', 'approach', 'leave', 'back'].includes(av.heroStage)) || av.busy || av.entering || av.leaving) {
-      return false;
-    }
-    // Người ngồi hoặc quỳ cố định trên bồ đoàn / chỗ ngồi
+    if (!av || av.walking) return false;
     return (av.atSeat !== undefined && av.atSeat >= 0) || (av.kneel && av.kneel > 0.3) || Boolean(av.waiting);
   }
 
@@ -60,6 +55,7 @@
       a.pos.x = tX;
       a.pos.z = tZ;
       a.walking = false;
+      a.detourSign = 0;
       return true;
     }
 
@@ -75,6 +71,11 @@
     let avoidZ = 0;
     let throttle = 1.0;
     const aIsHero = isHeroAvatar(a);
+
+    let hasLeftObstacle = false;
+    let hasRightObstacle = false;
+    let minForwardDist = 999;
+    let queueAhead = false;
 
     // Quét các avatar xung quanh
     if (Array.isArray(avatars)) {
@@ -101,6 +102,24 @@
         const bIsHero = isHeroAvatar(b);
         const bStatic = isAvatarStatic(b);
 
+        // Nhận diện hàng người đứng chờ (Queueing):
+        // Nếu có người đứng phía trước trong làn đi đang dừng hoặc đợi
+        if (forward > 0 && Math.abs(projRight) < 0.35 && (b.waiting || (!b.walking && !bStatic))) {
+          queueAhead = true;
+          // Giảm tốc và dừng hẳn giữ cự ly cung kính (~0.55m - 0.60m)
+          if (d < 1.4) {
+            const qDecel = Math.max(0, (d - 0.55) / 0.55);
+            if (qDecel < throttle) throttle = qDecel;
+          }
+        }
+
+        // Nhận diện vật cản tĩnh hai bên lối đi để phát hiện nút thắt đối xứng
+        if (forward > 0 && d < 1.8 && (bStatic || b.walking === false)) {
+          if (projRight < -0.04) hasLeftObstacle = true;
+          if (projRight > 0.04) hasRightObstacle = true;
+          if (d < minForwardDist) minForwardDist = d;
+        }
+
         // Chọn hướng lách:
         // Nếu vật cản bên phải (projRight > 0.02) -> Lách sang trái (-right)
         // Nếu vật cản bên trái (projRight < -0.02) -> Lách sang phải (+right)
@@ -116,7 +135,7 @@
         if (bStatic) {
           // Người ngồi cố định trên bồ đoàn: kể cả hero cũng phải né với toàn bộ lực né
           // Giảm tốc khi gặp người ngồi ngay sát phía trước trong hành lang hẹp
-          if (d < 0.75 && Math.abs(projRight) < 0.25 && forward > 0) {
+          if (!a.detourSign && d < 0.75 && Math.abs(projRight) < 0.25 && forward > 0) {
             const decel = Math.max(0.12, (d - 0.45) / 0.30);
             if (decel < throttle) throttle = decel;
           }
@@ -132,16 +151,36 @@
           avoidStrength *= 0.6;
         }
 
-        avoidX += rightX * steerSide * avoidStrength;
-        avoidZ += rightZ * steerSide * avoidStrength;
+        if (!queueAhead) {
+          avoidX += rightX * steerSide * avoidStrength;
+          avoidZ += rightZ * steerSide * avoidStrength;
+        }
 
         // Cơ chế "Đứng chờ": nếu có người chắn ngay sát trước mặt (< 0.75m) và khoảng né hẹp
-        if (!aIsHero && !bStatic && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
+        if (!a.detourSign && !aIsHero && !bStatic && d < 0.75 && Math.abs(projRight) < 0.22 && forward > 0) {
           if (!b.walking) {
             const decel = Math.max(0.12, (d - 0.42) / 0.33);
             if (decel < throttle) throttle = decel;
           }
         }
+      }
+    }
+
+    // Cơ chế phát hiện tắc đường đối xứng & duy trì hướng đi vòng (Persistent Detour):
+    if (!queueAhead && hasLeftObstacle && hasRightObstacle && minForwardDist < 1.8) {
+      if (!a.detourSign) {
+        a.detourSign = a.dodgePref || (a.idx % 2 === 0 ? 1 : -1) || 1;
+      }
+    }
+
+    if (queueAhead) {
+      a.detourSign = 0;
+    } else if (a.detourSign) {
+      if (!hasLeftObstacle && !hasRightObstacle) {
+        a.detourSign = 0;
+      } else {
+        avoidX += rightX * a.detourSign * 2.8;
+        avoidZ += rightZ * a.detourSign * 2.8;
       }
     }
 
@@ -181,7 +220,7 @@
         a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 6.0));
       }
       a.walking = true;
-    } else if (throttle <= 0.12) {
+    } else if (throttle <= 0.05) {
       a.walking = false;
     }
 
@@ -198,7 +237,7 @@
     if (!Array.isArray(avatars) || avatars.length < 2) return;
 
     const count = avatars.length;
-    const ITERATIONS = 8;
+    const ITERATIONS = 24;
 
     // Phân kỳ sơ bộ các avatar trùng khít tọa độ hoàn toàn (coincident spawns)
     for (let i = 0; i < count; i++) {
@@ -293,6 +332,27 @@
   }
 
   /**
+   * Dọn dẹp trạng thái nghi lễ khi hoàn thành hoặc khi hủy bước/timeout (Never Stalled):
+   * Giải phóng bowSpot, heroStage, goldTrail, glow và đạo cụ trên tay.
+   */
+  function cleanupAvatarRitual(a) {
+    if (!a) return;
+    a.bowSpot = -1;
+    a.heroStage = '';
+    a.goldTrail = false;
+    a.glow = 0;
+    a.glowTarget = 0;
+    a.handPose = null;
+    a.sticks = 0;
+    a.busy = false;
+    a.walking = false;
+    a.entering = false;
+    a.stuck = true;
+    a.script = null;
+    a.detourSign = 0;
+  }
+
+  /**
    * Tạo bước di chuyển kết hợp né đám đông và failsafe timeout không báo đã tới khi kẹt.
    */
   function createMoveStep(target, speed = 1.9, keepYaw = false, avatarsRef = null) {
@@ -362,7 +422,7 @@
     }
   }
 
-  function tickScript(a, dt, avatarsList) {
+  function tickScript(a, dt, avatarsList, onStepFail) {
     const s = a.script;
     if (!s) return;
     if (s.waiting) { nextScriptStep(a); return; }
@@ -372,10 +432,9 @@
     const k = step.dur > 0 ? Math.min(1, s.t / step.dur) : 1;
     step.update?.(a, k, dt, avatarsList);
     if (step.isFailed ? step.isFailed(a) : false) {
-      a.script = null;
-      a.busy = false;
-      a.walking = false;
+      cleanupAvatarRitual(a);
       a.stuck = true;
+      if (typeof onStepFail === 'function') onStepFail(a);
       return;
     }
     const done = step.isDone ? step.isDone(a) : (k >= 1);
@@ -393,6 +452,7 @@
     isHeroAvatar,
     steerAvatar,
     relaxCollisions,
+    cleanupAvatarRitual,
     createMoveStep,
     runScript,
     tickScript

@@ -1745,44 +1745,77 @@ const DEVOTEE_SEA_PTS = [];
 const DEVOTEE_SEA_BASE_Y = [];
 const DEVOTEE_SEA_SCALES = [];
 
-const REAR_SEA_ROWS = [7.7, 8.3, 8.9, 9.5, 10.1, 10.7, 11.3, 11.9, 12.5, 13.1];
-const REAR_BASE_XS = [1.65, 2.25, 2.85, 3.45, 4.05, 4.65, 5.25, 5.85, 6.45, 7.05, 7.65, 8.25, 8.85];
+// Bố trí mật độ cao, chen chúc, phá vỡ hàng lối thẳng băng bằng hàm nhiễu hữu cơ (jitter)
+function hash2d(x, z) {
+  const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+const REAR_SEA_ROWS = [7.4, 7.85, 8.3, 8.75, 9.2, 9.65, 10.1, 10.55, 11.0, 11.45, 11.9, 12.35, 12.8, 13.25];
+const REAR_BASE_XS = [1.62, 2.08, 2.54, 3.0, 3.46, 3.92, 4.38, 4.84, 5.3, 5.76, 6.22, 6.68, 7.14, 7.6, 8.06, 8.52, 8.95];
 
 function isNearColumn(x, z) {
-  return COL_Z.some((cz) => Math.hypot(Math.abs(x) - 7.0, z - cz) < 0.75);
+  return COL_Z.some((cz) => Math.hypot(Math.abs(x) - 7.0, z - cz) < 0.72);
 }
 
 function isNearInteractiveWait(x, z) {
   for (const wz of STAND_ROW_Z) {
     for (const wx of STAND_COL_X) {
-      if (Math.hypot(Math.abs(x) - wx, z - wz) < 0.45) return true;
+      if (Math.hypot(Math.abs(x) - wx, z - wz) < 0.42) return true;
     }
   }
   return false;
 }
 
-REAR_SEA_ROWS.forEach((z, rIdx) => {
-  const xOffset = rIdx % 2 === 1 ? 0.28 : 0;
+REAR_SEA_ROWS.forEach((baseZ, rIdx) => {
+  // So le dạng tổ ong giữa các hàng xen kẽ
+  const staggerX = rIdx % 2 === 1 ? 0.23 : 0;
   REAR_BASE_XS.forEach((bx) => {
     for (const side of [-1, 1]) {
-      const x = side * (bx + xOffset);
+      // Độ lệch ngẫu nhiên xóa bỏ hoàn toàn cảm giác xếp hàng thẳng lối
+      const hX = hash2d(bx * side, baseZ);
+      const hZ = hash2d(baseZ, bx * side);
+      const jX = (hX - 0.5) * 0.16;
+      const jZ = (hZ - 0.5) * 0.14;
+
+      const x = side * (bx + staggerX) + jX;
+      const z = baseZ + jZ;
+
       if (Math.abs(x) < 1.45 || Math.abs(x) > 9.15) return;
       if (isNearColumn(x, z)) return;
       if (isNearInteractiveWait(x, z)) return;
-      DEVOTEE_SEA_PTS.push({ x: Number(x.toFixed(3)), z: Number(z.toFixed(3)), side });
+
+      DEVOTEE_SEA_PTS.push({
+        x: Number(x.toFixed(3)),
+        z: Number(z.toFixed(3)),
+        side,
+        scale: Number((0.88 + hX * 0.24).toFixed(3)),
+        baseYaw: Number(((hZ - 0.5) * 0.35).toFixed(3))
+      });
     }
   });
 });
 
-const FLANK_SEA_ZS = [-4.5, -3.8, -3.1, -2.4, -1.7, -1.0, -0.3, 0.4, 1.1, 1.8, 2.5, 3.2, 3.9, 4.6, 5.3, 6.0, 6.7];
-const FLANK_SEA_XS = [8.15, 8.75];
-FLANK_SEA_ZS.forEach((z) => {
+const FLANK_SEA_ZS = [-4.8, -4.3, -3.8, -3.3, -2.8, -2.3, -1.8, -1.3, -0.8, -0.3, 0.2, 0.7, 1.2, 1.7, 2.2, 2.7, 3.2, 3.7, 4.2, 4.7, 5.2, 5.7, 6.2, 6.7, 7.2];
+const FLANK_SEA_XS = [8.05, 8.65];
+FLANK_SEA_ZS.forEach((baseZ) => {
   FLANK_SEA_XS.forEach((bx) => {
     for (const side of [-1, 1]) {
-      const x = side * bx;
+      const hX = hash2d(bx * side, baseZ);
+      const hZ = hash2d(baseZ, bx * side);
+      const x = side * bx + (hX - 0.5) * 0.12;
+      const z = baseZ + (hZ - 0.5) * 0.12;
+
       if (isNearColumn(x, z)) return;
       if (isNearInteractiveWait(x, z)) return;
-      DEVOTEE_SEA_PTS.push({ x: Number(x.toFixed(3)), z: Number(z.toFixed(3)), side });
+
+      DEVOTEE_SEA_PTS.push({
+        x: Number(x.toFixed(3)),
+        z: Number(z.toFixed(3)),
+        side,
+        scale: Number((0.88 + hX * 0.24).toFixed(3)),
+        baseYaw: Number(((side > 0 ? -0.22 : 0.22) + (hZ - 0.5) * 0.2).toFixed(3))
+      });
     }
   });
 });
@@ -1805,17 +1838,17 @@ const _seaS = new THREE.Vector3();
 DEVOTEE_SEA_PTS.forEach((pt, i) => {
   const baseY = 0;
   DEVOTEE_SEA_BASE_Y.push(baseY);
-  _seaV.set(pt.x + rand(-0.03, 0.03), baseY, pt.z + rand(-0.03, 0.03));
-  const yaw = pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : rand(-0.04, 0.04);
+  _seaV.set(pt.x, baseY, pt.z);
+  const yaw = pt.baseYaw || (pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
   _seaQ.setFromEuler(_seaE.set(0, yaw, 0, 'YXZ'));
-  const sc = rand(0.96, 1.04);
+  const sc = pt.scale || 1.0;
   DEVOTEE_SEA_SCALES.push(sc);
   _seaS.set(sc, sc, sc);
   _m.compose(_seaV, _seaQ, _seaS);
   devoteeSea.setMatrixAt(i, _m);
 
-  const tint = rand(0.95, 1.05);
-  _c.setRGB(tint * rand(0.97, 1.03), tint * rand(0.97, 1.03), tint * rand(0.98, 1.05));
+  const tint = rand(0.94, 1.06);
+  _c.setRGB(tint * rand(0.96, 1.04), tint * rand(0.96, 1.04), tint * rand(0.97, 1.06));
   devoteeSea.setColorAt(i, _c);
 });
 
@@ -1878,7 +1911,7 @@ const SEA_DHARMA_NAMES = [
 ];
 
 const seaTags = [];
-const SEA_TAGS_COUNT = 32;
+const SEA_TAGS_COUNT = 48;
 let lastSeaNameUpdate = -999;
 const SEA_NAME_CYCLE = 10.0; // Cập nhật tên chậm khoảng 10s một lần
 let seaNameCursor = 0;
@@ -1934,7 +1967,7 @@ function updateSeaTags(t) {
       tag.inner.textContent = tag.name;
       tag.born = t;
       tag.dur = SEA_NAME_CYCLE;
-      tag.driftDist = rand(32, 50); // Khoảng cách dịch chuyển bay lên
+      tag.driftDist = rand(55, 95); // Khoảng cách dịch chuyển bay lên
       tag.active = true;
     }
   }
@@ -1974,7 +2007,7 @@ function updateSeaTags(t) {
       alpha = (1.0 - progress) / 0.18;
     }
 
-    const sc = Math.max(0.48, Math.min(0.95, 10 / _sp.dist));
+    const sc = Math.max(0.85, Math.min(1.25, 18 / _sp.dist));
     const x = Math.round(_sp.x);
     const y = Math.round(_sp.y - curDriftY * sc);
 
@@ -4030,21 +4063,22 @@ function updateEnvironment(dt, t) {
     for (let i = 0; i < DEVOTEE_SEA_COUNT; i++) {
       const pt = DEVOTEE_SEA_PTS[i];
       const p1 = i * 0.73, p2 = i * 1.37, p3 = i * 2.11, p4 = i * 0.91;
-      // Di chuyển qua lại và trước sau nhẹ nhàng (dồn trọng tâm đổi chân)
+      // Dồn trọng tâm đổi chân (smooth weight shift giữa 2 chân)
+      const shift = Math.sin(t * 0.55 + p1) + 0.35 * Math.sin(t * 1.1 + p2);
       const swayX = Math.sin(t * 0.8 + p1) * 0.035;
       const swayZ = Math.cos(t * 0.6 + p2) * 0.025;
-      // Nhịp thở / niệm Phật nhấp nhô
-      const bobY = DEVOTEE_SEA_BASE_Y[i] + Math.sin(t * 1.8 + p3) * 0.014;
-      // Xoay nhẹ tương tác (yaw)
-      const baseYaw = pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0;
-      const turnYaw = Math.sin(t * 0.5 + p4) * 0.14 + Math.sin(t * 1.1 + p1) * 0.05;
-      // Cúi đầu tụng niệm (bow pitch)
+      // Nhịp cúi đầu vái lạy niệm Phật trang nghiêm
       const bowPitch = Math.max(0, Math.sin(t * 1.5 + p2)) * 0.07;
-      // Nghiêng mình nhẹ (tilt roll)
-      const tiltRoll = Math.sin(t * 0.8 + p1) * 0.025;
+      // Hạ thân người khi cúi vái + nhịp thở
+      const bobY = (DEVOTEE_SEA_BASE_Y[i] || 0) + Math.sin(t * 1.8 + p3) * 0.014 - bowPitch * 0.05;
+      // Xoay người tự nhiên (yaw) kết hợp hướng đứng cơ bản và liếc nhìn xung quanh
+      const baseYaw = pt.baseYaw || (pt.z < 7.0 ? (pt.side > 0 ? -0.15 : 0.15) : 0);
+      const turnYaw = Math.sin(t * 0.5 + p4) * 0.14 + Math.sin(t * 1.1 + p1) * 0.05;
+      // Nghiêng hông/vai theo chân trụ (roll tilt)
+      const tiltRoll = Math.sin(t * 0.8 + p1) * 0.025 + shift * 0.03;
 
-      _seaV.set(pt.x + swayX, bobY, pt.z + swayZ);
-      _seaE.set(bowPitch, baseYaw + turnYaw, tiltRoll, 'YXZ');
+      _seaV.set(pt.x + swayX + shift * 0.025, bobY, pt.z + swayZ);
+      _seaE.set(bowPitch, baseYaw + turnYaw + shift * 0.08, tiltRoll, 'YXZ');
       _seaQ.setFromEuler(_seaE);
       const sc = DEVOTEE_SEA_SCALES[i] || 1;
       _seaS.set(sc, sc, sc);

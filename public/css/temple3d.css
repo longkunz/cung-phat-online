@@ -135,26 +135,32 @@ body.obs-mode .quick-dock { display: none !important; }
 /* Người đứng chờ ngoài sân */
 .tag.waiting .tag-inner { background: rgba(225, 232, 240, 0.9); border-color: #6f8ba4; color: #22303c; }
 
-/* Nhãn tên biển Phật tử phía sau — bay nhẹ lên, cho phép đè nhau */
+/* Nhãn tên biển Phật tử phía sau — bảng to, đậm, rõ nét, bay lơ lửng cho phép đè nhau */
 .tag.sea-tag {
   pointer-events: none;
-  z-index: 2;
+  z-index: 10;
   will-change: transform, opacity;
 }
 .tag.sea-tag .tag-inner {
-  background: rgba(255, 248, 232, 0.88);
-  border: 1.2px solid #b87a38;
-  color: #3b281c;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 1px 7px 1px 5px;
-  border-radius: 4px 10px 4px 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(180deg, rgba(255, 252, 242, 0.96), rgba(255, 238, 205, 0.94));
+  border: 2px solid #b87326;
+  color: #2e1708;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.15;
+  padding: 4px 12px 4px 9px;
+  border-radius: 6px 14px 6px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), 0 0 10px rgba(255, 200, 90, 0.35);
+  letter-spacing: 0.2px;
 }
 .tag.sea-tag .tag-inner::before {
-  width: 6px;
-  height: 6px;
-  background: linear-gradient(135deg, #e67e3a, #b3421b);
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 0 50% 0;
+  background: linear-gradient(135deg, #e6602e, #a82415);
+  box-shadow: 0 0 5px rgba(230, 96, 46, 0.6);
+  transform: rotate(45deg);
+  flex: none;
 }
 
 .fixed-label { position: absolute; left: 0; top: 0; will-change: transform; transform-origin: 0 0; z-index: 3; }

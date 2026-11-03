@@ -2120,7 +2120,7 @@ if (process.env.NO_SERVER_LISTEN !== '1') {
 
 // Chỉ export khi được file khác import/require (ví dụ: bun test)
 // Tránh export { app } khi chạy trực tiếp để Bun không kích hoạt nhầm Bun.serve()
-const isDirectRun = typeof Bun !== 'undefined' ? import.meta.main : (require.main === module);
+const isDirectRun = Boolean(require.main === module);
 
 if (!isDirectRun) {
   module.exports = {

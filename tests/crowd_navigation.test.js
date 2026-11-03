@@ -273,74 +273,166 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(Math.hypot(hOverlap.pos.x - sAnchored.pos.x, hOverlap.pos.z - sAnchored.pos.z)).toBeGreaterThanOrEqual(0.50);
   });
 
-  test("[Finding P1 Fix] Robust Multi-Agent Relaxation: 5 collinear avatars and 6 coincident avatars strictly satisfy >= 0.50m", () => {
-    // 5 collinear avatars at x = [0, 0.4, 0.8, 1.2, 1.6]
-    const line5 = [
-      createAvatar(1, 0.0, 0, { walking: true }),
-      createAvatar(2, 0.4, 0, { walking: true }),
-      createAvatar(3, 0.8, 0, { walking: true }),
-      createAvatar(4, 1.2, 0, { walking: true }),
-      createAvatar(5, 1.6, 0, { walking: true }),
-    ];
-    CrowdNav.relaxCollisions(line5);
-    for (let i = 0; i < line5.length; i++) {
-      for (let j = i + 1; j < line5.length; j++) {
-        const d = Math.hypot(line5[i].pos.x - line5[j].pos.x, line5[i].pos.z - line5[j].pos.z);
-        expect(d).toBeGreaterThanOrEqual(0.50);
-      }
-    }
-
-    // 6 coincident avatars spawned at the exact same point (0, 0)
-    const coincident6 = [
-      createAvatar(11, 0, 0, { walking: true }),
-      createAvatar(12, 0, 0, { walking: true }),
-      createAvatar(13, 0, 0, { walking: true }),
-      createAvatar(14, 0, 0, { walking: true }),
-      createAvatar(15, 0, 0, { walking: true }),
-      createAvatar(16, 0, 0, { walking: true }),
-    ];
-    CrowdNav.relaxCollisions(coincident6);
-    for (let i = 0; i < coincident6.length; i++) {
-      for (let j = i + 1; j < coincident6.length; j++) {
-        const d = Math.hypot(coincident6[i].pos.x - coincident6[j].pos.x, coincident6[i].pos.z - coincident6[j].pos.z);
-        expect(d).toBeGreaterThanOrEqual(0.50);
-      }
-    }
-  });
-
-  test("[Finding P1 Fix] Script Runner Timeout Stuck Guard: Trapped avatar does not report false arrival or trigger onDone", () => {
-    let onDoneCalled = false;
-    const walker = createAvatar(1, 0, 0, { walking: false });
+  test("[Finding P1 Fix] Symmetric Bottleneck Detour: Walker smoothly weaves around symmetric obstacles and reaches destination", () => {
+    const walker = createAvatar(1, 0, 0, { walking: true, dodgePref: 1 });
     const seatedLeft = createAvatar(2, -0.4, 4, { walking: false, kneel: 1, atSeat: 1 });
     const seatedRight = createAvatar(3, 0.4, 4, { walking: false, kneel: 1, atSeat: 2 });
     const avatars = [walker, seatedLeft, seatedRight];
 
     const target = { x: 0, z: 8 };
+    const dt = 1 / 30;
+    let minLeftDist = 999;
+    let minRightDist = 999;
+    let arrived = false;
+
+    // Chạy mô phỏng trong tối đa 10s (300 frames)
+    for (let frame = 0; frame < 300; frame++) {
+      arrived = CrowdNav.steerAvatar(walker, target, 1.8, dt, avatars);
+      CrowdNav.relaxCollisions(avatars);
+
+      const dL = Math.hypot(walker.pos.x - seatedLeft.pos.x, walker.pos.z - seatedLeft.pos.z);
+      const dR = Math.hypot(walker.pos.x - seatedRight.pos.x, walker.pos.z - seatedRight.pos.z);
+      if (dL < minLeftDist) minLeftDist = dL;
+      if (dR < minRightDist) minRightDist = dR;
+
+      if (arrived) break;
+    }
+
+    // Phải tới đích thành công (không bị kẹt giữa 2 người ngồi)
+    expect(arrived).toBe(true);
+    expect(Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z)).toBeLessThanOrEqual(0.08);
+
+    // Người ngồi không bị đẩy dịch chuyển
+    expect(seatedLeft.pos.x).toBe(-0.4);
+    expect(seatedLeft.pos.z).toBe(4);
+    expect(seatedRight.pos.x).toBe(0.4);
+    expect(seatedRight.pos.z).toBe(4);
+
+    // Duy trì khoảng đệm an toàn >= 0.50m
+    expect(minLeftDist).toBeGreaterThanOrEqual(0.50);
+    expect(minRightDist).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("[Finding P1 Fix] Dense Multi-Agent Relaxation: 10 collinear walkers and 6 coincident avatars strictly satisfy >= 0.50m", () => {
+    // 10 collinear walkers at (i * 0.4, 0)
+    const line10 = [];
+    for (let i = 0; i < 10; i++) {
+      line10.push(createAvatar(i + 1, i * 0.4, 0, { walking: true }));
+    }
+    CrowdNav.relaxCollisions(line10);
+    let minLine10 = 999;
+    for (let i = 0; i < line10.length; i++) {
+      for (let j = i + 1; j < line10.length; j++) {
+        const d = Math.hypot(line10[i].pos.x - line10[j].pos.x, line10[i].pos.z - line10[j].pos.z);
+        if (d < minLine10) minLine10 = d;
+      }
+    }
+    expect(minLine10).toBeGreaterThanOrEqual(0.50);
+
+    // 6 coincident avatars spawned at the exact same point (0, 0)
+    const coincident6 = [
+      createAvatar(21, 0, 0, { walking: true }),
+      createAvatar(22, 0, 0, { walking: true }),
+      createAvatar(23, 0, 0, { walking: true }),
+      createAvatar(24, 0, 0, { walking: true }),
+      createAvatar(25, 0, 0, { walking: true }),
+      createAvatar(26, 0, 0, { walking: true }),
+    ];
+    CrowdNav.relaxCollisions(coincident6);
+    let minCoin6 = 999;
+    for (let i = 0; i < coincident6.length; i++) {
+      for (let j = i + 1; j < coincident6.length; j++) {
+        const d = Math.hypot(coincident6[i].pos.x - coincident6[j].pos.x, coincident6[i].pos.z - coincident6[j].pos.z);
+        if (d < minCoin6) minCoin6 = d;
+      }
+    }
+    expect(minCoin6).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("[Finding P1 Fix] Ritual Cleanup & Recovery on Failure: Trapped avatar releases bowSpot, heroStage, props and recovers (Never Stalled)", () => {
+    let onDoneCalled = false;
+    let onFailCalled = false;
+
+    // Avatar đang hành lễ (Hero có quyền ưu tiên và giữ vị trí bàn thờ)
+    const hero = createAvatar(1, 0, 0, {
+      walking: false,
+      heroStage: 'walk',
+      goldTrail: true,
+      bowSpot: 2,
+      sticks: 2,
+      handPose: 'hold'
+    });
+
+    // Rào chắn kín 4 phía bằng người ngồi tĩnh để avatar hoàn toàn không thể lách qua
+    const blockers = [];
+    let bId = 10;
+    for (let x = -4; x <= 4; x += 0.35) blockers.push(createAvatar(bId++, x, 2, { walking: false, kneel: 1, atSeat: bId }));
+    for (let x = -4; x <= 4; x += 0.35) blockers.push(createAvatar(bId++, x, -2, { walking: false, kneel: 1, atSeat: bId }));
+    for (let z = -2; z <= 2; z += 0.35) blockers.push(createAvatar(bId++, -2, z, { walking: false, kneel: 1, atSeat: bId }));
+    for (let z = -2; z <= 2; z += 0.35) blockers.push(createAvatar(bId++, 2, z, { walking: false, kneel: 1, atSeat: bId }));
+    const avatars = [hero, ...blockers];
+
+    const target = { x: 0, z: 8 };
     const step = CrowdNav.createMoveStep(target, 1.8, false, avatars);
 
-    CrowdNav.runScript(walker, [step], (av) => {
+    CrowdNav.runScript(hero, [step], (av) => {
       onDoneCalled = true;
     });
 
     const dt = 1 / 30;
     // Step duration = 8 / 1.8 = 4.44s. Timeout = 4.44 * 4 + 4 = 21.77s.
-    // Run simulation for 23s (690 frames)
+    // Chạy mô phỏng 23s (690 frames)
     for (let f = 0; f < 690; f++) {
-      CrowdNav.tickScript(walker, dt, avatars);
+      CrowdNav.tickScript(hero, dt, avatars, (av) => {
+        onFailCalled = true;
+      });
       CrowdNav.relaxCollisions(avatars);
     }
 
-    // Must not call onDone because walker is trapped and never arrived
+    // Không được gọi onDone vì avatar bị kẹt
     expect(onDoneCalled).toBe(false);
 
-    // Avatar must be marked as stuck and stop walking
-    expect(walker.stuck).toBe(true);
-    expect(walker.walking).toBe(false);
-    expect(walker.script).toBeNull();
-    expect(walker.busy).toBe(false);
+    // Phải kích hoạt callback xử lý thất bại (failure recovery)
+    expect(onFailCalled).toBe(true);
 
-    // Walker is still trapped before the seated devotees, ~4.36m away from target
-    const distToTarget = Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z);
-    expect(distToTarget).toBeGreaterThan(4.0);
+    // Trạng thái đại lễ phải được dọn dẹp triệt để (Never Stalled):
+    expect(hero.bowSpot).toBe(-1);       // Nhả chỗ bàn thờ cho người khác
+    expect(hero.heroStage).toBe('');     // Hủy quyền ưu tiên đại lễ
+    expect(hero.goldTrail).toBe(false);  // Dừng vệt hoa vàng
+    expect(hero.sticks).toBe(0);         // Xóa nhang trên tay
+    expect(hero.handPose).toBeNull();    // Trả tư thế tay
+    expect(hero.stuck).toBe(true);       // Đánh dấu bị kẹt
+    expect(hero.walking).toBe(false);    // Dừng bước
+    expect(hero.script).toBeNull();      // Xóa script
+  });
+
+  test("[Finding P2 Fix] Canonical Runner Integration: temple3d methods delegate to CrowdNav and handle failure recovery", () => {
+    const fs = require('fs');
+    const path = require('path');
+    const temple3dCode = fs.readFileSync(path.join(__dirname, '../public/js/temple3d.js'), 'utf8');
+
+    // temple3d delegates moveStep, runScript, and tickScript to CrowdNav without duplication
+    expect(temple3dCode).toContain("CrowdNav.createMoveStep(target, speed, keepYaw, avatars)");
+    expect(temple3dCode).toContain("CrowdNav.runScript(a, steps, onDone)");
+    expect(temple3dCode).toContain("CrowdNav.tickScript(a, dt, avatars, (av) =>");
+    expect(temple3dCode).toContain("handleAvatarMoveFailure(av)");
+
+    // Failure recovery cleans up ritual state
+    const mockHero = createAvatar(99, 0, 0, {
+      member: true,
+      seat: 4,
+      heroStage: 'plant',
+      bowSpot: 1,
+      goldTrail: true,
+      sticks: 3,
+      handPose: 'pray'
+    });
+
+    CrowdNav.cleanupAvatarRitual(mockHero);
+    expect(mockHero.bowSpot).toBe(-1);
+    expect(mockHero.heroStage).toBe('');
+    expect(mockHero.goldTrail).toBe(false);
+    expect(mockHero.sticks).toBe(0);
+    expect(mockHero.handPose).toBeNull();
   });
 });

@@ -1790,11 +1790,12 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
+  if (typeof CrowdNav !== 'undefined') {
+    return CrowdNav.createMoveStep(target, speed, keepYaw, avatars);
+  }
   let from = null;
   let dur = 1;
   let arrived = false;
-  let failed = false;
-  let elapsed = 0;
   return {
     start(a) {
       from = a.pos.clone();
@@ -1802,39 +1803,20 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
       arrived = false;
-      failed = false;
-      elapsed = 0;
     },
     get dur() { return dur; },
     isDone(a) { return arrived; },
-    isFailed(a) { return failed; },
     update(a, k, dt) {
-      elapsed += dt;
-      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường (tôn trọng keepYaw và cự ly thực tế)
-      if (typeof CrowdNav !== 'undefined') {
-        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars, keepYaw);
-        // Failsafe timeout: nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
-        const timedOut = elapsed > dur * 4.0 + 4.0;
-        if (arrived) {
-          a.walking = false;
-        } else if (timedOut) {
-          // Bị mắc kẹt hoặc không thể tới đích: đánh dấu thất bại, không báo đã tới đích
-          a.walking = false;
-          a.stuck = true;
-          failed = true;
-        }
-      } else {
-        const px = a.pos.x;
-        const pz = a.pos.z;
-        a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
-        const dx = target.x - from.x;
-        const dz = target.z - from.z;
-        if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
-        a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
-        if (k >= 1) {
-          a.walking = false;
-          arrived = true;
-        }
+      const px = a.pos.x;
+      const pz = a.pos.z;
+      a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
+      const dx = target.x - from.x;
+      const dz = target.z - from.z;
+      if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
+      a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
+      if (k >= 1) {
+        a.walking = false;
+        arrived = true;
       }
     }
   };
@@ -1855,7 +1837,38 @@ function turnStep(yaw, dur = 0.5) {
 }
 /** Bước động: khi tới lượt, gọi fn(a) để sinh tiếp các bước (vd. đường về chỗ ngồi vừa được cấp). */
 const dynStep = (fn) => ({ dur: 0, dynamic: fn });
+function handleAvatarMoveFailure(a) {
+  if (!a) return;
+  a.script = null;
+  a.busy = false;
+  a.walking = false;
+  a.stuck = true;
+  a.entering = false;
+  a.heroStage = '';
+  a.bowSpot = -1;
+  a.goldTrail = false;
+  a.glow = 0;
+  a.handPose = null;
+  a.sticks = 0;
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.cleanupAvatarRitual === 'function') {
+    CrowdNav.cleanupAvatarRitual(a);
+  }
+  if (a.member && a.seat >= 0) {
+    if (typeof seatPos !== 'undefined' && seatPos[a.seat]) a.pos.copy(seatPos[a.seat]);
+    a.yaw = 0;
+    a.kneel = 1;
+    a.atSeat = a.seat;
+    if (typeof onSeatArrive === 'function') onSeatArrive(a);
+  } else if (a.leaving || !a.member) {
+    if (typeof despawn === 'function') despawn(a);
+  }
+}
+
 function runScript(a, steps, onDone) {
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.runScript(a, steps, onDone);
+    return;
+  }
   a.script = { steps: steps.slice(), i: -1, t: 0, onDone };
   a.busy = true;
   nextStep(a);
@@ -1885,6 +1898,12 @@ function nextStep(a) {
   }
 }
 function tickScript(a, dt) {
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.tickScript === 'function') {
+    CrowdNav.tickScript(a, dt, avatars, (av) => {
+      handleAvatarMoveFailure(av);
+    });
+    return;
+  }
   const s = a.script;
   if (!s) return;
   if (s.waiting) { nextStep(a); return; }
@@ -1894,11 +1913,8 @@ function tickScript(a, dt) {
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
   if (step.isFailed ? step.isFailed(a) : false) {
-    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, không gọi s.onDone
-    a.script = null;
-    a.busy = false;
-    a.walking = false;
-    a.stuck = true;
+    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, dọn nghi lễ
+    handleAvatarMoveFailure(a);
     return;
   }
   const done = step.isDone ? step.isDone(a) : (k >= 1);

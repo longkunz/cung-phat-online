@@ -121,13 +121,13 @@ describe("TTS Playback & Fallback Removal Diagnosis", () => {
       const uniqueText = `Câu kinh độc bản thử cache ${Date.now()}`;
       
       // Lần 1: Gọi qua HTTP microservice
-      const res1 = await manager.synthesize(uniqueText, "maichi");
+      const res1 = await manager.synthesize(uniqueText, "maichi", { useCache: true });
       expect(res1.ok).toBe(true);
       expect(res1.audio).toBe("data:audio/wav;base64,CACHE_TEST_AUDIO");
       expect(synthCalls).toBe(1);
 
       // Lần 2: Phục vụ tức thì từ cache đĩa, synthCalls không tăng
-      const res2 = await manager.synthesize(uniqueText, "maichi");
+      const res2 = await manager.synthesize(uniqueText, "maichi", { useCache: true });
       expect(res2.ok).toBe(true);
       expect(res2.cached).toBe(true);
       expect(res2.audio).toBe("data:audio/wav;base64,CACHE_TEST_AUDIO");

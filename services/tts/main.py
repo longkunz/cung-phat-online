@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 import re
 import sys
@@ -19,9 +20,43 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-# Threading environment defaults: allow full CPU utilization without artificial limits
-total_cpus = os.cpu_count() or 4
-thread_setting = os.environ.get("TTS_NUM_THREADS", str(total_cpus))
+# Ensure UTF-8 on Windows for voice pack manifests and metadata
+try:
+    import zerotts.voices as _zv
+    _orig_load_voice_dir = _zv.load_voice_dir
+    def _safe_load_voice_dir(vdir, name=None, expect_queries=None):
+        vdir = Path(vdir)
+        name = name or vdir.name
+        npz = vdir / "voice.npz"
+        if not npz.exists():
+            raise FileNotFoundError(f"{vdir} is not a voice pack: no voice.npz in it")
+        data = np.load(npz)
+        emb = np.asarray(data["voice_emb"], dtype=np.float32)
+        if emb.ndim == 2:
+            emb = emb[None, :, :]
+        stored_q = int(data["n_voice_queries"]) if "n_voice_queries" in data else int(emb.shape[1])
+        if stored_q != emb.shape[1]:
+            raise ValueError(f"voice {name!r} is inconsistent: n_voice_queries={stored_q} but voice_emb has {emb.shape[1]} queries.")
+        if expect_queries is not None and stored_q != expect_queries:
+            raise ValueError(f"voice {name!r} was built with n_voice_queries={stored_q}, but this model uses {expect_queries}.")
+        meta_path = vdir / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+        preview = vdir / "preview.wav"
+        return _zv.Voice(name=name, emb=emb, meta=meta, preview_path=str(preview) if preview.exists() else None)
+    _zv.load_voice_dir = _safe_load_voice_dir
+except Exception:
+    pass
+
+# Optimal thread allocation:
+# On Intel hybrid CPUs (12th/13th/14th gen Alder/Raptor Lake), scheduling ONNX Runtime across both
+# P-cores and E-cores causes thread synchronization barriers to wait for the slower E-cores (taking up to 4x longer).
+# Setting intra-op threads to the physical Performance core count (min 8, or user TTS_INTRA_OP_THREADS)
+# gives optimal real-time throughput.
+cpu_count = os.cpu_count() or 4
+default_threads = min(8, cpu_count)
+optimal_threads = int(os.environ.get("TTS_INTRA_OP_THREADS", str(default_threads)))
+thread_setting = os.environ.get("TTS_NUM_THREADS", str(optimal_threads))
+
 os.environ["OMP_NUM_THREADS"] = thread_setting
 os.environ["MKL_NUM_THREADS"] = thread_setting
 os.environ["OPENBLAS_NUM_THREADS"] = thread_setting
@@ -147,6 +182,7 @@ SERVICE_STATUS = "loading"
 MODEL_SOURCE = resolve_model_source()
 TTS_ENGINE = None
 VOICES: List[str] = ["maichi"]
+VOICE_CACHE: dict[str, np.ndarray] = {}
 DEFAULT_VOICE = "maichi"
 SAMPLE_RATE = 48000
 CONCURRENCY_LOCK: Optional[asyncio.Lock] = None
@@ -154,21 +190,36 @@ LOAD_EVENT = threading.Event()
 
 
 def _init_model() -> None:
-    global TTS_ENGINE, SERVICE_STATUS, VOICES, DEFAULT_VOICE, SAMPLE_RATE
+    global TTS_ENGINE, SERVICE_STATUS, VOICES, DEFAULT_VOICE, SAMPLE_RATE, VOICE_CACHE
     try:
         from zerotts import ZeroTTS
         sys.stdout.write(f"[tts_service] Loading ZeroTTS from: {MODEL_SOURCE}...\n")
         sys.stdout.flush()
-        intra_threads = int(os.environ.get("TTS_INTRA_OP_THREADS", "0"))  # 0 = full CPU auto
-        tts = ZeroTTS.from_pretrained(MODEL_SOURCE, intra_op_num_threads=intra_threads)
+        tts = ZeroTTS.from_pretrained(MODEL_SOURCE, intra_op_num_threads=optimal_threads)
         TTS_ENGINE = tts
         SAMPLE_RATE = int(tts.sample_rate)
         loaded_voices = tts.list_voices()
         if loaded_voices:
             VOICES = loaded_voices
             DEFAULT_VOICE = "maichi" if "maichi" in loaded_voices else loaded_voices[0]
+
+        # Pre-cache all voice embeddings in memory for 0ms voice-switching latency
+        for v_name in VOICES:
+            try:
+                VOICE_CACHE[v_name] = tts.resolve_voice(v_name)
+            except Exception as ve:
+                sys.stderr.write(f"[tts_service] Warning caching voice {v_name}: {ve}\n")
+
+        # Warmup ONNX sessions with real voice embedding to avoid cold-start penalty on first request
+        try:
+            warm_voice = VOICE_CACHE.get(DEFAULT_VOICE)
+            if warm_voice is not None:
+                tts.synthesize("A.", voice=warm_voice, eoa_extra_frames=1)
+        except Exception:
+            pass
+
         SERVICE_STATUS = "ready"
-        sys.stdout.write(f"[tts_service] ZeroTTS ready! Default voice: {DEFAULT_VOICE}, sample rate: {SAMPLE_RATE}, threads: {intra_threads or 'full-cpu'}\n")
+        sys.stdout.write(f"[tts_service] ZeroTTS ready! Default voice: {DEFAULT_VOICE}, sample rate: {SAMPLE_RATE}, threads: {optimal_threads} (Performance Cores optimized)\n")
         sys.stdout.flush()
     except Exception as exc:
         SERVICE_STATUS = "error"
@@ -301,6 +352,8 @@ async def synthesize(req: SynthesizeRequest, request: Request):
     if voice not in VOICES:
         voice = DEFAULT_VOICE
 
+    voice_emb = VOICE_CACHE.get(voice)
+
     lock = get_concurrency_lock()
     async with lock:
         if await request.is_disconnected():
@@ -310,7 +363,12 @@ async def synthesize(req: SynthesizeRequest, request: Request):
             )
         def _infer():
             try:
-                raw_wav = TTS_ENGINE.synthesize(norm_text, voice=voice, eoa_extra_frames=2)
+                # Use in-memory cached speaker latents for instant voice resolution without disk I/O
+                raw_wav = TTS_ENGINE.synthesize(
+                    norm_text,
+                    voice=voice_emb if voice_emb is not None else voice,
+                    eoa_extra_frames=1
+                )
                 if raw_wav is None or raw_wav.size == 0:
                     return None, "No audio generated"
                 clean_audio = polish_waveform(raw_wav, SAMPLE_RATE)

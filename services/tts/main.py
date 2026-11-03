@@ -14,17 +14,18 @@ from typing import List, Optional
 
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-# Set threading environment defaults for low CPU overhead
-os.environ.setdefault("OMP_NUM_THREADS", "3")
-os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
-os.environ.setdefault("MKL_NUM_THREADS", "3")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "3")
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "3")
+# Threading environment defaults: allow full CPU utilization without artificial limits
+total_cpus = os.cpu_count() or 4
+thread_setting = os.environ.get("TTS_NUM_THREADS", str(total_cpus))
+os.environ["OMP_NUM_THREADS"] = thread_setting
+os.environ["MKL_NUM_THREADS"] = thread_setting
+os.environ["OPENBLAS_NUM_THREADS"] = thread_setting
+os.environ["VECLIB_MAXIMUM_THREADS"] = thread_setting
 
 # Vietnamese text filtering regexes
 VIETNAMESE_ALLOWED_RE = re.compile(
@@ -158,7 +159,8 @@ def _init_model() -> None:
         from zerotts import ZeroTTS
         sys.stdout.write(f"[tts_service] Loading ZeroTTS from: {MODEL_SOURCE}...\n")
         sys.stdout.flush()
-        tts = ZeroTTS.from_pretrained(MODEL_SOURCE, intra_op_num_threads=3)
+        intra_threads = int(os.environ.get("TTS_INTRA_OP_THREADS", "0"))  # 0 = full CPU auto
+        tts = ZeroTTS.from_pretrained(MODEL_SOURCE, intra_op_num_threads=intra_threads)
         TTS_ENGINE = tts
         SAMPLE_RATE = int(tts.sample_rate)
         loaded_voices = tts.list_voices()
@@ -166,7 +168,7 @@ def _init_model() -> None:
             VOICES = loaded_voices
             DEFAULT_VOICE = "maichi" if "maichi" in loaded_voices else loaded_voices[0]
         SERVICE_STATUS = "ready"
-        sys.stdout.write(f"[tts_service] ZeroTTS ready! Default voice: {DEFAULT_VOICE}, sample rate: {SAMPLE_RATE}\n")
+        sys.stdout.write(f"[tts_service] ZeroTTS ready! Default voice: {DEFAULT_VOICE}, sample rate: {SAMPLE_RATE}, threads: {intra_threads or 'full-cpu'}\n")
         sys.stdout.flush()
     except Exception as exc:
         SERVICE_STATUS = "error"
@@ -276,7 +278,7 @@ async def voices():
 
 
 @app.post("/synthesize", response_model=SynthesizeResponse)
-async def synthesize(req: SynthesizeRequest):
+async def synthesize(req: SynthesizeRequest, request: Request):
     raw_text = (req.text or "").strip()
     if not raw_text:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"ok": False, "error": "Empty text"})
@@ -301,6 +303,11 @@ async def synthesize(req: SynthesizeRequest):
 
     lock = get_concurrency_lock()
     async with lock:
+        if await request.is_disconnected():
+            return JSONResponse(
+                status_code=499,
+                content={"ok": False, "error": "Client disconnected before inference"}
+            )
         def _infer():
             try:
                 raw_wav = TTS_ENGINE.synthesize(norm_text, voice=voice, eoa_extra_frames=2)

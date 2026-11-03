@@ -1990,6 +1990,32 @@ app.get('/temple3d.html', (req, res) => {
   res.redirect(301, '/' + query);
 });
 
+// Middleware bảo vệ trang Quản Trị: Tự động dùng ADMIN_USER & ADMIN_PASSWORD từ file .env
+const adminAuthMiddleware = (req, res, next) => {
+  const adminPass = process.env.ADMIN_PASSWORD;
+  if (!adminPass) return next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Khu Vuc Quan Tri Chanh Dien"');
+    return res.status(401).send('Yêu cầu xác thực tài khoản quản trị');
+  }
+  const credentials = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+  const colonIdx = credentials.indexOf(':');
+  if (colonIdx === -1) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Khu Vuc Quan Tri Chanh Dien"');
+    return res.status(401).send('Yêu cầu xác thực tài khoản quản trị');
+  }
+  const user = credentials.slice(0, colonIdx);
+  const pass = credentials.slice(colonIdx + 1);
+  const expectedUser = process.env.ADMIN_USER || 'admin';
+  if (user === expectedUser && pass === adminPass) {
+    return next();
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="Khu Vuc Quan Tri Chanh Dien"');
+  return res.status(401).send('Sai tài khoản hoặc mật khẩu');
+};
+app.use(['/admin', '/admin.html'], adminAuthMiddleware);
+
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));

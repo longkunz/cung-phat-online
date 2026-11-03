@@ -29,7 +29,7 @@ Tài liệu này hướng dẫn chi tiết cách public hệ thống **Chùa Thi
 ┌────────────────────────────────────────────────────────┐
 │ 🛡️ LỚP 3: NGINX PROXY GUARD (chua-online-guard)        │
 │ • Khôi phục IP thật của người dùng từ CF-Connecting-IP │
-│ • Chặn /admin bằng HTTP Basic Auth (ADMIN_USER/PASS)   │
+│ • Chặn /admin bằng HTTP Basic Auth từ file .env        │
 │ • Giới hạn tần suất gọi RPC (/rpc: 10 req/s, burst 20) │
 │ • Chuyển tiếp WebSocket (/ws) giữ kết nối 24h không rớt│
 │ • Thêm Security Headers: nosniff, xss-protection,...   │

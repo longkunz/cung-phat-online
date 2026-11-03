@@ -8,8 +8,7 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
   const tunnelComposePath = path.join(projectRoot, "docker-compose.tunnel.yml");
   const nginxConfPath = path.join(projectRoot, "deploy", "cloudflare", "nginx.conf");
   const envExamplePath = path.join(projectRoot, ".env.tunnel.example");
-  const genHtpasswdPath = path.join(projectRoot, "scripts", "gen-htpasswd.js");
-  const htpasswdPath = path.join(projectRoot, "deploy", "cloudflare", ".htpasswd");
+  const serverPath = path.join(projectRoot, "server.js");
 
   test("docker-compose.tunnel.yml syntax is valid and defines 4 services with multi-layer defense", () => {
     expect(fs.existsSync(tunnelComposePath)).toBe(true);
@@ -38,7 +37,7 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
     expect(composeConfig).toMatch(/chua-online-network/);
   });
 
-  test("Nginx proxy guard config enforces admin basic auth, rpc rate limit, and websocket upgrade", () => {
+  test("Nginx proxy guard config enforces dual-stack, rpc rate limit, and websocket upgrade", () => {
     expect(fs.existsSync(nginxConfPath)).toBe(true);
     const nginxConf = fs.readFileSync(nginxConfPath, "utf-8");
 
@@ -54,26 +53,27 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
     expect(nginxConf).toContain("limit_req_zone $binary_remote_addr zone=rpc_limit:10m rate=10r/s;");
     expect(nginxConf).toMatch(/limit_req zone=rpc_limit burst=20 nodelay;/);
 
-    // Admin authentication protection
-    expect(nginxConf).toContain('auth_basic "Khu Vuc Quan Tri Chanh Dien";');
-    expect(nginxConf).toContain("auth_basic_user_file /etc/nginx/.htpasswd;");
-
     // WebSocket upgrade and long keepalive timeout
     expect(nginxConf).toContain("proxy_set_header Upgrade $http_upgrade;");
     expect(nginxConf).toContain('proxy_set_header Connection "upgrade";');
     expect(nginxConf).toContain("proxy_read_timeout 86400s;");
   });
 
-  test("Environment templates and htpasswd generator script are present and functional", () => {
+  test("Express server.js reads ADMIN_USER & ADMIN_PASSWORD directly from .env to guard /admin", () => {
+    expect(fs.existsSync(serverPath)).toBe(true);
+    const serverCode = fs.readFileSync(serverPath, "utf-8");
+
+    expect(serverCode).toContain("adminAuthMiddleware");
+    expect(serverCode).toContain("process.env.ADMIN_PASSWORD");
+    expect(serverCode).toContain("process.env.ADMIN_USER");
+    expect(serverCode).toMatch(/app\.use\(\['\/admin', '\/admin\.html'\], adminAuthMiddleware\)/);
+  });
+
+  test("Environment template defines ADMIN_USER & ADMIN_PASSWORD for zero-friction setup", () => {
     expect(fs.existsSync(envExamplePath)).toBe(true);
     const envContent = fs.readFileSync(envExamplePath, "utf-8");
     expect(envContent).toContain("TUNNEL_TOKEN=");
     expect(envContent).toContain("ADMIN_USER=");
     expect(envContent).toContain("ADMIN_PASSWORD=");
-
-    expect(fs.existsSync(genHtpasswdPath)).toBe(true);
-    expect(fs.existsSync(htpasswdPath)).toBe(true);
-    const htpasswdContent = fs.readFileSync(htpasswdPath, "utf-8");
-    expect(htpasswdContent).toContain("{SHA}");
   });
 });

@@ -1782,10 +1782,15 @@ function isVipDevotee(a) {
 }
 
 function setGlow(a, intensity, color = 0xffd27a, force = false) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.setGlow === 'function') {
+    AvatarRules.setGlow(a, intensity, color, force);
+    return;
+  }
   if (!a) return;
   if (!force && !isVipDevotee(a)) return;
-  a.glow = Math.max(a.glow, intensity);
-  a.glowColor.set(color);
+  a.glow = Math.max(a.glow || 0, intensity);
+  a.glowTarget = intensity;
+  if (a.glowColor && typeof a.glowColor.set === 'function') a.glowColor.set(color);
 }
 function touch(a) {
   if (a) a.lastActive = performance.now();
@@ -1814,21 +1819,31 @@ function ensureTag(a) {
 function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
-function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
+function spawnAvatar(a, spec) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.spawnAvatar === 'function') {
+    return AvatarRules.spawnAvatar(a, spec, {
+      elapsed: clock.elapsed,
+      speedMult: rand(0.92, 1.08),
+      ensureTag,
+      touch
+    });
+  }
+  const { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false } = spec;
+  const isSameDevotee = Boolean(keep && keep.uid === uid);
   const kept = keep ? {
     seat: keep.seat,
     tier: keep.tier,
     vipRank: keep.vipRank,
     flashOnArrive: keep.flashOnArrive,
-    tones: keep.tones,
-    hairStyle: keep.hairStyle
+    tones: isSameDevotee ? keep.tones : undefined,
+    hairStyle: isSameDevotee ? keep.hairStyle : undefined
   } : {};
   Object.assign(a, newAvatar(a.idx), { tag: a.tag }, kept);
   a.active = true;
   a.uid = uid;
   a.name = name || 'Thí Chủ';
   a.member = member;
-  a.pos.copy(at);
+  if (at) a.pos.copy(at);
   a.yaw = yaw;
   a.kneel = kneel;
   if (kneel > 0.5) {
@@ -1837,7 +1852,6 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
-  // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
   a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
   a.speedMult = rand(0.92, 1.08);
   if (kept.tones) {
@@ -3066,7 +3080,7 @@ function updateAvatars(dt, t) {
 
     // vòng sáng dưới chân khi đang vái / lạy (mờ vào/ra mượt)
     const bowing = t - a.bowAt >= 0 && t - a.bowAt < a.bowCount * (a.kneel > 0.9 ? BOW_KNEEL_DUR : BOW_STAND_DUR) + 0.2;
-    const ringOn = bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0;
+    const ringOn = typeof AvatarRules !== 'undefined' && typeof AvatarRules.isBowRingActive === 'function' ? AvatarRules.isBowRingActive(a, t) : (bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0);
     a.ringS = (a.ringS || 0) + (ringOn - (a.ringS || 0)) * smoothK(4, dt);
     if (a.ringS > 0.02) {
       const rs = (1.15 + Math.sin(t * 3 + a.idx) * 0.06) * s;

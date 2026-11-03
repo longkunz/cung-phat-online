@@ -53,6 +53,16 @@ class TempleAudioEngine {
     this.ttsPlaying = false;
     this.currentAudio = null;
     this.onTtsStateChange = null;
+    this.webSpeechVoices = [];
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        const updateVoices = () => {
+          this.webSpeechVoices = window.speechSynthesis.getVoices() || [];
+        };
+        window.speechSynthesis.onvoiceschanged = updateVoices;
+        updateVoices();
+      } catch (_) {}
+    }
   }
 
   ensureContext() {
@@ -491,11 +501,14 @@ class TempleAudioEngine {
   }
 
   async fetchZeroTtsAudio(text, voice = 'maichi') {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 25000) : null;
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice })
+        body: JSON.stringify({ text, voice }),
+        signal: controller ? controller.signal : undefined
       });
       const data = await res.json();
       if (data && data.ok && (data.audio || data.url)) {
@@ -504,6 +517,8 @@ class TempleAudioEngine {
       return { ok: false, error: data?.error || 'ZeroTTS unavailable' };
     } catch (err) {
       return { ok: false, error: err.message };
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
@@ -529,9 +544,18 @@ class TempleAudioEngine {
         if (item.onStart) item.onStart();
         await this.playWavUrl(audioUrl);
         if (item.onEnd) item.onEnd();
+      } else if (this.ttsEnabled && item.text) {
+        // Fallback sang Web Speech API nếu microservice ZeroTTS bận hoặc offline
+        this.setBgDucking(true);
+        if (this.onTtsStateChange) {
+          this.onTtsStateChange({ speaking: true, synthesizing: false, text: item.text });
+        }
+        if (item.onStart) item.onStart();
+        await this.playWebSpeechFallback(item.text);
+        if (item.onEnd) item.onEnd();
       } else {
         if (item.onStart) item.onStart();
-        if (item.onEnd) setTimeout(item.onEnd, 5500);
+        if (item.onEnd) setTimeout(item.onEnd, 1200);
       }
     } catch (err) {
       console.warn('[ZeroTTS Playback Warning]', err);
@@ -548,6 +572,50 @@ class TempleAudioEngine {
         setTimeout(() => this.processTtsQueue(), 250);
       }
     }
+  }
+
+  playWebSpeechFallback(text) {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+        resolve();
+        return;
+      }
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'vi-VN';
+        utterance.volume = this.ttsVolume;
+        utterance.rate = 0.92;
+
+        const voices = (this.webSpeechVoices && this.webSpeechVoices.length)
+          ? this.webSpeechVoices
+          : (window.speechSynthesis.getVoices() || []);
+        const viVoice = voices.find((v) => {
+          const l = (v.lang || '').toLowerCase();
+          const n = (v.name || '').toLowerCase();
+          return l.startsWith('vi') || n.includes('vietnam') || n.includes('vietnamese');
+        });
+        if (viVoice) {
+          utterance.voice = viVoice;
+        }
+
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(safetyTimer);
+          resolve();
+        };
+
+        const safetyTimer = setTimeout(finish, 18000);
+        utterance.onend = finish;
+        utterance.onerror = finish;
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn('[WebSpeech Fallback Error]', err);
+        resolve();
+      }
+    });
   }
 
   playWavUrl(url) {

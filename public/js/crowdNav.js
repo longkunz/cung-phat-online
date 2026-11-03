@@ -343,10 +343,13 @@
     a.heroStage = '';
     a.goldTrail = false;
     a.glow = 0;
+    a.glowTarget = 0;
     a.handPose = null;
     a.sticks = 0;
     a.busy = false;
     a.walking = false;
+    a.entering = false;
+    a.stuck = true;
     a.script = null;
     a.detourSign = 0;
   }

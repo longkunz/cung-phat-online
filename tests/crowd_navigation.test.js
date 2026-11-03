@@ -273,44 +273,46 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(Math.hypot(hOverlap.pos.x - sAnchored.pos.x, hOverlap.pos.z - sAnchored.pos.z)).toBeGreaterThanOrEqual(0.50);
   });
 
-  test("[Finding P1 Fix] Symmetric Bottleneck Detour: Walker smoothly weaves around symmetric obstacles and reaches destination", () => {
-    const walker = createAvatar(1, 0, 0, { walking: true, dodgePref: 1 });
-    const seatedLeft = createAvatar(2, -0.4, 4, { walking: false, kneel: 1, atSeat: 1 });
-    const seatedRight = createAvatar(3, 0.4, 4, { walking: false, kneel: 1, atSeat: 2 });
-    const avatars = [walker, seatedLeft, seatedRight];
+  test("[Finding P1 Fix] Symmetric Bottleneck Detour: Walker smoothly weaves around symmetric obstacles and reaches destination for both preferences", () => {
+    for (const pref of [1, -1]) {
+      const walker = createAvatar(1, 0, 0, { walking: true, dodgePref: pref });
+      const seatedLeft = createAvatar(2, -0.4, 4, { walking: false, kneel: 1, atSeat: 1 });
+      const seatedRight = createAvatar(3, 0.4, 4, { walking: false, kneel: 1, atSeat: 2 });
+      const avatars = [walker, seatedLeft, seatedRight];
 
-    const target = { x: 0, z: 8 };
-    const dt = 1 / 30;
-    let minLeftDist = 999;
-    let minRightDist = 999;
-    let arrived = false;
+      const target = { x: 0, z: 8 };
+      const dt = 1 / 30;
+      let minLeftDist = 999;
+      let minRightDist = 999;
+      let arrived = false;
 
-    // Chạy mô phỏng trong tối đa 10s (300 frames)
-    for (let frame = 0; frame < 300; frame++) {
-      arrived = CrowdNav.steerAvatar(walker, target, 1.8, dt, avatars);
-      CrowdNav.relaxCollisions(avatars);
+      // Chạy mô phỏng trong tối đa 10s (300 frames)
+      for (let frame = 0; frame < 300; frame++) {
+        arrived = CrowdNav.steerAvatar(walker, target, 1.8, dt, avatars);
+        CrowdNav.relaxCollisions(avatars);
 
-      const dL = Math.hypot(walker.pos.x - seatedLeft.pos.x, walker.pos.z - seatedLeft.pos.z);
-      const dR = Math.hypot(walker.pos.x - seatedRight.pos.x, walker.pos.z - seatedRight.pos.z);
-      if (dL < minLeftDist) minLeftDist = dL;
-      if (dR < minRightDist) minRightDist = dR;
+        const dL = Math.hypot(walker.pos.x - seatedLeft.pos.x, walker.pos.z - seatedLeft.pos.z);
+        const dR = Math.hypot(walker.pos.x - seatedRight.pos.x, walker.pos.z - seatedRight.pos.z);
+        if (dL < minLeftDist) minLeftDist = dL;
+        if (dR < minRightDist) minRightDist = dR;
 
-      if (arrived) break;
+        if (arrived) break;
+      }
+
+      // Phải tới đích thành công (không bị kẹt giữa 2 người ngồi)
+      expect(arrived).toBe(true);
+      expect(Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z)).toBeLessThanOrEqual(0.08);
+
+      // Người ngồi không bị đẩy dịch chuyển
+      expect(seatedLeft.pos.x).toBe(-0.4);
+      expect(seatedLeft.pos.z).toBe(4);
+      expect(seatedRight.pos.x).toBe(0.4);
+      expect(seatedRight.pos.z).toBe(4);
+
+      // Duy trì khoảng đệm an toàn >= 0.50m
+      expect(minLeftDist).toBeGreaterThanOrEqual(0.50);
+      expect(minRightDist).toBeGreaterThanOrEqual(0.50);
     }
-
-    // Phải tới đích thành công (không bị kẹt giữa 2 người ngồi)
-    expect(arrived).toBe(true);
-    expect(Math.hypot(target.x - walker.pos.x, target.z - walker.pos.z)).toBeLessThanOrEqual(0.08);
-
-    // Người ngồi không bị đẩy dịch chuyển
-    expect(seatedLeft.pos.x).toBe(-0.4);
-    expect(seatedLeft.pos.z).toBe(4);
-    expect(seatedRight.pos.x).toBe(0.4);
-    expect(seatedRight.pos.z).toBe(4);
-
-    // Duy trì khoảng đệm an toàn >= 0.50m
-    expect(minLeftDist).toBeGreaterThanOrEqual(0.50);
-    expect(minRightDist).toBeGreaterThanOrEqual(0.50);
   });
 
   test("[Finding P1 Fix] Dense Multi-Agent Relaxation: 10, 20, 30 collinear walkers and 6 coincident avatars strictly satisfy >= 0.50m", () => {
@@ -468,6 +470,49 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(hero.stuck).toBe(true);       // Đánh dấu bị kẹt
     expect(hero.walking).toBe(false);    // Dừng bước
     expect(hero.script).toBeNull();      // Xóa script
+    expect(hero.entering).toBe(false);   // Giải phóng cờ entering để phục hồi hàng chờ
+  });
+
+  test("[Finding P1 Fix] Entrance Queue Deadlock Recovery: 6 failed entering avatars reset entering=false, unblocking queue", () => {
+    const MAX_ENTERING = 6;
+    const enteringAvatars = [];
+    const wallOfDevotees = [];
+    let idGen = 100;
+    for (let x = -8; x <= 8; x += 0.35) {
+      wallOfDevotees.push(createAvatar(idGen++, x, 4, { walking: false, kneel: 1, atSeat: idGen }));
+    }
+    for (let z = 0; z <= 4; z += 0.35) {
+      wallOfDevotees.push(createAvatar(idGen++, -8, z, { walking: false, kneel: 1, atSeat: idGen }));
+      wallOfDevotees.push(createAvatar(idGen++, 8, z, { walking: false, kneel: 1, atSeat: idGen }));
+    }
+
+    for (let i = 0; i < MAX_ENTERING; i++) {
+      const a = createAvatar(i + 1, (i - 2.5) * 0.4, 0, { walking: false, entering: true });
+      const step = CrowdNav.createMoveStep({ x: 0, z: 8 }, 1.8, false);
+      CrowdNav.runScript(a, [step], (av) => {
+        av.entering = false;
+      });
+      enteringAvatars.push(a);
+    }
+
+    const allAvatars = [...enteringAvatars, ...wallOfDevotees];
+    const dt = 1 / 30;
+    for (let f = 0; f < 690; f++) {
+      for (const a of enteringAvatars) {
+        CrowdNav.tickScript(a, dt, allAvatars, (av) => {
+          av.entering = false;
+        });
+      }
+      CrowdNav.relaxCollisions(allAvatars);
+    }
+
+    // Sau khi timeout, cả 6 avatar phải có entering = false
+    const enteringCount = allAvatars.filter(x => x.active && x.entering).length;
+    expect(enteringCount).toBe(0);
+
+    // Hàng chờ phục hồi: người thứ 7 vào chùa không bị nghẽn
+    const canEnter = (enteringCount < MAX_ENTERING);
+    expect(canEnter).toBe(true);
   });
 
   test("[Finding P2 Fix] Canonical Runner Integration: temple3d methods delegate to CrowdNav and handle failure recovery", () => {

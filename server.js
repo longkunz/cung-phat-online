@@ -1990,10 +1990,16 @@ app.get('/temple3d.html', (req, res) => {
   res.redirect(301, '/' + query);
 });
 
-// Middleware bảo vệ trang Quản Trị: Tự động dùng ADMIN_USER & ADMIN_PASSWORD từ file .env
+// Middleware bảo vệ Trang Chủ & Quản Trị: Tự động dùng ADMIN_USER & ADMIN_PASSWORD từ file .env
 const adminAuthMiddleware = (req, res, next) => {
   const adminPass = process.env.ADMIN_PASSWORD;
   if (!adminPass) return next();
+
+  // Cho phép nguồn OBS Studio (?obs=1) tải trực tiếp Chánh Điện sạch (không có panel điều khiển)
+  if ((req.path === '/' || req.path === '/index.html') && req.query.obs === '1') {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Basic ')) {
     res.setHeader('WWW-Authenticate', 'Basic realm="Khu Vuc Quan Tri Chanh Dien"');
@@ -2014,6 +2020,14 @@ const adminAuthMiddleware = (req, res, next) => {
   res.setHeader('WWW-Authenticate', 'Basic realm="Khu Vuc Quan Tri Chanh Dien"');
   return res.status(401).send('Sai tài khoản hoặc mật khẩu');
 };
+
+// Khóa trang chủ và trang admin bằng Basic Auth
+app.get('/', adminAuthMiddleware, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/index.html', adminAuthMiddleware, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 app.use(['/admin', '/admin.html'], adminAuthMiddleware);
 
 app.use(express.static(path.join(__dirname, 'public')));

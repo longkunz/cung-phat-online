@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import http from "http";
 
-describe("Admin Authentication via .env (Seam: adminAuthMiddleware)", () => {
+describe("Homepage & Admin Authentication via .env (Seam: adminAuthMiddleware)", () => {
   let serverInstance;
   let serverPort;
 
@@ -22,6 +22,31 @@ describe("Admin Authentication via .env (Seam: adminAuthMiddleware)", () => {
     if (serverInstance) {
       await new Promise((resolve) => serverInstance.close(resolve));
     }
+  });
+
+  test("GET / (Trang chủ có Quick Dock) without Authorization header returns 401", async () => {
+    const res = await fetch(`http://localhost:${serverPort}/`);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain("Basic");
+  });
+
+  test("GET / with valid credentials returns 200 and loads index.html", async () => {
+    const creds = Buffer.from("testadmin:testpassword123").toString("base64");
+    const res = await fetch(`http://localhost:${serverPort}/`, {
+      headers: {
+        Authorization: `Basic ${creds}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("quickDock");
+  });
+
+  test("GET /?obs=1 (Nguồn OBS Studio sạch) bypasses auth and returns 200", async () => {
+    const res = await fetch(`http://localhost:${serverPort}/?obs=1`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Chùa Thiên Mụ");
   });
 
   test("GET /admin without Authorization header returns 401 and Basic realm", async () => {

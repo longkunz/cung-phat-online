@@ -891,7 +891,7 @@ const HALL_MIN_STAY_MS = 90 * 1000;
 const HALL_ACTIVE_GRACE_MS = 60 * 1000;
 const HALL_WAIT_IDLE_MS = 3 * 60 * 1000;
 const HALL_WAITING_MAX = 300;
-const HALL_WAITING_SHOWN = 16;
+const HALL_WAITING_SHOWN = 40;
 const HALL_SEATINGS_PER_TICK = 3;
 const hall = new Map(); // uid -> { uid, name, avatar, seat, joinedAt, lastActive }
 const hallWaiting = new Map(); // uid -> { uid, name, avatar, since, lastActive } — hàng chờ ngoài sân
@@ -1300,13 +1300,13 @@ function takeActionToken(kind) {
 const ARRIVE_EVERY_MS = 3000;
 let lastArriveAt = 0;
 let arrivalsSinceLast = 0;
-function hallArrive(uid, name, avatar) {
+function hallArrive(uid, name, avatar, { force = false } = {}) {
   if (!uid || hall.has(uid) || hallWaiting.has(uid)) return;
   arrivalsSinceLast += 1;
   const now = Date.now();
-  if (now - lastArriveAt < ARRIVE_EVERY_MS) return;
+  if (!force && now - lastArriveAt < ARRIVE_EVERY_MS) return;
   lastArriveAt = now;
-  // Người mới vào live được xếp vào khu vực đứng chờ 2 bên Đạo Tràng
+  // Người mới vào live được xếp vào khu vực đứng phía sau chỗ ngồi
   addToWaiting(uid, sanitizeUserName(name), avatar || '', now);
   scheduleHallBroadcast();
   broadcastNotification('hall.arrive', {
@@ -1914,7 +1914,7 @@ async function handleRpcCall(method, params = {}) {
       return disconnectTikTokLive();
     case 'live.simulateJoin':
       // Giả lập 1 người xem vừa vào live (sự kiện MEMBER của TikTok) để thử hall.arrive
-      hallArrive(params.uniqueId || `sim_join_${Date.now().toString(36)}`, params.user || 'Thí Chủ', params.avatar || '');
+      hallArrive(params.uniqueId || `sim_join_${Date.now().toString(36)}`, params.user || 'Thí Chủ', params.avatar || '', { force: true });
       return { ok: true };
     case 'live.simulateLeave': {
       // Cho 1 người trong hàng chờ hoặc đạo tràng ra về (bước ra cửa)

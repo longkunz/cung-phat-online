@@ -354,14 +354,14 @@ body.obs-mode .quick-dock { display: none !important; }
   padding: 8px 12px 6px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
 }
 .guide-list li {
-  font-size: 16.5px;
-  line-height: 1.35;
+  font-size: 16px;
+  line-height: 1.32;
   color: #fff3d6;
   border-bottom: 1px dashed rgba(242, 195, 91, 0.18);
-  padding-bottom: 6px;
+  padding-bottom: 5px;
 }
 .guide-list li:last-child {
   border-bottom: none;
@@ -369,6 +369,11 @@ body.obs-mode .quick-dock { display: none !important; }
 }
 .guide-list b {
   color: var(--gold-soft);
+}
+.guide-list .pts {
+  color: #ffe694;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 /* Sổ Công Đức — Dời sang bên phải, nằm dưới Bảng Dâng Lễ */

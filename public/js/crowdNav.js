@@ -103,8 +103,8 @@
         const bStatic = isAvatarStatic(b);
 
         // Nhận diện hàng người đứng chờ (Queueing):
-        // Nếu có người đứng phía trước trong làn đi đang dừng hoặc đợi
-        if (forward > 0 && Math.abs(projRight) < 0.35 && (b.waiting || (!b.walking && !bStatic))) {
+        // Chỉ áp dụng cho người thường xếp hàng; Hero làm đại lễ không bị nghẽn sau người chờ
+        if (!aIsHero && forward > 0 && Math.abs(projRight) < 0.35 && (b.waiting || (!b.walking && !bStatic))) {
           queueAhead = true;
           // Giảm tốc và dừng hẳn giữ cự ly cung kính (~0.55m - 0.60m)
           if (d < 1.4) {
@@ -148,7 +148,7 @@
           }
         } else if (aIsHero && !bIsHero) {
           // a là nhân vật chính làm đại lễ, b là người thường đang di chuyển -> a có quyền ưu tiên
-          avoidStrength *= 0.6;
+          if (b.walking) avoidStrength *= 0.6;
         }
 
         if (!queueAhead) {
@@ -237,7 +237,9 @@
     if (!Array.isArray(avatars) || avatars.length < 2) return;
 
     const count = avatars.length;
-    const ITERATIONS = 24;
+    // Số vòng lặp thích ứng theo mật độ đám đông kết hợp hệ số gia tốc SOR (Successive Over-Relaxation)
+    // đảm bảo triệt tiêu xuyên thấu (>= 0.50m) kể cả khi 20-30 người dồn ứ thẳng hàng trong một pass
+    const ITERATIONS = Math.max(36, Math.min(100, count * 3));
 
     // Phân kỳ sơ bộ các avatar trùng khít tọa độ hoàn toàn (coincident spawns)
     for (let i = 0; i < count; i++) {
@@ -319,7 +321,7 @@
             a.pos.x += nx * overlap;
             a.pos.z += nz * overlap;
           } else {
-            const half = overlap * 0.5;
+            const half = overlap * 0.5 * 1.45;
             a.pos.x += nx * half;
             a.pos.z += nz * half;
             b.pos.x -= nx * half;

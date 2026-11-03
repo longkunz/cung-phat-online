@@ -313,7 +313,7 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
     expect(minRightDist).toBeGreaterThanOrEqual(0.50);
   });
 
-  test("[Finding P1 Fix] Dense Multi-Agent Relaxation: 10 collinear walkers and 6 coincident avatars strictly satisfy >= 0.50m", () => {
+  test("[Finding P1 Fix] Dense Multi-Agent Relaxation: 10, 20, 30 collinear walkers and 6 coincident avatars strictly satisfy >= 0.50m", () => {
     // 10 collinear walkers at (i * 0.4, 0)
     const line10 = [];
     for (let i = 0; i < 10; i++) {
@@ -328,6 +328,36 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
       }
     }
     expect(minLine10).toBeGreaterThanOrEqual(0.50);
+
+    // 20 collinear walkers at (i * 0.4, 0)
+    const line20 = [];
+    for (let i = 0; i < 20; i++) {
+      line20.push(createAvatar(i + 1, i * 0.4, 0, { walking: true }));
+    }
+    CrowdNav.relaxCollisions(line20);
+    let minLine20 = 999;
+    for (let i = 0; i < line20.length; i++) {
+      for (let j = i + 1; j < line20.length; j++) {
+        const d = Math.hypot(line20[i].pos.x - line20[j].pos.x, line20[i].pos.z - line20[j].pos.z);
+        if (d < minLine20) minLine20 = d;
+      }
+    }
+    expect(minLine20).toBeGreaterThanOrEqual(0.50);
+
+    // 30 collinear walkers at (i * 0.4, 0)
+    const line30 = [];
+    for (let i = 0; i < 30; i++) {
+      line30.push(createAvatar(i + 1, i * 0.4, 0, { walking: true }));
+    }
+    CrowdNav.relaxCollisions(line30);
+    let minLine30 = 999;
+    for (let i = 0; i < line30.length; i++) {
+      for (let j = i + 1; j < line30.length; j++) {
+        const d = Math.hypot(line30[i].pos.x - line30[j].pos.x, line30[i].pos.z - line30[j].pos.z);
+        if (d < minLine30) minLine30 = d;
+      }
+    }
+    expect(minLine30).toBeGreaterThanOrEqual(0.50);
 
     // 6 coincident avatars spawned at the exact same point (0, 0)
     const coincident6 = [
@@ -347,6 +377,40 @@ describe("Organic Crowd Navigation & Collision Avoidance (Seam: Simulation Step)
       }
     }
     expect(minCoin6).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("[Finding P1 Fix] Hero Right-of-Way vs Waiting Devotee: Hero is not blocked by waiting devotee when flanks are clear and reaches destination", () => {
+    const hero = createAvatar(1, 0, 0, {
+      walking: true,
+      heroStage: 'walk',
+      goldTrail: true
+    });
+    const waitingPerson = createAvatar(2, 0, 4, {
+      walking: false,
+      waiting: true
+    });
+    const avatars = [hero, waitingPerson];
+    const target = { x: 0, z: 8 };
+    const dt = 1 / 30;
+    let minHeroDist = 999;
+    let heroArrived = false;
+
+    for (let f = 0; f < 300; f++) {
+      heroArrived = CrowdNav.steerAvatar(hero, target, 1.8, dt, avatars);
+      CrowdNav.relaxCollisions(avatars);
+
+      const d = Math.hypot(hero.pos.x - waitingPerson.pos.x, hero.pos.z - waitingPerson.pos.z);
+      if (d < minHeroDist) minHeroDist = d;
+
+      if (heroArrived) break;
+    }
+
+    // Hero must arrive at destination and not get stuck behind waiting devotee
+    expect(heroArrived).toBe(true);
+    expect(Math.hypot(target.x - hero.pos.x, target.z - hero.pos.z)).toBeLessThanOrEqual(0.08);
+
+    // Hero must maintain physical clearance >= 0.50m from waiting person
+    expect(minHeroDist).toBeGreaterThanOrEqual(0.50);
   });
 
   test("[Finding P1 Fix] Ritual Cleanup & Recovery on Failure: Trapped avatar releases bowSpot, heroStage, props and recovers (Never Stalled)", () => {

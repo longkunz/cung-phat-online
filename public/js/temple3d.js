@@ -735,11 +735,17 @@ const goldRough = canvasTexture(256, 256, (ctx, w, h) => {
 }, { srgb: false }).tex;
 goldRough.wrapS = goldRough.wrapT = THREE.RepeatWrapping;
 const GOLD = {
-  skin: new THREE.MeshStandardMaterial({ color: 0xf5c464, metalness: 0.9, roughness: 0.48, roughnessMap: goldRough, emissive: 0x4a2a00, emissiveIntensity: 0.45 }),
-  robe: new THREE.MeshStandardMaterial({ color: 0xe9ad45, metalness: 1, roughness: 0.5, roughnessMap: goldRough, normalMap: robeNormal, normalScale: new THREE.Vector2(0.4, 0.4), emissive: 0x3a1e00, emissiveIntensity: 0.45, side: THREE.DoubleSide }),
-  dark: new THREE.MeshStandardMaterial({ color: 0xc98a2e, metalness: 1, roughness: 0.42, emissive: 0x2a1400, emissiveIntensity: 0.4 }),
-  petal: new THREE.MeshStandardMaterial({ color: 0xf6b3b8, metalness: 0.15, roughness: 0.45, side: THREE.DoubleSide, emissive: 0x5a1626, emissiveIntensity: 0.35 }),
-  petalGold: new THREE.MeshStandardMaterial({ color: 0xffd27a, metalness: 1, roughness: 0.3, side: THREE.DoubleSide, emissive: 0x4a2a00, emissiveIntensity: 0.45 })
+  // Chất liệu sơn son thếp vàng quỳ cổ truyền:
+  // Kim thân: vàng quỳ dát mỏng trên nền sơn ta, sắc vàng ấm hổ phách, ánh phản xạ sâu lắng
+  skin: new THREE.MeshStandardMaterial({ color: 0xf6c86a, metalness: 0.78, roughness: 0.44, roughnessMap: goldRough, emissive: 0x452202, emissiveIntensity: 0.46 }),
+  // Y phục: sắc vàng kim cổ truyền, ánh hổ phách từ lớp sơn cánh gián lót bên trong, gân lụa mềm mại
+  robe: new THREE.MeshStandardMaterial({ color: 0xebb44c, metalness: 0.82, roughness: 0.46, roughnessMap: goldRough, normalMap: robeNormal, normalScale: new THREE.Vector2(0.4, 0.4), emissive: 0x381a02, emissiveIntensity: 0.45, side: THREE.DoubleSide }),
+  // Vàng son sẫm / đồng cổ chạm khắc chi tiết
+  dark: new THREE.MeshStandardMaterial({ color: 0xbd7d26, metalness: 0.80, roughness: 0.40, emissive: 0x261200, emissiveIntensity: 0.40 }),
+  // Cánh sen hồng phớt đào thanh tao
+  petal: new THREE.MeshStandardMaterial({ color: 0xf7b8be, metalness: 0.08, roughness: 0.42, side: THREE.DoubleSide, emissive: 0x581222, emissiveIntensity: 0.36 }),
+  // Cánh sen vàng & gương sen thếp vàng quỳ óng ả
+  petalGold: new THREE.MeshStandardMaterial({ color: 0xffd475, metalness: 0.84, roughness: 0.30, side: THREE.DoubleSide, emissive: 0x422400, emissiveIntensity: 0.46 })
 };
 GOLD.robePlain = GOLD.robe.clone();
 GOLD.robePlain.normalMap = null;
@@ -756,11 +762,30 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     parent.add(m);
     return m;
   };
-  // Đế bát giác 2 cấp + viền
-  add(buddha, new THREE.CylinderGeometry(2.25, 2.4, 0.38, 8), M.lacquerDark, [0, 0.19, 0], [1, 1, 1], [0, Math.PI / 8, 0]);
-  add(buddha, new THREE.CylinderGeometry(2.05, 2.2, 0.32, 8), GOLD.dark, [0, 0.54, 0], [1, 1, 1], [0, Math.PI / 8, 0]);
-  add(buddha, new THREE.TorusGeometry(2.12, 0.04, 8, 8), GOLD.skin, [0, 0.7, 0], [1, 1, 1], [Math.PI / 2, 0, Math.PI / 8]);
-  add(buddha, new THREE.CylinderGeometry(1.55, 1.85, 0.5, 48), GOLD.dark, [0, 0.95, 0]);
+  // ============================================================================
+  // TÒA SEN THUẦN TÚY (Pure Lotus Pedestal — loại bỏ đài bát giác)
+  // Liên hoa đài tròn uy nghiêm: chân đế tròn, tầng cánh sen úp (phục liên),
+  // eo thắt chuỗi ngọc liên hoa, 3 tầng cánh sen ngửa (ngưỡng liên), và gương sen.
+  // ============================================================================
+  // 1. Chân đế đài sen tròn thanh thoát tiếp giáp mặt bệ thờ
+  add(buddha, new THREE.CylinderGeometry(1.72, 1.95, 0.18, 64), GOLD.dark, [0, 0.09, 0]);
+  add(buddha, new THREE.TorusGeometry(1.88, 0.04, 16, 64), GOLD.skin, [0, 0.18, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  // 2. Tầng cánh sen úp (hạ liên đài / phục liên): 18 cánh sen úp chúc nhẹ xuống chân đế
+  {
+    const downGeo = petalGeometry(0.70, 0.35, 0.18, -0.16);
+    const downIm = new THREE.InstancedMesh(downGeo, GOLD.dark, 18);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      _e.set(2.18, a, 0, 'YXZ');
+      _m.compose(_v.set(Math.sin(a) * 1.66, 0.38, Math.cos(a) * 1.66), _q.setFromEuler(_e), _s.set(1, 1, 1));
+      downIm.setMatrixAt(i, _m);
+    }
+    buddha.add(downIm);
+  }
+  // 3. Eo đài sen thắt tròn có chuỗi ngọc liên hoa thếp vàng
+  add(buddha, new THREE.CylinderGeometry(1.35, 1.48, 0.30, 64), GOLD.dark, [0, 0.52, 0]);
+  add(buddha, new THREE.TorusGeometry(1.42, 0.045, 16, 64), GOLD.petalGold, [0, 0.67, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  add(buddha, new THREE.CylinderGeometry(1.50, 1.38, 0.28, 64), GOLD.dark, [0, 0.80, 0]);
   // Tòa sen: 3 vòng cánh cong (instanced), vòng trong vàng
   const rings = [
     { n: 18, r: 1.78, y: 0.82, tilt: 1.05, len: 0.95, w: 0.36, mat: GOLD.petal },
@@ -818,10 +843,35 @@ const HEAD_LOCAL = new THREE.Vector3(0, 2.66, 0.03); // trong khung "body"
     // vạt tay áo rủ từ cẳng tay xuống lòng
     add(body, new THREE.SphereGeometry(0.2, 32, 16), GOLD.robePlain, [side * 0.6, 0.94, 0.44], [1.8, 0.62, 0.8], [0, side * 0.62, side * 0.5]);
   }
-  // ấn thiền định: 2 bàn tay chồng ngửa, 2 ngón cái chạm nhau
-  add(body, new THREE.SphereGeometry(0.3, 48, 24), S, [0, 0.82, 0.66], [1.15, 0.26, 0.78]);
-  add(body, new THREE.SphereGeometry(0.3, 48, 24), S, [0, 0.88, 0.68], [1.05, 0.22, 0.72]);
-  for (const side of [-1, 1]) add(body, new THREE.CapsuleGeometry(0.04, 0.14, 8, 16), S, [side * 0.07, 0.98, 0.8], [1, 1, 1], [0, 0, side * 1.15]);
+  // ấn thiền định: 2 bàn tay ngửa lồng nhau, các ngón tay thon dài búp măng, 2 ngón cái chạm đỉnh (Tam muội ấn)
+  // Lòng & mu bàn tay dưới (tay trái) và bàn tay trên (tay phải)
+  add(body, new THREE.SphereGeometry(0.24, 32, 16), S, [0, 0.81, 0.65], [1.14, 0.22, 0.76]);
+  add(body, new THREE.SphereGeometry(0.22, 32, 16), S, [0, 0.87, 0.67], [1.04, 0.20, 0.71]);
+  // 4 ngón tay búp măng bàn tay dưới (cong nhẹ nâng đỡ)
+  const fingersLower = [
+    { x: -0.11, len: 0.16, r: 0.022, rotZ: 0.10 },
+    { x: -0.04, len: 0.19, r: 0.023, rotZ: 0.03 },
+    { x: 0.04, len: 0.19, r: 0.023, rotZ: -0.03 },
+    { x: 0.11, len: 0.16, r: 0.022, rotZ: -0.10 }
+  ];
+  fingersLower.forEach((f) => {
+    add(body, new THREE.CapsuleGeometry(f.r, f.len, 8, 16), S, [f.x, 0.815, 0.78], [1, 1, 0.9], [0.18, 0, f.rotZ]);
+  });
+  // 4 ngón tay búp măng bàn tay trên (thon thả đặt khép nhẹ)
+  const fingersUpper = [
+    { x: -0.09, len: 0.15, r: 0.021, rotZ: 0.08 },
+    { x: -0.03, len: 0.18, r: 0.022, rotZ: 0.02 },
+    { x: 0.03, len: 0.18, r: 0.022, rotZ: -0.02 },
+    { x: 0.09, len: 0.15, r: 0.021, rotZ: -0.08 }
+  ];
+  fingersUpper.forEach((f) => {
+    add(body, new THREE.CapsuleGeometry(f.r, f.len, 8, 16), S, [f.x, 0.875, 0.79], [1, 1, 0.9], [0.14, 0, f.rotZ]);
+  });
+  // Hai ngón tay cái uốn cong chạm nhau ở đỉnh tạo thành vòng Tam Muội thanh khiết
+  for (const side of [-1, 1]) {
+    add(body, new THREE.CapsuleGeometry(0.027, 0.12, 8, 16), S, [side * 0.125, 0.93, 0.74], [1, 1, 1], [0.32, side * 0.22, side * 0.72]);
+    add(body, new THREE.CapsuleGeometry(0.023, 0.10, 8, 16), S, [side * 0.045, 1.00, 0.79], [1, 1, 1], [0.14, 0, side * 1.15]);
+  }
   // hoa sen nhỏ trên tay
   {
     const lotus = new THREE.Group();
@@ -993,11 +1043,25 @@ const haloCarveTex = canvasTexture(512, 512, (ctx, w) => {
 }).tex;
 const haloGroup = new THREE.Group();
 haloGroup.position.set(0, HEAD_Y + 0.12, -17.55);
+// Khối đĩa hào quang đầu có độ dày thực 3D (Cylinder + vát cạnh nổi trước & sau)
+const haloDiscBody = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.28, 0.08, 96), GOLD.dark);
+haloDiscBody.rotation.x = Math.PI / 2;
+haloDiscBody.position.z = -0.04;
+
 const haloCarve = new THREE.Mesh(new THREE.CircleGeometry(1.25, 96), new THREE.MeshStandardMaterial({ map: haloCarveTex, metalness: 0.85, roughness: 0.35, emissive: 0x6a3a00, emissiveIntensity: 0.55 }));
+haloCarve.position.z = 0.005;
+
 const rimMat = new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb030, emissiveIntensity: 1.2, metalness: 0.6, roughness: 0.3 });
-const haloRim = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.06, 16, 128), rimMat);
+// Vành trước nổi khối 3D
+const haloRim = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.055, 16, 128), rimMat);
+haloRim.position.z = 0.02;
+
+// Gờ viền vát cạnh sau đĩa tạo chiều sâu khi nhìn nghiêng
+const haloRimBack = new THREE.Mesh(new THREE.TorusGeometry(1.27, 0.045, 16, 128), GOLD.dark);
+haloRimBack.position.z = -0.08;
+
 const haloRim2 = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.025, 12, 96), rimMat);
-haloRim2.position.z = 0.02;
+haloRim2.position.z = 0.025;
 // viền lửa/mây quanh đầu + quanh thân (mandorla)
 const flameGeo = petalGeometry(0.42, 0.2, 0.1, -0.15, 4, 8);
 const flamePts = [];
@@ -1012,16 +1076,28 @@ flamePts.forEach(([x, y, a, s], i) => {
   flames.setMatrixAt(i, _m);
 });
 const haloGlow = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.6), additive(glowTex, 0xffc861, 0.55));
-haloGlow.position.z = -0.06;
+haloGlow.position.z = -0.10;
 const haloRays = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), additive(raysTex, 0xffd27a, 0.3));
-haloRays.position.z = -0.1;
-const mandorlaRim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 10, 128, Math.PI * 1.24), rimMat);
+haloRays.position.z = -0.15;
+
+// Vành khung hào quang thân 3D (trước & sau nổi khối)
+const mandorlaRim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.038, 12, 128, Math.PI * 1.24), rimMat);
 mandorlaRim.scale.set(3.0, 3.8, 1);
 mandorlaRim.rotation.z = Math.PI / 2 - Math.PI * 0.62 + Math.PI;
 mandorlaRim.position.set(0, -3.35, 0.03);
+
+const mandorlaRimBack = new THREE.Mesh(new THREE.TorusGeometry(1, 0.032, 12, 128, Math.PI * 1.24), GOLD.dark);
+mandorlaRimBack.scale.set(3.0, 3.8, 1);
+mandorlaRimBack.rotation.z = Math.PI / 2 - Math.PI * 0.62 + Math.PI;
+mandorlaRimBack.position.set(0, -3.35, -0.06);
+
+// Cột trụ đồng đỡ đĩa hào quang phía sau (halo mount column)
+const haloMount = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.4, 24), GOLD.dark);
+haloMount.position.set(0, -2.2, -0.12);
+
 const mandorla = new THREE.Mesh(new THREE.PlaneGeometry(7, 9), additive(softTex, 0xff9a3a, 0.36));
-mandorla.position.set(0, -3.0, -0.2);
-haloGroup.add(mandorla, haloRays, haloGlow, haloCarve, haloRim, haloRim2, flames, mandorlaRim);
+mandorla.position.set(0, -3.0, -0.22);
+haloGroup.add(mandorla, haloRays, haloGlow, haloDiscBody, haloCarve, haloRim, haloRimBack, haloRim2, flames, mandorlaRim, mandorlaRimBack, haloMount);
 scene.add(haloGroup);
 
 // Đèn cầy (2 đèn điểm thật) + bình sen
@@ -1706,10 +1782,15 @@ function isVipDevotee(a) {
 }
 
 function setGlow(a, intensity, color = 0xffd27a, force = false) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.setGlow === 'function') {
+    AvatarRules.setGlow(a, intensity, color, force);
+    return;
+  }
   if (!a) return;
   if (!force && !isVipDevotee(a)) return;
-  a.glow = Math.max(a.glow, intensity);
-  a.glowColor.set(color);
+  a.glow = Math.max(a.glow || 0, intensity);
+  a.glowTarget = intensity;
+  if (a.glowColor && typeof a.glowColor.set === 'function') a.glowColor.set(color);
 }
 function touch(a) {
   if (a) a.lastActive = performance.now();
@@ -1738,7 +1819,16 @@ function ensureTag(a) {
 function allocAvatar() {
   return avatars.find((a) => !a.active && !a.queued) || null;
 }
-function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false }) {
+function spawnAvatar(a, spec) {
+  if (typeof AvatarRules !== 'undefined' && typeof AvatarRules.spawnAvatar === 'function') {
+    return AvatarRules.spawnAvatar(a, spec, {
+      elapsed: clock.elapsed,
+      speedMult: rand(0.92, 1.08),
+      ensureTag,
+      touch
+    });
+  }
+  const { uid, name, member, at, yaw = 0, kneel = 0, pop = false, keep = null, anon = false } = spec;
   const isSameDevotee = Boolean(keep && keep.uid === uid);
   const kept = keep ? {
     seat: keep.seat,
@@ -1753,7 +1843,7 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   a.uid = uid;
   a.name = name || 'Thí Chủ';
   a.member = member;
-  a.pos.copy(at);
+  if (at) a.pos.copy(at);
   a.yaw = yaw;
   a.kneel = kneel;
   if (kneel > 0.5) {
@@ -1762,7 +1852,6 @@ function spawnAvatar(a, { uid, name, member, at, yaw = 0, kneel = 0, pop = false
   }
   a.scale = pop ? 0.01 : 1;
   a.popAt = pop ? clock.elapsed : -10;
-  // Cá tính bước chân & thói quen né tránh tự nhiên (Dynamic Crowd Navigation)
   a.dodgePref = (a.idx % 2 === 0 ? 1 : -1) * (Math.random() < 0.25 ? -1 : 1);
   a.speedMult = rand(0.92, 1.08);
   if (kept.tones) {
@@ -1791,11 +1880,12 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
+  if (typeof CrowdNav !== 'undefined') {
+    return CrowdNav.createMoveStep(target, speed, keepYaw, avatars);
+  }
   let from = null;
   let dur = 1;
   let arrived = false;
-  let failed = false;
-  let elapsed = 0;
   return {
     start(a) {
       from = a.pos.clone();
@@ -1803,39 +1893,20 @@ function moveStep(target, speed = WALK_SPEED, keepYaw = false) {
       dur = Math.max(0.2, Math.hypot(target.x - from.x, target.z - from.z) / speed);
       a.walking = true;
       arrived = false;
-      failed = false;
-      elapsed = 0;
     },
     get dur() { return dur; },
     isDone(a) { return arrived; },
-    isFailed(a) { return failed; },
     update(a, k, dt) {
-      elapsed += dt;
-      // Điều hướng né đám đông tự nhiên & đứng chờ khi tắc đường (tôn trọng keepYaw và cự ly thực tế)
-      if (typeof CrowdNav !== 'undefined') {
-        arrived = CrowdNav.steerAvatar(a, target, speed, dt, avatars, keepYaw);
-        // Failsafe timeout: nếu bị kẹt quá 4 lần thời gian dự kiến + 4s
-        const timedOut = elapsed > dur * 4.0 + 4.0;
-        if (arrived) {
-          a.walking = false;
-        } else if (timedOut) {
-          // Bị mắc kẹt hoặc không thể tới đích: đánh dấu thất bại, không báo đã tới đích
-          a.walking = false;
-          a.stuck = true;
-          failed = true;
-        }
-      } else {
-        const px = a.pos.x;
-        const pz = a.pos.z;
-        a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
-        const dx = target.x - from.x;
-        const dz = target.z - from.z;
-        if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
-        a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
-        if (k >= 1) {
-          a.walking = false;
-          arrived = true;
-        }
+      const px = a.pos.x;
+      const pz = a.pos.z;
+      a.pos.set(lerp(from.x, target.x, k), 0, lerp(from.z, target.z, k));
+      const dx = target.x - from.x;
+      const dz = target.z - from.z;
+      if (!keepYaw && Math.abs(dx) + Math.abs(dz) > 0.01) a.yaw = lerpAngle(a.yaw, Math.atan2(-dx, -dz), Math.min(1, dt * 4.5));
+      a.phase += (Math.hypot(a.pos.x - px, a.pos.z - pz) * Math.PI) / STRIDE;
+      if (k >= 1) {
+        a.walking = false;
+        arrived = true;
       }
     }
   };
@@ -1856,7 +1927,38 @@ function turnStep(yaw, dur = 0.5) {
 }
 /** Bước động: khi tới lượt, gọi fn(a) để sinh tiếp các bước (vd. đường về chỗ ngồi vừa được cấp). */
 const dynStep = (fn) => ({ dur: 0, dynamic: fn });
+function handleAvatarMoveFailure(a) {
+  if (!a) return;
+  a.script = null;
+  a.busy = false;
+  a.walking = false;
+  a.stuck = true;
+  a.entering = false;
+  a.heroStage = '';
+  a.bowSpot = -1;
+  a.goldTrail = false;
+  a.glow = 0;
+  a.handPose = null;
+  a.sticks = 0;
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.cleanupAvatarRitual === 'function') {
+    CrowdNav.cleanupAvatarRitual(a);
+  }
+  if (a.member && a.seat >= 0) {
+    if (typeof seatPos !== 'undefined' && seatPos[a.seat]) a.pos.copy(seatPos[a.seat]);
+    a.yaw = 0;
+    a.kneel = 1;
+    a.atSeat = a.seat;
+    if (typeof onSeatArrive === 'function') onSeatArrive(a);
+  } else if (a.leaving || !a.member) {
+    if (typeof despawn === 'function') despawn(a);
+  }
+}
+
 function runScript(a, steps, onDone) {
+  if (typeof CrowdNav !== 'undefined') {
+    CrowdNav.runScript(a, steps, onDone);
+    return;
+  }
   a.script = { steps: steps.slice(), i: -1, t: 0, onDone };
   a.busy = true;
   nextStep(a);
@@ -1886,6 +1988,12 @@ function nextStep(a) {
   }
 }
 function tickScript(a, dt) {
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.tickScript === 'function') {
+    CrowdNav.tickScript(a, dt, avatars, (av) => {
+      handleAvatarMoveFailure(av);
+    });
+    return;
+  }
   const s = a.script;
   if (!s) return;
   if (s.waiting) { nextStep(a); return; }
@@ -1895,11 +2003,8 @@ function tickScript(a, dt) {
   const k = step.dur > 0 ? clamp01(s.t / step.dur) : 1;
   step.update?.(a, k, dt);
   if (step.isFailed ? step.isFailed(a) : false) {
-    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, không gọi s.onDone
-    a.script = null;
-    a.busy = false;
-    a.walking = false;
-    a.stuck = true;
+    // Bước di chuyển bị kẹt/timeout: hủy kịch bản an toàn, dọn nghi lễ
+    handleAvatarMoveFailure(a);
     return;
   }
   const done = step.isDone ? step.isDone(a) : (k >= 1);
@@ -1947,14 +2052,16 @@ function goToSeat(a, onArrive) {
 function onSeatArrive(av) {
   av.entering = false;
   if (av.flashOnArrive) {
-    setGlow(av, 1.8, 0xffe27a, true);
     av.flashOnArrive = false;
+    setGlow(av, 1.8, 0xffe27a);
     for (let i = 0; i < 18; i++) {
       const ang = Math.random() * Math.PI * 2;
       sparks.spawn(av.pos.x, 0.9, av.pos.z, Math.cos(ang) * rand(0.4, 1.4), rand(1.5, 3), Math.sin(ang) * rand(0.4, 1.4), rand(0.7, 1.3), i % 2 ? 0xffe27a : 0xfff4c0);
     }
     const f = makeFloater(av.vipRank ? `⭐ Hàng đầu · hạng ${av.vipRank}` : '⭐ Vào chỗ mới', 'merit', 3000);
     f.anchor = () => av.head;
+  } else {
+    setGlow(av, 1.0);
   }
 }
 
@@ -2167,12 +2274,7 @@ function walkToBurner(a, kind, ev) {
 }
 
 function ritualClimax(a, kind, ev) {
-  if (a) {
-    const isGiftOrGrand = kind === 'gift' || kind === 'grand';
-    if (isGiftOrGrand || isVipDevotee(a)) {
-      setGlow(a, 1.3, isGiftOrGrand ? 0xffe27a : 0xffb35a, true);
-    }
-  }
+  if (a) setGlow(a, 1.3, kind === 'gift' || kind === 'grand' ? 0xffe27a : 0xffb35a);
   burstIncense(kind === 'grand' ? 2 : 1);
   const f = makeFloater(ev?.merit ? `+${ev.merit} Công Đức` : '+ Công Đức', 'merit', 3200);
   const p = new THREE.Vector3(BURNER.x, BURNER_TOP + 1.4, BURNER.z);
@@ -2978,7 +3080,7 @@ function updateAvatars(dt, t) {
 
     // vòng sáng dưới chân khi đang vái / lạy (mờ vào/ra mượt)
     const bowing = t - a.bowAt >= 0 && t - a.bowAt < a.bowCount * (a.kneel > 0.9 ? BOW_KNEEL_DUR : BOW_STAND_DUR) + 0.2;
-    const ringOn = bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0;
+    const ringOn = typeof AvatarRules !== 'undefined' && typeof AvatarRules.isBowRingActive === 'function' ? AvatarRules.isBowRingActive(a, t) : (bowing || ['take', 'raise', 'plant', 'pray'].includes(a.heroStage) ? 1 : 0);
     a.ringS = (a.ringS || 0) + (ringOn - (a.ringS || 0)) * smoothK(4, dt);
     if (a.ringS > 0.02) {
       const rs = (1.15 + Math.sin(t * 3 + a.idx) * 0.06) * s;
@@ -2986,19 +3088,17 @@ function updateAvatars(dt, t) {
       bowRings.setColorAt(nr, _c);
       bowRings.setMatrixAt(nr++, _m.compose(_pos.set(a.pos.x, 0.03 + 0.17 * kc, a.pos.z), _q.identity(), _s.set(rs, 1, rs)));
     }
-    // hào quang (chỉ VIP / khách quý mới có hào quang phát sáng, người thường không có)
+    // hào quang (cộng sáng; cường độ = màu)
     a.glow = Math.max(0, a.glow - dt * 0.55);
-    if (isVipDevotee(a)) {
-      const chanting = t < a.chantUntil;
-      let aura = a.glow;
-      if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
-      if (aura > 0.01) {
-        const sz = (1.5 + aura * 0.6) * s;
-        _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
-        auraMesh.setColorAt(na, _c);
-        auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
-        na++;
-      }
+    const chanting = t < a.chantUntil;
+    let aura = a.glow;
+    if (chanting) aura = Math.max(aura, 0.55 + Math.sin(t * 3 + a.idx) * 0.15);
+    if (aura > 0.01) {
+      const sz = (1.5 + aura * 0.6) * s;
+      _c.copy(chanting ? _c.set(0xffcf5a) : a.glowColor).multiplyScalar(Math.min(1, aura) * 0.7);
+      auraMesh.setColorAt(na, _c);
+      auraMesh.setMatrixAt(na, _m.compose(_pos.set(a.pos.x, waistY * s + 0.2, a.pos.z), _camQ, _s.set(sz, sz * 1.2, 1)));
+      na++;
     }
   }
   for (const [name, im] of Object.entries(parts)) {
@@ -3487,8 +3587,9 @@ function updateEnvironment(dt, t) {
   haloGlow.scale.setScalar(1 + flare.halo * 0.6);
   mandorla.material.opacity = 0.38 + flare.halo * 0.5;
   haloRim.material.emissiveIntensity = 1.2 + flare.halo * 2 + Math.sin(t * 1.3) * 0.15;
-  GOLD.skin.emissiveIntensity = 0.45 + flare.halo * 1.0;
+  GOLD.skin.emissiveIntensity = 0.46 + flare.halo * 1.0;
   GOLD.robe.emissiveIntensity = GOLD.robePlain.emissiveIntensity = 0.45 + flare.halo * 0.9;
+  GOLD.petalGold.emissiveIntensity = 0.46 + flare.halo * 0.9;
 
   for (const g of hangingLanterns) g.quaternion.copy(camera.quaternion);
   for (const f of candleFlames) {
@@ -3885,26 +3986,7 @@ function connect() {
 connect();
 
 // Gỡ lỗi / kiểm thử từ console
-window.Temple3D = {
-  scene,
-  camera,
-  renderer,
-  avatars,
-  director,
-  step: stepSim,
-  clock,
-  applyHallAction,
-  handleEvent,
-  syncRoster,
-  updateStatus,
-  arrive,
-  SHOTS,
-  CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null,
-  isVipDevotee,
-  getOrCreateTones,
-  assignTones,
-  setGlow
-};
+window.Temple3D = { scene, camera, renderer, avatars, director, step: stepSim, clock, applyHallAction, handleEvent, syncRoster, updateStatus, arrive, SHOTS, CrowdNav: typeof CrowdNav !== 'undefined' ? CrowdNav : null };
 
 // ============================================================================
 // 17. QUICK DOCK & INTERACTION CONTROLS

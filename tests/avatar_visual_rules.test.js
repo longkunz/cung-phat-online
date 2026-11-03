@@ -10,6 +10,7 @@ const {
   assignTones,
   isVipDevotee,
   setGlow,
+  isBowRingActive,
   newAvatar,
   spawnAvatar
 } = AvatarRules;
@@ -41,31 +42,39 @@ describe("Avatar Visual Rules & Deterministic Hair/Glow (Production AvatarRules)
     expect(isVipDevotee(giftHero)).toBe(true);
   });
 
-  test("setGlow: ordinary devotees do NOT glow, only VIP/guests of honor glow", () => {
+  test("setGlow: ordinary devotees do NOT glow, only VIP/guests of honor glow, setting both glow and glowTarget", () => {
     const normal = {
       uid: "u1",
       tier: "normal",
       vipRank: 0,
       glow: 0,
+      glowTarget: 0,
       glowColor: new THREE.Color(0xffd27a)
     };
     setGlow(normal, 1.2);
-    expect(normal.glow).toBe(0); // Normal devotee glow remains 0
+    expect(normal.glow).toBe(0);
+    expect(normal.glowTarget).toBe(0);
 
     const vip = {
       uid: "u2",
       tier: "lotus",
       vipRank: 2,
       glow: 0,
+      glowTarget: 0,
       glowColor: new THREE.Color(0xffd27a)
     };
     setGlow(vip, 1.5, 0xffe27a);
     expect(vip.glow).toBe(1.5);
+    expect(vip.glowTarget).toBe(1.5);
     expect(vip.glowColor.getHex()).toBe(0xffe27a);
+
+    // Force override cho phép kích hoạt khi có chỉ định đặc biệt (flashOnArrive)
+    setGlow(normal, 1.8, 0xffe27a, true);
+    expect(normal.glow).toBe(1.8);
+    expect(normal.glowTarget).toBe(1.8);
   });
 
-  test("Foot ring (bowRings) condition is active for ordinary devotees when bowing", () => {
-    const t = 10;
+  test("Foot ring (isBowRingActive) is active for ordinary devotees when bowing and off when finished", () => {
     const normal = {
       uid: "u1",
       tier: "normal",
@@ -74,10 +83,15 @@ describe("Avatar Visual Rules & Deterministic Hair/Glow (Production AvatarRules)
       kneel: 1,
       heroStage: ""
     };
-    const BOW_KNEEL_DUR = 2.4;
-    const bowing = t - normal.bowAt >= 0 && t - normal.bowAt < normal.bowCount * BOW_KNEEL_DUR + 0.2;
-    const ringOn = bowing || ['take', 'raise', 'plant', 'pray'].includes(normal.heroStage) ? 1 : 0;
-    expect(ringOn).toBe(1); // Normal devotees retain foot ring!
+    // Khi đang lạy (t = 11s): vòng sáng chân bật
+    expect(isBowRingActive(normal, 11)).toBe(1);
+
+    // Khi đã lạy xong (t = 20s): vòng sáng chân tắt
+    expect(isBowRingActive(normal, 20)).toBe(0);
+
+    // Hero trong nghi lễ
+    const heroDevotee = { heroStage: "pray" };
+    expect(isBowRingActive(heroDevotee, 10)).toBe(1);
   });
 
   test("Deterministic tones: same UID always receives identical hair color and style across sessions", () => {
@@ -111,8 +125,6 @@ describe("Avatar Visual Rules & Deterministic Hair/Glow (Production AvatarRules)
       member: true,
       at: { x: 0, y: 0, z: 0, copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; } }
     });
-    const aliceHair = slot.tones.hair.getHex();
-    const aliceRobe = slot.tones.robe.getHex();
 
     // 2. Slot is recycled for 'charlie', passing keep: slot (which has alice's state)
     spawnAvatar(slot, {

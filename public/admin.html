@@ -169,13 +169,13 @@
   <div class="container">
     <header class="top-bar">
       <div>
-        <div class="top-title">🪷 BẢNG ĐIỀU KHIỂN CHÙA ONLINE TIKTOK LIVE RPC</div>
+        <div class="top-title">🪷 BẢNG ĐIỀU KHIỂN</div>
         <div class="top-sub" id="statusBanner">Đang tải trạng thái hệ thống...</div>
       </div>
       <div class="top-links">
-        <a class="btn" href="/?obs=1" target="_blank">📺 Mở Màn Hình OBS 9:16 Sạch (?obs=1)</a>
+        <a class="btn" href="/?obs=1" target="_blank">📺 Mở Màn Hình OBS</a>
         <a class="btn gold" href="/" target="_blank">🪷 Mở Màn Hình Live Chính</a>
-        <a class="btn" href="/temple3d.html?obs=1" target="_blank">🛕 Chánh Điện 3D (?obs=1)</a>
+        <button class="btn" type="button" id="btnResetStats" onclick="resetStats()">♻️ Reset Thống Kê</button>
       </div>
     </header>
 
@@ -280,7 +280,7 @@
           <button class="btn" onclick="sendRpc('temple.drawFortune', {})">🎋 Xin Xăm / Gieo Quẻ</button>
           <button class="btn" onclick="sendRpc('temple.offerGift', { giftType: 'fruit', coins: 30, giftName: 'Mâm Ngũ Quả Cát Tường' })">🍑 Dâng Mâm Ngũ Quả</button>
           <button class="btn gold" onclick="sendRpc('temple.grandCeremony', { coins: 500, giftName: 'Đại Lễ Kim Long Chầu Phật' })">🐉 Đại Lễ Kim Long</button>
-          <button class="btn" onclick="sendRpc('temple.resetMerit', {})">♻️ Đặt Lại Bảng Công Đức</button>
+          <button class="btn" type="button" onclick="resetStats()">♻️ Reset Thống Kê</button>
         </div>
       </section>
 
@@ -363,6 +363,15 @@
       if (!res.ok) throw new Error('Không gửi được lệnh. Vui lòng thử lại.');
       refreshStatus();
       return data;
+    }
+
+    async function resetStats() {
+      if (!confirm('Bạn có chắc chắn muốn đặt lại toàn bộ thống kê (hương đã thắp, công đức, bảng vàng)?')) return;
+      try {
+        await sendRpc('temple.resetMerit', {});
+      } catch (err) {
+        alert('Không thể đặt lại thống kê: ' + (err.message || err));
+      }
     }
 
     document.getElementById('btnConn').onclick = () => {

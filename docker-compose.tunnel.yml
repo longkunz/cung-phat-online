@@ -61,23 +61,20 @@ services:
     container_name: chua-online-guard
     expose:
       - "80"
-    environment:
-      - ADMIN_USER=${ADMIN_USER:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     volumes:
       - ./deploy/cloudflare/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./deploy/cloudflare/.htpasswd:/etc/nginx/.htpasswd
-      - ./deploy/cloudflare/40-generate-htpasswd.sh:/docker-entrypoint.d/40-generate-htpasswd.sh:ro
+      - ./deploy/cloudflare/.htpasswd:/etc/nginx/.htpasswd:ro
     depends_on:
       live-gateway:
         condition: service_healthy
         restart: true
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/ready"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ready || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 15s
+      start_interval: 5s
     networks:
       - temple-network
     restart: unless-stopped

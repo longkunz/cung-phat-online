@@ -11,7 +11,8 @@
     "dev:gateway": "bun --watch server.js",
     "dev:tts": "bun run scripts/run-tts.js --dev",
     "test": "bun test",
-    "test:tts": "python -m pytest tests"
+    "test:tts": "python -m pytest tests",
+    "gen:htpasswd": "node scripts/gen-htpasswd.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

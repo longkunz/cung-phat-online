@@ -8,7 +8,8 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
   const tunnelComposePath = path.join(projectRoot, "docker-compose.tunnel.yml");
   const nginxConfPath = path.join(projectRoot, "deploy", "cloudflare", "nginx.conf");
   const envExamplePath = path.join(projectRoot, ".env.tunnel.example");
-  const htpasswdScriptPath = path.join(projectRoot, "deploy", "cloudflare", "40-generate-htpasswd.sh");
+  const genHtpasswdPath = path.join(projectRoot, "scripts", "gen-htpasswd.js");
+  const htpasswdPath = path.join(projectRoot, "deploy", "cloudflare", ".htpasswd");
 
   test("docker-compose.tunnel.yml syntax is valid and defines 4 services with multi-layer defense", () => {
     expect(fs.existsSync(tunnelComposePath)).toBe(true);
@@ -45,6 +46,10 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
     expect(nginxConf).toContain("real_ip_header CF-Connecting-IP;");
     expect(nginxConf).toContain("set_real_ip_from 173.245.48.0/20;");
 
+    // Dual stack listen 80 and [::]:80
+    expect(nginxConf).toContain("listen 80;");
+    expect(nginxConf).toContain("listen [::]:80;");
+
     // Rate limiting zone for RPC
     expect(nginxConf).toContain("limit_req_zone $binary_remote_addr zone=rpc_limit:10m rate=10r/s;");
     expect(nginxConf).toMatch(/limit_req zone=rpc_limit burst=20 nodelay;/);
@@ -59,16 +64,16 @@ describe("Cloudflare Tunnel & Docker Protection Orchestration", () => {
     expect(nginxConf).toContain("proxy_read_timeout 86400s;");
   });
 
-  test("Environment templates and entrypoint scripts are present and configured", () => {
+  test("Environment templates and htpasswd generator script are present and functional", () => {
     expect(fs.existsSync(envExamplePath)).toBe(true);
     const envContent = fs.readFileSync(envExamplePath, "utf-8");
     expect(envContent).toContain("TUNNEL_TOKEN=");
     expect(envContent).toContain("ADMIN_USER=");
     expect(envContent).toContain("ADMIN_PASSWORD=");
 
-    expect(fs.existsSync(htpasswdScriptPath)).toBe(true);
-    const scriptContent = fs.readFileSync(htpasswdScriptPath, "utf-8");
-    expect(scriptContent).toContain("HTPASSWD_FILE");
-    expect(scriptContent).toContain("openssl dgst -sha1");
+    expect(fs.existsSync(genHtpasswdPath)).toBe(true);
+    expect(fs.existsSync(htpasswdPath)).toBe(true);
+    const htpasswdContent = fs.readFileSync(htpasswdPath, "utf-8");
+    expect(htpasswdContent).toContain("{SHA}");
   });
 });

@@ -1,14 +1,35 @@
 /**
  * TempleAudioEngine
- * - Nhạc nền: danh sách phát tối đa 3 bài (cài đặt ở trang Admin), phát lần lượt theo thứ tự,
- *   hết bài cuối quay lại bài đầu. Tự hạ nhỏ (ducking) khi có giọng đọc. Lỗi file -> bỏ qua sang bài kế;
- *   tất cả đều lỗi -> nhạc thiền tổng hợp (Web Audio) dự phòng.
- * - Pháp khí: Mõ gỗ, Đại Hồng Chung, Chuông ngọc thắp hương, Lắc ống xăm — chung 1 kênh âm lượng hiệu ứng,
- *   bật/tắt riêng từng loại.
+ * - Nhạc nền:
+ *   + Phát trực tiếp từ link YouTube (Video thông thường hoặc Livestream 24/7 tụng kinh/nhạc thiền).
+ *   + Tự động hạ nhỏ âm lượng (ducking) khi có giọng đọc TTS.
+ *   + Nếu không cài đặt link YouTube hoặc link lỗi, tự động chuyển về nhạc nền thiền cục bộ (/assets/audio/bg/default.mp3 / .wav).
+ * - Pháp khí: Mõ gỗ, Đại Hồng Chung, Chuông ngọc thắp hương, Lắc ống xăm
+ *   + Nạp và phát các file âm thanh thật từ thư mục /assets/audio/sfx/ (không dùng thuật toán dao động).
+ *   + Quản lý âm lượng hiệu ứng và bật/tắt riêng từng loại.
  * - Giọng đọc: Hàng đợi ZeroTTS phát tuần tự mượt mà.
- * Mọi cài đặt từ server áp dụng qua applySettings(state.settings).
  */
-const DEFAULT_BG_PLAYLIST = [{ id: 'default', name: 'Nam Mô A Di Đà Phật (mặc định)', url: '/assets/bg_chant.m4a' }];
+
+const SFX_CONFIG = {
+  woodfish: ['/assets/audio/sfx/woodfish.mp3', '/assets/audio/sfx/woodfish.wav'],
+  bell: ['/assets/audio/sfx/bell.mp3', '/assets/audio/sfx/bell.wav'],
+  chime: ['/assets/audio/sfx/chime.mp3', '/assets/audio/sfx/chime.wav'],
+  fortune: ['/assets/audio/sfx/fortune.mp3', '/assets/audio/sfx/fortune.wav']
+};
+
+const DEFAULT_BG_CANDIDATES = [
+  '/assets/audio/bg/default.mp3',
+  '/assets/audio/bg/default.wav',
+  '/assets/bg_chant.m4a'
+];
+
+function extractYouTubeId(urlOrId) {
+  if (!urlOrId || typeof urlOrId !== 'string') return '';
+  const str = urlOrId.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str;
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/|shorts\/))([\w-]{11})/i);
+  return match ? match[1] : '';
+}
 
 class TempleAudioEngine {
   constructor() {
@@ -31,56 +52,430 @@ class TempleAudioEngine {
     this.bgBaseVolume = Number.isFinite(savedMusicVol) ? Math.max(0, Math.min(1, savedMusicVol)) : 0.65;
     this.ttsVolume = Number.isFinite(savedTtsVol) ? Math.max(0, Math.min(1, savedTtsVol)) : 0.95;
 
-    this.useSynthMusicFallback = false;
-    this.synthBgTimer = null;
-    this.playlist = DEFAULT_BG_PLAYLIST.slice();
-    this.playlistSig = '';
-    this.trackIndex = 0;
-    this.trackErrors = 0;
-    this.bgAudio = new Audio();
-    this.bgAudio.preload = 'auto';
-    this.bgAudio.volume = this.bgBaseVolume;
-    this.bgAudio.addEventListener('ended', () => this.nextTrack());
-    this.bgAudio.addEventListener('error', () => this.onTrackError());
-    this.bgAudio.addEventListener('playing', () => {
-      this.trackErrors = 0;
-      if (this.onTrackChange) this.onTrackChange(this.currentTrack());
-    });
-    this.onTrackChange = null;
-    this.setPlaylist(this.playlist, { force: true });
+    // Cache buffer âm thanh thật cho SFX
+    this.sfxBuffers = new Map();
+    this.sfxAudioPool = new Map();
+    this.sfxResolvedPaths = new Map();
 
+    // Nhạc nền YouTube
+    this.youtubeUrl = '';
+    this.youtubeVideoId = '';
+    this.ytPlayer = null;
+    this.ytReady = false;
+    this.ytApiLoading = false;
+
+    // Nhạc nền cục bộ dự phòng
+    this.bgAudio = (typeof Audio !== 'undefined') ? new Audio() : null;
+    if (this.bgAudio) {
+      this.bgAudio.preload = 'auto';
+      this.bgAudio.loop = true;
+      this.bgAudio.volume = this.bgBaseVolume;
+      this.setupLocalBgCandidates();
+    }
+
+    // Hàng đợi TTS
     this.ttsQueue = [];
     this.ttsPlaying = false;
     this.currentAudio = null;
     this.onTtsStateChange = null;
+
+    // Tự động preload SFX sớm
+    if (typeof window !== 'undefined') {
+      this.initYouTubeApi();
+      this.preloadSfx();
+    }
   }
 
   ensureContext() {
+    if (typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioCtx();
-      this.sfxBus = this.ctx.createGain();
-      this.sfxBus.gain.value = this.sfxVolume;
-      this.sfxBus.connect(this.ctx.destination);
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+        this.sfxBus = this.ctx.createGain();
+        this.sfxBus.gain.value = this.sfxVolume;
+        this.sfxBus.connect(this.ctx.destination);
+      }
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
     this.unlocked = true;
+
+    // Nạp buffer audio nếu chưa nạp
+    this.preloadSfx();
+
+    // Khởi động nhạc nền khi mở khóa tương tác
     if (this.bgMusicEnabled) {
-      this.startZenAmbience();
+      this.startMusic();
     }
     return this.ctx;
   }
 
-  // Áp dụng toàn bộ cài đặt âm thanh từ server (temple.state.settings)
+  // --------------------------------------------------------------------------
+  // NẠP & PHÁT FILE ÂM THANH THẬT (SFX - PHÁP KHÍ)
+  // --------------------------------------------------------------------------
+  async preloadSfx() {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+    for (const [name, candidates] of Object.entries(SFX_CONFIG)) {
+      if (this.sfxBuffers.has(name) || this.sfxResolvedPaths.has(name)) continue;
+      this.resolveAndLoadSfx(name, candidates);
+    }
+  }
+
+  async resolveAndLoadSfx(name, candidates) {
+    for (const path of candidates) {
+      try {
+        const res = await fetch(path, { method: 'HEAD' });
+        if (!res.ok) continue;
+        this.sfxResolvedPaths.set(name, path);
+        if (typeof Audio !== 'undefined') {
+          const audio = new Audio(path);
+          audio.preload = 'auto';
+          this.sfxAudioPool.set(name, audio);
+        }
+
+        if (this.ctx) {
+          const bufferRes = await fetch(path);
+          const arrayBuf = await bufferRes.arrayBuffer();
+          const audioBuf = await this.ctx.decodeAudioData(arrayBuf);
+          this.sfxBuffers.set(name, audioBuf);
+        }
+        break;
+      } catch (_) {}
+    }
+  }
+
+  async playSfx(name, { volume = 1.0, pitchMultiplier = 1.0 } = {}) {
+    if (!this.canPlaySfx(name)) return;
+    const ctx = this.ensureContext();
+
+    // 1. Ưu tiên phát qua Web Audio Buffer (độ trễ 0ms, phát chồng nhiều âm không rè)
+    if (ctx && this.sfxBuffers.has(name)) {
+      try {
+        const buf = this.sfxBuffers.get(name);
+        const srcNode = ctx.createBufferSource();
+        srcNode.buffer = buf;
+        srcNode.playbackRate.value = Math.max(0.2, Math.min(3.0, pitchMultiplier));
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = Math.max(0, Math.min(2.0, volume));
+
+        srcNode.connect(gainNode);
+        gainNode.connect(this.sfxOut(ctx));
+        srcNode.start(0);
+        return;
+      } catch (_) {}
+    }
+
+    // Nếu chưa decode buffer, giải mã tức thì
+    const resolvedPath = this.sfxResolvedPaths.get(name) || SFX_CONFIG[name]?.[0];
+    if (ctx && resolvedPath && !this.sfxBuffers.has(name) && typeof fetch !== 'undefined') {
+      fetch(resolvedPath)
+        .then((r) => r.arrayBuffer())
+        .then((ab) => ctx.decodeAudioData(ab))
+        .then((audioBuf) => {
+          this.sfxBuffers.set(name, audioBuf);
+          try {
+            const srcNode = ctx.createBufferSource();
+            srcNode.buffer = audioBuf;
+            srcNode.playbackRate.value = pitchMultiplier;
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = volume;
+            srcNode.connect(gainNode);
+            gainNode.connect(this.sfxOut(ctx));
+            srcNode.start(0);
+          } catch (_) {}
+        })
+        .catch(() => this.playAudioElementFallback(name, volume));
+      return;
+    }
+
+    // 2. Fallback bằng HTMLAudioElement
+    this.playAudioElementFallback(name, volume);
+  }
+
+  playAudioElementFallback(name, volume = 1.0) {
+    if (typeof Audio === 'undefined') return;
+    const path = this.sfxResolvedPaths.get(name) || SFX_CONFIG[name]?.[0];
+    if (!path) return;
+    try {
+      const a = new Audio(path);
+      a.volume = Math.max(0, Math.min(1, this.sfxVolume * volume));
+      const p = a.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_) {}
+  }
+
+  // 1. Tiếng Mõ gỗ tụng kinh (Âm thanh thật)
+  playWoodenFish(pitchMultiplier = 1.0, kind = 'woodfish') {
+    if (!this.canPlaySfx(kind)) return;
+    this.playSfx('woodfish', { volume: 1.0, pitchMultiplier });
+  }
+
+  // 2. Tiếng Đại Hồng Chung (Âm thanh thật)
+  playTempleBell(intensity = 1.0) {
+    if (!this.canPlaySfx('bell')) return;
+    this.playSfx('bell', { volume: Math.min(1.2, Math.max(0.2, intensity)) });
+  }
+
+  // 3. Tiếng Chuông ngọc thắp hương / dâng lễ (Âm thanh thật)
+  playIncenseChime() {
+    if (!this.canPlaySfx('chime')) return;
+    this.playSfx('chime', { volume: 1.0 });
+  }
+
+  // 4. Tiếng Lắc ống xăm tre (Âm thanh thật)
+  playFortuneShake() {
+    if (!this.canPlaySfx('fortune')) return;
+    this.playSfx('fortune', { volume: 1.0 });
+  }
+
+  // --------------------------------------------------------------------------
+  // NHẠC NỀN YOUTUBE (HỖ TRỢ LINK VIDEO HOẶC LIVESTREAM 24/7)
+  // --------------------------------------------------------------------------
+  initYouTubeApi() {
+    if (typeof window === 'undefined' || this.ytApiLoading) return;
+    if (window.YT && window.YT.Player) {
+      this.ensureYouTubePlayer();
+      return;
+    }
+    this.ytApiLoading = true;
+    const existingTag = typeof document !== 'undefined' && document.querySelector('script[src*="youtube.com/iframe_api"]');
+    if (!existingTag && typeof document !== 'undefined' && document.head) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.async = true;
+      document.head.appendChild(tag);
+    }
+    const prevInit = typeof window !== 'undefined' && window.onYouTubeIframeAPIReady;
+    if (typeof window !== 'undefined') {
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof prevInit === 'function') prevInit();
+        this.ensureYouTubePlayer();
+      };
+    }
+  }
+
+  getYouTubeContainer() {
+    if (typeof document === 'undefined') return null;
+    let el = document.getElementById('temple-yt-container');
+    if (!el && document.body) {
+      el = document.createElement('div');
+      el.id = 'temple-yt-container';
+      el.setAttribute('aria-hidden', 'true');
+      el.style.cssText = 'position:fixed;bottom:-9999px;right:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;z-index:-1;';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  ensureYouTubePlayer() {
+    if (typeof window === 'undefined' || !window.YT || !window.YT.Player) return;
+    if (this.ytPlayer) return;
+    const container = this.getYouTubeContainer();
+    if (!container) return;
+
+    let playerTarget = document.getElementById('temple-yt-iframe');
+    if (!playerTarget) {
+      playerTarget = document.createElement('div');
+      playerTarget.id = 'temple-yt-iframe';
+      container.appendChild(playerTarget);
+    }
+
+    try {
+      this.ytPlayer = new window.YT.Player('temple-yt-iframe', {
+        height: '1',
+        width: '1',
+        videoId: this.youtubeVideoId || undefined,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          loop: 1,
+          playsinline: 1,
+          rel: 0
+        },
+        events: {
+          onReady: (event) => {
+            this.ytReady = true;
+            const targetVol = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
+            try {
+              event.target.setVolume(Math.round(targetVol * 100));
+            } catch (_) {}
+            if (this.bgMusicEnabled && this.unlocked && this.youtubeVideoId) {
+              try { event.target.playVideo(); } catch (_) {}
+            }
+          },
+          onStateChange: (event) => {
+            if (event.data === window.YT.PlayerState.ENDED) {
+              try { event.target.playVideo(); } catch (_) {}
+            }
+          },
+          onError: () => {
+            if (this.bgMusicEnabled && this.unlocked) {
+              this.startLocalBgAudio();
+            }
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  setYouTubeUrl(url) {
+    const raw = String(url || '').trim();
+    if (raw === this.youtubeUrl) return;
+    this.youtubeUrl = raw;
+    const newId = extractYouTubeId(raw);
+
+    if (newId !== this.youtubeVideoId) {
+      this.youtubeVideoId = newId;
+      if (newId) {
+        this.stopLocalBgAudio();
+        if (this.ytPlayer && this.ytReady) {
+          try {
+            this.ytPlayer.loadVideoById(newId);
+            const targetVol = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
+            this.ytPlayer.setVolume(Math.round(targetVol * 100));
+            if (!this.bgMusicEnabled || !this.unlocked) {
+              this.ytPlayer.pauseVideo();
+            }
+          } catch (_) {}
+        } else {
+          this.initYouTubeApi();
+        }
+      } else {
+        if (this.ytPlayer && this.ytReady) {
+          try { this.ytPlayer.stopVideo(); } catch (_) {}
+        }
+        if (this.bgMusicEnabled && this.unlocked) {
+          this.startLocalBgAudio();
+        }
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // NHẠC NỀN CỤC BỘ DỰ PHÒNG
+  // --------------------------------------------------------------------------
+  async setupLocalBgCandidates() {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+    for (const path of DEFAULT_BG_CANDIDATES) {
+      try {
+        const res = await fetch(path, { method: 'HEAD' });
+        if (res.ok && this.bgAudio) {
+          this.bgAudio.src = path;
+          break;
+        }
+      } catch (_) {}
+    }
+  }
+
+  startLocalBgAudio() {
+    if (!this.bgMusicEnabled || !this.bgAudio) return;
+    try {
+      if (!this.bgAudio.src) {
+        this.bgAudio.src = DEFAULT_BG_CANDIDATES[0];
+      }
+      this.bgAudio.volume = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
+      const p = this.bgAudio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_) {}
+  }
+
+  stopLocalBgAudio() {
+    if (!this.bgAudio) return;
+    try {
+      this.bgAudio.pause();
+    } catch (_) {}
+  }
+
+  startMusic() {
+    if (!this.bgMusicEnabled) return;
+    if (this.youtubeVideoId && this.ytPlayer && this.ytReady) {
+      try {
+        const targetVol = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
+        this.ytPlayer.setVolume(Math.round(targetVol * 100));
+        this.ytPlayer.playVideo();
+      } catch (_) {
+        this.startLocalBgAudio();
+      }
+    } else if (this.youtubeVideoId) {
+      this.initYouTubeApi();
+    } else {
+      this.startLocalBgAudio();
+    }
+  }
+
+  stopMusic() {
+    if (this.ytPlayer && this.ytReady) {
+      try { this.ytPlayer.pauseVideo(); } catch (_) {}
+    }
+    this.stopLocalBgAudio();
+  }
+
+  setMusicEnabled(enabled) {
+    const v = Boolean(enabled);
+    if (v === this.bgMusicEnabled) return;
+    this.bgMusicEnabled = v;
+    if (v) {
+      if (this.unlocked) this.startMusic();
+    } else {
+      this.stopMusic();
+    }
+  }
+
+  setMusicVolume(vol) {
+    const v = Math.max(0, Math.min(1, Number(vol)));
+    if (!Number.isFinite(v)) return;
+    this.bgBaseVolume = v;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('temple_music_vol', String(v));
+      }
+    } catch (_) {}
+
+    const curVol = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
+    if (this.bgAudio) {
+      this.bgAudio.volume = curVol;
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setVolume(Math.round(curVol * 100));
+      } catch (_) {}
+    }
+  }
+
+  getDuckedVolume() {
+    return Math.max(0.05, +(this.bgBaseVolume * 0.28).toFixed(2));
+  }
+
+  setBgDucking(ducked) {
+    if (!this.bgMusicEnabled) return;
+    const targetVol = ducked ? this.getDuckedVolume() : this.bgBaseVolume;
+    if (this.bgAudio) {
+      try {
+        this.bgAudio.volume = targetVol;
+      } catch (_) {}
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setVolume(Math.round(targetVol * 100));
+      } catch (_) {}
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // CÀI ĐẶT CHUNG & ĐIỀU PHỐI ÂM LƯỢNG
+  // --------------------------------------------------------------------------
   applySettings(s = {}) {
     if (!s || typeof s !== 'object') return;
     if (typeof s.ttsEnabled === 'boolean') this.ttsEnabled = s.ttsEnabled;
     if (s.ttsVoice) this.ttsVoice = s.ttsVoice;
     if (typeof s.ttsVolume === 'number') this.setTtsVolume(s.ttsVolume);
     if (typeof s.musicVolume === 'number') this.setMusicVolume(s.musicVolume);
-    if (Array.isArray(s.bgPlaylist)) this.setPlaylist(s.bgPlaylist);
+    if (typeof s.youtubeUrl === 'string') this.setYouTubeUrl(s.youtubeUrl);
     if (typeof s.bgMusicEnabled === 'boolean') this.setMusicEnabled(s.bgMusicEnabled);
     if (typeof s.sfxEnabled === 'boolean') this.sfxEnabled = s.sfxEnabled;
     if (typeof s.sfxVolume === 'number') this.setSfxVolume(s.sfxVolume);
@@ -91,109 +486,14 @@ class TempleAudioEngine {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // 1. NHẠC NỀN — DANH SÁCH PHÁT TỐI ĐA 3 BÀI (CÓ AUTO-DUCKING KHI ĐỌC LỜI KHẤN)
-  // --------------------------------------------------------------------------
-  getDuckedVolume() {
-    return Math.max(0.08, +(this.bgBaseVolume * 0.35).toFixed(2));
-  }
-
-  currentTrack() {
-    return this.playlist[this.trackIndex] || null;
-  }
-
-  setPlaylist(list, { force = false } = {}) {
-    const clean = (Array.isArray(list) ? list : [])
-      .filter((t) => t && typeof t.url === 'string' && t.url)
-      .slice(0, 3)
-      .map((t) => ({ id: t.id || t.url, name: t.name || '', url: t.url }));
-    const sig = clean.map((t) => t.url).join('|');
-    if (!force && sig === this.playlistSig) return;
-    const playingUrl = this.currentTrack()?.url;
-    this.playlist = clean;
-    this.playlistSig = sig;
-    this.trackErrors = 0;
-    if (!clean.length) {
-      this.stopZenAmbience();
-      try { this.bgAudio.removeAttribute('src'); this.bgAudio.load(); } catch (_) {}
-      return;
-    }
-    // Bài đang phát vẫn còn trong danh sách mới -> phát tiếp, không ngắt; ngược lại bắt đầu lại từ bài 1
-    const keepIdx = clean.findIndex((t) => t.url === playingUrl);
-    if (keepIdx >= 0 && !force) {
-      this.trackIndex = keepIdx;
-      this.bgAudio.loop = clean.length === 1;
-      return;
-    }
-    this.useSynthMusicFallback = false;
-    if (this.synthBgTimer) {
-      clearInterval(this.synthBgTimer);
-      this.synthBgTimer = null;
-    }
-    this.loadTrack(0, !force);
-  }
-
-  loadTrack(index, autoplay = true) {
-    if (!this.playlist.length) return;
-    this.trackIndex = ((index % this.playlist.length) + this.playlist.length) % this.playlist.length;
-    const track = this.playlist[this.trackIndex];
-    try {
-      this.bgAudio.loop = this.playlist.length === 1;
-      this.bgAudio.src = track.url;
-      this.bgAudio.volume = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
-      if (autoplay && this.bgMusicEnabled && this.unlocked) {
-        const p = this.bgAudio.play();
-        if (p && typeof p.catch === 'function') p.catch(() => {});
-      }
-    } catch (_) {}
-  }
-
-  nextTrack() {
-    if (this.playlist.length <= 1) return; // 1 bài: bgAudio.loop tự lặp
-    this.loadTrack(this.trackIndex + 1);
-  }
-
-  onTrackError() {
-    if (!this.playlist.length || !this.bgAudio.getAttribute('src')) return;
-    this.trackErrors += 1;
-    if (this.trackErrors >= this.playlist.length) {
-      // Tất cả bài đều lỗi -> nhạc thiền tổng hợp dự phòng
-      this.useSynthMusicFallback = true;
-      if (this.bgMusicEnabled && this.unlocked) this.startDefaultZenSynthLoop();
-      return;
-    }
-    setTimeout(() => this.loadTrack(this.trackIndex + 1), 800);
-  }
-
-  setMusicEnabled(enabled) {
-    const v = Boolean(enabled);
-    if (v === this.bgMusicEnabled) return;
-    this.bgMusicEnabled = v;
-    if (v) {
-      if (this.unlocked) this.startZenAmbience();
-    } else {
-      this.stopZenAmbience();
-    }
-  }
-
-  setMusicVolume(vol) {
-    const v = Math.max(0, Math.min(1, Number(vol)));
-    if (!Number.isFinite(v)) return;
-    this.bgBaseVolume = v;
-    try {
-      localStorage.setItem('temple_music_vol', String(v));
-    } catch (_) {}
-    if (this.bgAudio && !this.useSynthMusicFallback) {
-      this.bgAudio.volume = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
-    }
-  }
-
   setTtsVolume(vol) {
     const v = Math.max(0, Math.min(1, Number(vol)));
     if (!Number.isFinite(v)) return;
     this.ttsVolume = v;
     try {
-      localStorage.setItem('temple_tts_vol', String(v));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('temple_tts_vol', String(v));
+      }
     } catch (_) {}
     if (this.currentAudio) {
       this.currentAudio.volume = this.ttsVolume;
@@ -205,11 +505,14 @@ class TempleAudioEngine {
     if (!Number.isFinite(v)) return;
     this.sfxVolume = v;
     if (this.sfxBus && this.ctx) {
-      this.sfxBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+      try {
+        this.sfxBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+      } catch (_) {
+        this.sfxBus.gain.value = v;
+      }
     }
   }
 
-  // Kênh ra của hiệu ứng (đi qua âm lượng hiệu ứng chung)
   sfxOut(ctx) {
     return this.sfxBus || ctx.destination;
   }
@@ -218,211 +521,8 @@ class TempleAudioEngine {
     return this.sfxEnabled && this.sfxVolume > 0 && this.sfxToggles[kind] !== false;
   }
 
-  startZenAmbience() {
-    if (!this.bgMusicEnabled || !this.playlist.length) return;
-    if (this.useSynthMusicFallback) {
-      this.startDefaultZenSynthLoop();
-      return;
-    }
-    try {
-      if (!this.bgAudio.getAttribute('src')) this.loadTrack(this.trackIndex, false);
-      this.bgAudio.volume = this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume;
-      if (this.bgAudio.paused) {
-        const p = this.bgAudio.play();
-        if (p && typeof p.catch === 'function') p.catch(() => {});
-      }
-    } catch (_) {
-      this.useSynthMusicFallback = true;
-      this.startDefaultZenSynthLoop();
-    }
-  }
-
-  startDefaultZenSynthLoop() {
-    if (!this.bgMusicEnabled || this.synthBgTimer) return;
-    const PENTATONIC = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
-    let step = 0;
-    const playZenNote = () => {
-      if (!this.bgMusicEnabled || !this.ctx) return;
-      try {
-        const now = this.ctx.currentTime;
-        const freq = PENTATONIC[step % PENTATONIC.length];
-        step++;
-        const vol = (this.ttsPlaying ? this.getDuckedVolume() : this.bgBaseVolume) * 0.18;
-        if (vol <= 0.002) return;
-
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now);
-
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(vol, now + 0.6);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 4.2);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.onended = () => {
-          osc.disconnect();
-          gain.disconnect();
-        };
-        osc.start(now);
-        osc.stop(now + 4.25);
-      } catch (_) {}
-    };
-    playZenNote();
-    this.synthBgTimer = setInterval(playZenNote, 3600);
-  }
-
-  stopZenAmbience() {
-    try {
-      this.bgAudio.pause();
-    } catch (_) {}
-    if (this.synthBgTimer) {
-      clearInterval(this.synthBgTimer);
-      this.synthBgTimer = null;
-    }
-  }
-
-  setBgDucking(ducked) {
-    if (!this.bgMusicEnabled) return;
-    try {
-      if (!this.useSynthMusicFallback && this.bgAudio) {
-        this.bgAudio.volume = ducked ? this.getDuckedVolume() : this.bgBaseVolume;
-      }
-    } catch (_) {}
-  }
-
   // --------------------------------------------------------------------------
-  // 2. TIẾNG MÕ GỖ TỤNG KINH (WOODEN FISH PERCUSSION SYNTH)
-  // --------------------------------------------------------------------------
-  playWoodenFish(pitchMultiplier = 1.0, kind = 'woodfish') {
-    if (!this.canPlaySfx(kind)) return;
-    try {
-      const ctx = this.ensureContext();
-      const now = ctx.currentTime;
-
-      const osc1 = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
-      const gain = ctx.createGain();
-
-      const baseFreq = 620 * pitchMultiplier * (0.98 + Math.random() * 0.04);
-      osc1.type = 'triangle';
-      osc1.frequency.setValueAtTime(baseFreq * 1.4, now);
-      osc1.frequency.exponentialRampToValueAtTime(baseFreq, now + 0.018);
-      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.82, now + 0.14);
-
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(baseFreq * 1.15, now);
-      filter.Q.setValueAtTime(4.0, now);
-
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.28, now + 0.006);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-      osc1.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.sfxOut(ctx));
-
-      osc1.onended = () => {
-        osc1.disconnect();
-        filter.disconnect();
-        gain.disconnect();
-      };
-
-      osc1.start(now);
-      osc1.stop(now + 0.16);
-    } catch (_) {}
-  }
-
-  // --------------------------------------------------------------------------
-  // 3. TIẾNG ĐẠI HỒNG CHUNG (TEMPLE BRONZE BELL)
-  // --------------------------------------------------------------------------
-  playTempleBell(intensity = 1.0) {
-    if (!this.canPlaySfx('bell')) return;
-    try {
-      const ctx = this.ensureContext();
-      const now = ctx.currentTime;
-
-      const base = 174;
-      const partials = [
-        { ratio: 0.5, amp: 0.22, decay: 4.2 },
-        { ratio: 1.0, amp: 0.35, decay: 3.6 },
-        { ratio: 1.506, amp: 0.16, decay: 2.4 },
-        { ratio: 2.0, amp: 0.18, decay: 1.9 }
-      ];
-
-      const master = ctx.createGain();
-      master.gain.setValueAtTime(0.28 * Math.min(1.0, intensity), now);
-      master.connect(this.sfxOut(ctx));
-
-      partials.forEach((p, idx) => {
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(base * p.ratio, now);
-
-        g.gain.setValueAtTime(0.0001, now);
-        g.gain.linearRampToValueAtTime(p.amp, now + 0.015);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
-
-        osc.connect(g);
-        g.connect(master);
-        osc.onended = () => {
-          osc.disconnect();
-          g.disconnect();
-          if (idx === 0) master.disconnect();
-        };
-        osc.start(now);
-        osc.stop(now + p.decay + 0.05);
-      });
-    } catch (_) {}
-  }
-
-  // --------------------------------------------------------------------------
-  // 4. TIẾNG LẮC ỐNG XĂM TRE (FORTUNE STICK SHAKER)
-  // --------------------------------------------------------------------------
-  playFortuneShake() {
-    if (!this.canPlaySfx('fortune')) return;
-    for (let i = 0; i < 5; i++) {
-      setTimeout(() => {
-        this.playWoodenFish(1.32 + (i % 2) * 0.16, 'fortune');
-      }, i * 120);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // 5. TIẾNG CHUÔNG NGỌC DÂNG LỄ / THẮP HƯƠNG (SINGING CHIME)
-  // --------------------------------------------------------------------------
-  playIncenseChime() {
-    if (!this.canPlaySfx('chime')) return;
-    try {
-      const ctx = this.ensureContext();
-      const now = ctx.currentTime;
-      const notes = [528, 660];
-      notes.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
-
-        gain.gain.setValueAtTime(0.0001, now + idx * 0.1);
-        gain.gain.linearRampToValueAtTime(0.10, now + idx * 0.1 + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.1 + 1.1);
-
-        osc.connect(gain);
-        gain.connect(this.sfxOut(ctx));
-        osc.onended = () => {
-          osc.disconnect();
-          gain.disconnect();
-        };
-        osc.start(now + idx * 0.1);
-        osc.stop(now + idx * 0.1 + 1.15);
-      });
-    } catch (_) {}
-  }
-
-  // --------------------------------------------------------------------------
-  // 6. ZEROTTS VOICE QUEUE & PREFETCHER
+  // HÀNG ĐỢI GIỌNG ĐỌC ZEROTTS & AUTO-DUCKING
   // --------------------------------------------------------------------------
   enqueueTts(text, options = {}) {
     const onStart = typeof options.onStart === 'function' ? options.onStart : null;
@@ -440,11 +540,9 @@ class TempleAudioEngine {
       return;
     }
 
-    // priority: 0 (thắp hương) .. 3 (cảm tạ quà tặng — không bao giờ bị bỏ). jump: chen lên ngay sau câu đang đọc.
     const priority = Number.isFinite(options.priority) ? options.priority : 1;
     const jump = Boolean(options.jump);
     if (this.ttsQueue.length >= 6) {
-      // Đầy hàng: bỏ câu ưu tiên thấp nhất (cũ nhất trong cùng mức), không bao giờ bỏ lời cảm tạ quà
       let victim = -1;
       for (let i = 0; i < this.ttsQueue.length; i++) {
         const q = this.ttsQueue[i];
@@ -456,7 +554,6 @@ class TempleAudioEngine {
         if (dropped?.onStart) dropped.onStart();
         if (dropped?.onEnd) dropped.onEnd();
       } else if (priority < 3) {
-        // câu mới còn kém ưu tiên hơn mọi câu đang chờ -> bỏ qua giọng đọc (vẫn chạy hiệu ứng)
         if (onStart) onStart();
         if (onEnd) setTimeout(onEnd, 1500);
         return;
@@ -480,7 +577,6 @@ class TempleAudioEngine {
     }
 
     if (jump) {
-      // Không ngắt câu đang đọc: chen trước mọi câu thường đang chờ, sau các câu quà tặng đã chen trước (FIFO giữa quà)
       let at = 0;
       while (at < this.ttsQueue.length && this.ttsQueue[at].jump) at++;
       this.ttsQueue.splice(at, 0, item);
@@ -535,7 +631,6 @@ class TempleAudioEngine {
         await this.playWavUrl(audioUrl);
         if (item.onEnd) item.onEnd();
       } else {
-        // Không có audio hoặc TTS lỗi/tắt -> im luôn, không fallback sang Web Speech API
         if (item.onStart) item.onStart();
         if (item.onEnd) item.onEnd();
       }
@@ -557,10 +652,10 @@ class TempleAudioEngine {
   }
 
   playWavUrl(url) {
+    if (typeof Audio === 'undefined') return Promise.resolve();
     return new Promise((resolve) => {
       let done = false;
       let audio = null;
-      // Chốt an toàn: nếu file bị treo (không bao giờ bắn ended/error) hàng đợi TTS sẽ kẹt vĩnh viễn
       const safetyTimer = setTimeout(() => finish(), 45000);
       const finish = () => {
         if (done) return;
@@ -589,4 +684,12 @@ class TempleAudioEngine {
   }
 }
 
-window.TempleAudioEngine = TempleAudioEngine;
+if (typeof window !== 'undefined') {
+  window.TempleAudioEngine = TempleAudioEngine;
+  window.extractYouTubeId = extractYouTubeId;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = TempleAudioEngine;
+  module.exports.TempleAudioEngine = TempleAudioEngine;
+  module.exports.extractYouTubeId = extractYouTubeId;
+}

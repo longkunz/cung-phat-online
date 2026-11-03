@@ -308,7 +308,9 @@ const DEFAULT_STATE = {
     sfx: { bell: true, woodfish: true, chime: true, fortune: true },
     smokeDensity: 1.0,
     autoSim: false,
-    autoSimIntervalMs: 9500
+    autoSimIntervalMs: 9500,
+    crowdSeaMode: 'always',
+    crowdSeaThreshold: 100
   },
   tiktok: {
     connected: false,
@@ -822,12 +824,20 @@ const Rituals = {
         (typeof params.autoSimIntervalMs !== 'number' || !Number.isFinite(params.autoSimIntervalMs) || params.autoSimIntervalMs < 2000)) {
       throw new Error('Chu kỳ giả lập phải là số mili-giây >= 2000');
     }
+    if (params.crowdSeaMode !== undefined && !['always', 'threshold', 'scale', 'off'].includes(params.crowdSeaMode)) {
+      throw new Error('Chế độ biển người không hợp lệ (always, threshold, scale, off)');
+    }
+    if (params.crowdSeaThreshold !== undefined &&
+        (typeof params.crowdSeaThreshold !== 'number' || !Number.isFinite(params.crowdSeaThreshold) || params.crowdSeaThreshold < 1)) {
+      throw new Error('Ngưỡng số lượng người phải là số nguyên >= 1');
+    }
     // Chỉ nhận các khóa cài đặt hợp lệ, tránh client ghi đè rác vào state/merit-state.json
     const ALLOWED_KEYS = [
       'ttsEnabled', 'ttsVoice', 'ttsVolume',
       'musicVolume', 'bgMusicEnabled', 'youtubeUrl',
       'sfxEnabled', 'sfxVolume', 'sfx',
-      'smokeDensity', 'autoSim', 'autoSimIntervalMs'
+      'smokeDensity', 'autoSim', 'autoSimIntervalMs',
+      'crowdSeaMode', 'crowdSeaThreshold'
     ];
     const patch = {};
     for (const key of ALLOWED_KEYS) {

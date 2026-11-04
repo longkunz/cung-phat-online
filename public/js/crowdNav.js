@@ -145,6 +145,7 @@
         // Quy tắc chuẩn giao thông đường bộ: luôn ưu tiên lách sang bên phải của mình (steerSide = 1) khi đối đầu trực diện
         let steerSide = 1;
         if (!a.dodgeSideMap) a.dodgeSideMap = new Map();
+        else if (a.dodgeSideMap.size > 8) a.dodgeSideMap.clear();
         if (a.dodgeSideMap.has(bId)) {
           steerSide = a.dodgeSideMap.get(bId);
         } else {

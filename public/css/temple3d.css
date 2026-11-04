@@ -10,6 +10,11 @@
   --ivory: #fff6e2;
   --lam: #6f8ba4;
   --ink: #2a120c;
+
+  /* TikTok Live Mobile Safe Zone Margins (Dành cho màn hình 19.5:9 & 20:9 chống crop 2 bên) */
+  --safe-margin-left: 104px;
+  --safe-margin-right: 108px;
+  --safe-panel-width: 255px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -319,10 +324,10 @@ body.obs-mode .quick-dock { display: none !important; }
    -------------------------------------------------------------------------- */
 .guide-scroll {
   position: absolute;
-  left: 22px;
+  left: 104px;
   top: 190px;
-  width: 300px;
-  padding: 0 0 12px;
+  width: 255px;
+  padding: 0 0 10px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(92, 17, 10, 0.88), rgba(55, 10, 6, 0.88));
   border: 2px solid rgba(242, 195, 91, 0.65);
@@ -341,27 +346,27 @@ body.obs-mode .quick-dock { display: none !important; }
   text-align: center;
   font-family: 'Noto Serif', serif;
   font-weight: 900;
-  font-size: 20px;
+  font-size: 18.5px;
   letter-spacing: 0.3px;
   white-space: nowrap;
   color: var(--gold-soft);
-  padding: 8px 0 6px;
+  padding: 7px 0 5px;
   border-bottom: 1px solid rgba(242, 195, 91, 0.35);
   background: linear-gradient(90deg, rgba(140, 90, 10, 0.5), rgba(200, 140, 30, 0.35), rgba(140, 90, 10, 0.5));
 }
 .guide-list {
   list-style: none;
-  padding: 8px 12px 6px;
+  padding: 6px 10px 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 .guide-list li {
-  font-size: 16px;
-  line-height: 1.32;
+  font-size: 14px;
+  line-height: 1.28;
   color: #fff3d6;
   border-bottom: 1px dashed rgba(242, 195, 91, 0.18);
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 .guide-list li:last-child {
   border-bottom: none;
@@ -379,10 +384,10 @@ body.obs-mode .quick-dock { display: none !important; }
 /* Sổ Công Đức — Dời sang bên phải, nằm dưới Bảng Dâng Lễ */
 .merit-scroll {
   position: absolute;
-  right: 22px;
+  right: 108px;
   left: auto;
   top: 590px;
-  width: 300px;
+  width: 255px;
   max-height: 480px;
   padding: 0 0 12px;
   border-radius: 10px;
@@ -403,31 +408,31 @@ body.obs-mode .quick-dock { display: none !important; }
   text-align: center;
   font-family: 'Noto Serif', serif;
   font-weight: 900;
-  font-size: 27px;
+  font-size: 24px;
   letter-spacing: 1px;
   color: var(--gold-soft);
-  padding: 8px 0 6px;
+  padding: 7px 0 5px;
   border-bottom: 1px solid rgba(242, 195, 91, 0.35);
 }
-.merit-list { list-style: none; padding: 6px 12px 4px; }
+.merit-list { list-style: none; padding: 5px 10px 4px; }
 .merit-list li {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 0;
-  font-size: 20px;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 17px;
   border-bottom: 1px dashed rgba(242, 195, 91, 0.18);
 }
 .merit-list li:last-child { border-bottom: none; }
 .merit-rank {
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 15px;
   color: #3a1206;
   background: #d8b06a;
 }
@@ -516,9 +521,9 @@ body.obs-mode .quick-dock { display: none !important; }
    -------------------------------------------------------------------------- */
 .gift-board {
   position: absolute;
-  right: 22px;
+  right: 108px;
   top: 190px;
-  width: 300px;
+  width: 255px;
   max-height: 380px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(70, 40, 6, 0.86), rgba(40, 20, 4, 0.86));
@@ -531,30 +536,30 @@ body.obs-mode .quick-dock { display: none !important; }
   text-align: center;
   font-family: 'Noto Serif', serif;
   font-weight: 900;
-  font-size: 26px;
+  font-size: 23px;
   color: #ffe7a0;
-  padding: 8px 0 6px;
+  padding: 7px 0 5px;
   border-bottom: 1px solid rgba(255, 210, 110, 0.35);
   background: linear-gradient(90deg, rgba(140, 90, 10, 0.5), rgba(200, 140, 30, 0.35), rgba(140, 90, 10, 0.5));
 }
-.gift-list { list-style: none; padding: 4px 10px 6px; }
+.gift-list { list-style: none; padding: 4px 8px 5px; }
 .gift-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 0;
-  font-size: 18px;
+  gap: 7px;
+  padding: 4px 0;
+  font-size: 16px;
   border-bottom: 1px dashed rgba(255, 210, 110, 0.18);
 }
 .gift-list li:last-child { border-bottom: none; }
 .gift-list li.fresh { animation: giftFresh 1.6s ease; }
 @keyframes giftFresh { 0% { background: rgba(255, 220, 120, 0.5); } 100% { background: transparent; } }
-.gift-ava { flex: none; width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 1.5px solid #f2c35b; background: #6f8ba4; }
+.gift-ava { flex: none; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1.5px solid #f2c35b; background: #6f8ba4; }
 .gift-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-.gift-who small { display: block; font-weight: 500; font-size: 15px; color: #f3dcaa; overflow: hidden; text-overflow: ellipsis; }
-.gift-coins { flex: none; color: #ffe08a; font-weight: 800; font-size: 17px; }
+.gift-who small { display: block; font-weight: 500; font-size: 13.5px; color: #f3dcaa; overflow: hidden; text-overflow: ellipsis; }
+.gift-coins { flex: none; color: #ffe08a; font-weight: 800; font-size: 16px; }
 .gift-rank { color: #ffd24a; margin-right: 2px; }
-.gift-empty { font-size: 17px !important; color: #f3dcaa; line-height: 1.35; }
+.gift-empty { font-size: 15px !important; color: #f3dcaa; line-height: 1.35; }
 
 .gift-banner {
   position: absolute;

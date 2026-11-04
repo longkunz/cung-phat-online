@@ -164,6 +164,8 @@ describe("High-Concurrency Interaction Guard (Seam: handleRpcCall)", () => {
 
   test("[Finding P1 Fix] Multi-contributor batch preserves individual merit for every devotee", async () => {
     const { Rituals, state } = await import("../server.js");
+    delete state.devotees["uid_contrib_A"];
+    delete state.devotees["uid_contrib_B"];
 
     const batchContributors = [
       { user: "Phật tử A", uniqueId: "uid_contrib_A", avatar: "", count: 10 },

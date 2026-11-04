@@ -4562,11 +4562,18 @@ function initQuickDock() {
   }
 
   // TikTok Live connect
-  document.getElementById('btnConnectTikTok')?.addEventListener('click', () => {
+  document.getElementById('btnConnectTikTok')?.addEventListener('click', async () => {
     const user = document.getElementById('inputTikTokUser')?.value?.trim();
     if (user) {
-      callRpc('live.connect', { username: user });
       pushEventFeed(`Đang kết nối TikTok Live: ${user}...`);
+      try {
+        const res = await callRpc('live.connect', { username: user });
+        if (res?.error) {
+          pushEventFeed(`⚠️ Lỗi kết nối Live: ${res.error.message || res.error}`);
+        }
+      } catch (err) {
+        pushEventFeed(`⚠️ Lỗi kết nối Live: ${err.message || err}`);
+      }
     }
   });
 

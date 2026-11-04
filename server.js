@@ -1596,6 +1596,9 @@ function extractTikTokErrorMessage(err, username = '') {
   const msg = raw?.message || (typeof raw === 'string' ? raw : (err?.info || ''));
   const name = raw?.name || err?.name || '';
 
+  if (msg.includes('The provided API Key is invalid') || (msg.includes('401') && msg.includes('API Key'))) {
+    return 'EulerStream Sign API Key không hợp lệ (401: The provided API Key is invalid). Vui lòng kiểm tra lại key hoặc xóa trống ô key để kết nối qua dịch vụ miễn phí.';
+  }
   if (name === 'SignatureRateLimitError' || msg.includes('Rate Limited') || msg.includes('rate_limit_account_hour')) {
     const retryMs = raw?.retryAfter || err?.retryAfter;
     const retryMinutes = retryMs ? Math.ceil(retryMs / 60000) : 30;
@@ -1636,7 +1639,7 @@ async function connectTikTokLive(usernameOrUrl) {
   saveState();
   broadcastNotification('temple.state', getPublicState());
 
-  const signApiKey = state.settings?.signApiKey || process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY;
+  const signApiKey = (state.settings?.signApiKey !== undefined && state.settings?.signApiKey !== null) ? state.settings.signApiKey.trim() : (process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY || '').trim();
   const conn = new TikTokLiveConnection(cleanUser, {
     processInitialData: true,
     fetchRoomInfoOnConnect: true,

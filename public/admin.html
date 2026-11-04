@@ -201,7 +201,7 @@
             </div>
 
             <label for="ttApiKey">EulerStream Sign API Key (Tùy chọn)</label>
-            <input type="password" id="ttApiKey" placeholder="Nhập key nếu có (để kết nối không giới hạn lượt gọi)..." autocomplete="off" />
+            <input type="text" id="ttApiKey" placeholder="Nhập key nếu có (để kết nối không giới hạn lượt gọi)..." autocomplete="off" spellcheck="false" />
             <div class="tt-actions">
               <button class="btn" type="button" id="btnSaveTtChannel" style="width: 100%;">💾 Lưu Cấu Hình Kênh</button>
             </div>
@@ -436,8 +436,8 @@
       const signApiKey = document.getElementById('ttApiKey').value.trim();
       showFeedback('ttStatus', 'Đang lưu cấu hình kênh...', false);
       try {
-        const patch = { tiktokUsername: username };
-        if (signApiKey) patch.signApiKey = signApiKey;
+        const patch = { tiktokUsername: username, signApiKey };
+
         const res = await sendRpc('temple.updateSettings', patch);
         if (res.error) throw new Error(res.error.message);
         ttDirty = false;
@@ -454,7 +454,7 @@
         showFeedback('ttStatus', 'Vui lòng nhập @username hoặc link TikTok Live.', true);
         return;
       }
-      if (signApiKey) {
+      {
         try {
           await sendRpc('temple.updateSettings', { signApiKey });
         } catch (_) {}

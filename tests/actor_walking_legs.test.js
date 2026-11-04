@@ -24,6 +24,24 @@ describe('Actor Movement & Visible Walking Legs/Feet Diagnosis (Seam: Avatar Rig
     expect(code).toMatch(/lộ\s*(?:cẳng\s*chân|bước\s*chân|bàn\s*chân)/i);
   });
 
+  it('Avatar rig must define two-segment legs (thigh & leg) and white cloth footwear', () => {
+    expect(code).toMatch(/thigh:\s*mergeColored\(/);
+    expect(code).toMatch(/PAIRED\s*=\s*\{[^}]*thigh:\s*true[^}]*leg:\s*true[^}]*\}/);
+    expect(code).toMatch(/feet:\s*new\s*THREE\.Color\(0xededed\)/);
+  });
+
+  it('Avatar rig must define chibi mitten hands with thumbs and flared sleeve cuffs', () => {
+    expect(code).toMatch(/foreArm:\s*mergeColored\(\[\s*\{\s*geo:\s*new\s*THREE\.CylinderGeometry/);
+    expect(code).toMatch(/hand:\s*mergeColored\(\[\s*\{\s*geo:\s*new\s*THREE\.SphereGeometry/);
+  });
+
+  it('Avatar kinematics must compute knee bending during step and kneeling fold', () => {
+    expect(code).toMatch(/relKneeAngle\s*=\s*lerp\(kneeFlex,\s*2\.\d+,\s*kc\)/);
+    expect(code).toMatch(/put\('thigh',\s*_j1,\s*T\.robe\)/);
+    expect(code).toMatch(/put\('leg',\s*_j2,\s*T\.robe\)/);
+    expect(code).toMatch(/put\('foot',\s*_j3,\s*T\.feet\)/);
+  });
+
   it('Standing avatar must keep feet planted and visible rather than scaling down to zero', () => {
     // Feet must remain visible at scale 1.0 when standing still (kc = 0, w = 0).
     expect(code).not.toMatch(/Math\.min\(1,\s*w\s*\*\s*1\.4\)\s*\*\s*\(1\s*-\s*kc\)/);

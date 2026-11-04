@@ -172,7 +172,7 @@
       pants: new ColorClass(PANTS_TONES[(s >> 2) % PANTS_TONES.length]),
       skin: new ColorClass(SKIN_TONES[(s >> 1) % SKIN_TONES.length]),
       hair: new ColorClass(HAIR_TONES[(s >> 3) % HAIR_TONES.length]),
-      feet: new ColorClass(0x3a2418),
+      feet: new ColorClass(0xededed),
       hairStyle: ((s >> 4) % 7) < 3 ? 0 : ((s >> 4) % 7) < 6 ? 1 : 2
     };
     if (key) {

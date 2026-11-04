@@ -15,3 +15,7 @@ _Avoid_: Python worker, TTS daemon
 **Ritual Orchestrator**:
 Hệ thống con phụ trách quy tắc và luồng diễn ra của các nghi thức tâm linh (thỉnh chuông, thắp nhang, phóng sinh, thả đèn, bốc quẻ).
 _Avoid_: Event handler, action manager
+
+**Phật tử (Devotee Avatar)**:
+Thực thể nhân vật 3D đại diện cho người xem hành lễ trong Chánh Điện (gồm Phật tử hành lễ chính, Phật tử tọa thiền và Biển người vãng cảnh). Được dựng bằng hình học ghép khối procedural (Three.js InstancedMesh).
+_Avoid_: Actor, Player, NPC

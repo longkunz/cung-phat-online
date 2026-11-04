@@ -4340,6 +4340,7 @@ function updateState(st) {
 }
 
 let tiktokInfo = { connected: false, username: '', viewerCount: 0 };
+let lastReportedConnected = null;
 function updateStatus(tt) {
   tiktokInfo = { ...tiktokInfo, ...tt };
   syncCrowd(tiktokInfo.viewerCount);
@@ -4355,6 +4356,80 @@ function updateStatus(tt) {
   const viewEl = document.getElementById('statusViewers');
   if (viewEl) {
     viewEl.textContent = tiktokInfo.viewerCount > 0 ? `👁 ${Number(tiktokInfo.viewerCount).toLocaleString('vi-VN')}` : '';
+  }
+
+  // Cập nhật giao diện Quick Dock & thông báo màn hình Live
+  const btnConn = document.getElementById('btnConnectTikTok');
+  const dockStatus = document.getElementById('dockTikTokStatus');
+  const inputUser = document.getElementById('inputTikTokUser');
+
+  if (inputUser && tiktokInfo.username && !inputUser.dataset.edited) {
+    inputUser.value = tiktokInfo.username.startsWith('@') ? tiktokInfo.username : `@${tiktokInfo.username}`;
+  }
+
+  if (tiktokInfo.connected) {
+    if (btnConn) {
+      btnConn.textContent = 'Ngắt Kết Nối';
+      btnConn.classList.remove('gold');
+      btnConn.style.background = '#6b1812';
+      btnConn.disabled = false;
+      btnConn.style.cursor = 'pointer';
+    }
+    if (dockStatus) {
+      dockStatus.textContent = `🟢 Đã kết nối: @${tiktokInfo.username}${tiktokInfo.viewerCount > 0 ? ` (${Number(tiktokInfo.viewerCount).toLocaleString('vi-VN')} mắt xem)` : ''}`;
+      dockStatus.style.color = '#8ef4a0';
+    }
+    if (lastReportedConnected !== true) {
+      pushEventFeed(`🟢 Đã kết nối TikTok Live: @${tiktokInfo.username} (Phòng: ${tiktokInfo.roomId || 'N/A'})`);
+      pushToast(`🟢 Đã kết nối TikTok Live: @${tiktokInfo.username}`, 'tt-status');
+      lastReportedConnected = true;
+    }
+  } else if (tiktokInfo.connecting) {
+    if (btnConn) {
+      btnConn.textContent = 'Đang Kết Nối...';
+      btnConn.classList.remove('gold');
+      btnConn.style.background = '';
+      btnConn.disabled = true;
+      btnConn.style.cursor = 'wait';
+    }
+    if (dockStatus) {
+      dockStatus.textContent = `🟡 Đang kết nối tới @${tiktokInfo.username || '...'}`;
+      dockStatus.style.color = '#ffe694';
+    }
+  } else if (tiktokInfo.lastError) {
+    if (btnConn) {
+      btnConn.textContent = 'Thử Lại';
+      btnConn.classList.add('gold');
+      btnConn.style.background = '';
+      btnConn.disabled = false;
+      btnConn.style.cursor = 'pointer';
+    }
+    if (dockStatus) {
+      dockStatus.textContent = `🔴 Lỗi kết nối: ${tiktokInfo.lastError}`;
+      dockStatus.style.color = '#ff9485';
+    }
+    if (lastReportedConnected === true) {
+      pushEventFeed(`🔴 Mất kết nối TikTok Live: ${tiktokInfo.lastError}`);
+      pushToast(`🔴 Mất kết nối TikTok Live`, 'tt-status');
+      lastReportedConnected = false;
+    }
+  } else {
+    if (btnConn) {
+      btnConn.textContent = 'Kết Nối';
+      btnConn.classList.add('gold');
+      btnConn.style.background = '';
+      btnConn.disabled = false;
+      btnConn.style.cursor = 'pointer';
+    }
+    if (dockStatus) {
+      dockStatus.textContent = `⚪ Chưa kết nối TikTok Live`;
+      dockStatus.style.color = 'var(--muted, #d6ba8a)';
+    }
+    if (lastReportedConnected === true) {
+      pushEventFeed(`⚪ Đã ngắt kết nối TikTok Live`);
+      pushToast(`⚪ Đã ngắt kết nối TikTok Live`, 'tt-status');
+      lastReportedConnected = false;
+    }
   }
 }
 
@@ -4561,8 +4636,25 @@ function initQuickDock() {
     });
   }
 
-  // TikTok Live connect
+  // TikTok Live connect / disconnect toggle
+  const inputUserEl = document.getElementById('inputTikTokUser');
+  if (inputUserEl) {
+    inputUserEl.addEventListener('input', () => {
+      inputUserEl.dataset.edited = 'true';
+    });
+  }
+
   document.getElementById('btnConnectTikTok')?.addEventListener('click', async () => {
+    if (tiktokInfo && tiktokInfo.connected) {
+      pushEventFeed('Đang ngắt kết nối TikTok Live...');
+      try {
+        await callRpc('live.disconnect', {});
+      } catch (err) {
+        pushEventFeed(`⚠️ Lỗi ngắt kết nối: ${err.message || err}`);
+      }
+      return;
+    }
+
     const user = document.getElementById('inputTikTokUser')?.value?.trim();
     if (user) {
       pushEventFeed(`Đang kết nối TikTok Live: ${user}...`);

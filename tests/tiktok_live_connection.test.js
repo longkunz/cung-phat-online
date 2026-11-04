@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+process.env.NO_SERVER_LISTEN = '1';
 const { handleRpcCall, state } = require('../server.js');
 
 describe('TikTok Live Connection Feedback Loop', () => {
@@ -43,6 +44,23 @@ describe('TikTok Live Connection Feedback Loop', () => {
     // The admin page must display TikTok connection status and error feedback to the user
     expect(adminHtml).toMatch(/id="ttStatus"/i);
     expect(adminHtml).toMatch(/renderTikTokStatus/);
+    expect(adminHtml).toMatch(/btnConn\.disabled\s*=\s*true/);
+    expect(adminHtml).toMatch(/btnDisc\.disabled\s*=\s*false/);
+    expect(adminHtml).toMatch(/Ngắt Kết Nối/);
+  });
+
+  test('index.html and temple3d.js render TikTok live connection status and toast notifications', async () => {
+    const indexHtml = await Bun.file('public/index.html').text();
+    const templeJs = await Bun.file('public/js/temple3d.js').text();
+
+    // index.html must have dockTikTokStatus under btnConnectTikTok
+    expect(indexHtml).toMatch(/id="dockTikTokStatus"/);
+
+    // temple3d.js must handle connection state changes and push toasts & event feed
+    expect(templeJs).toMatch(/dockTikTokStatus/);
+    expect(templeJs).toMatch(/pushToast\(.*TikTok Live/);
+    expect(templeJs).toMatch(/pushEventFeed\(.*TikTok Live/);
+    expect(templeJs).toMatch(/live\.disconnect/);
   });
 
   test('temple.updateSettings saves tiktokUsername and signApiKey directly without .env', async () => {

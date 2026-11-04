@@ -4312,6 +4312,11 @@ function updateState(st) {
   // Giọng đọc, nhạc nền (danh sách phát tối đa 3 bài), hiệu ứng âm thanh — cài đặt ở trang Admin
   if (s && audio) audio.applySettings(s);
   if (s) {
+    const btnAutoSim = document.getElementById('btnToggleAutoSim');
+    if (btnAutoSim && typeof s.autoSim === 'boolean') {
+      btnAutoSim.textContent = `🤖 Tự động Giả lập Người Xem: ${s.autoSim ? 'BẬT' : 'TẮT'}`;
+      btnAutoSim.classList.toggle('active-toggle', s.autoSim);
+    }
     const btnMusic = document.getElementById('btnToggleMusic');
     if (btnMusic && audio) {
       btnMusic.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;

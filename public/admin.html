@@ -223,6 +223,11 @@
         <p class="help" style="margin-top: 4px;">
           Từ khóa tự động nhận diện: <code>thắp hương</code>, <code>bái phật</code>, <code>cầu ...</code>, <code>xin xăm / gieo quẻ</code>, <code>thỉnh chuông</code>, <code>gõ mõ</code>.
         </p>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(244, 193, 80, 0.2);">
+          <button class="btn" type="button" id="btnAdminAutoSim" style="width: 100%;">
+            🤖 Tự Động Giả Lập Người Xem: TẮT
+          </button>
+        </div>
       </section>
 
       <!-- Hàng 2, Cột 1: Cấu hình TTS -->
@@ -483,6 +488,21 @@
       const comment = document.getElementById('simComment').value.trim();
       sendRpc('temple.comment', { comment });
     };
+    document.getElementById('btnAdminAutoSim')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btnAdminAutoSim');
+      const isCurrentlyOn = btn?.dataset.active === 'true';
+      const targetState = !isCurrentlyOn;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = targetState ? '⏳ Đang Bật Giả Lập...' : '⏳ Đang Tắt Giả Lập...';
+      }
+      try {
+        await sendRpc('live.setAutoSim', { enabled: targetState });
+      } finally {
+        if (btn) btn.disabled = false;
+        refreshStatus();
+      }
+    });
     document.getElementById('ttsSettingsForm').addEventListener('input', () => {
       ttsSettingsDirty = true;
       const volume = document.getElementById('ttsVolume').value;
@@ -749,6 +769,22 @@
       }
     }
 
+    function renderAutoSimStatus(st) {
+      const s = st.settings || {};
+      const btn = document.getElementById('btnAdminAutoSim');
+      if (btn && typeof s.autoSim === 'boolean') {
+        btn.dataset.active = String(s.autoSim);
+        btn.textContent = `🤖 Tự Động Giả Lập Người Xem: ${s.autoSim ? 'BẬT' : 'TẮT'}`;
+        if (s.autoSim) {
+          btn.classList?.add('gold');
+          if (btn.style) { btn.style.background = '#1b7a46'; btn.style.borderColor = '#58e698'; btn.style.color = '#eafff3'; }
+        } else {
+          btn.classList?.remove('gold');
+          if (btn.style) { btn.style.background = ''; btn.style.borderColor = ''; btn.style.color = ''; }
+        }
+      }
+    }
+
     function applyState(st) {
       if (!st) return;
       document.getElementById('statusBanner').textContent =
@@ -757,6 +793,7 @@
       renderAudioSettings(st);
       renderCrowdSettings(st);
       renderTikTokStatus(st);
+      renderAutoSimStatus(st);
     }
 
     async function refreshStatus() {

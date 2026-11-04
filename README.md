@@ -166,49 +166,6 @@ Sau khi hệ thống khởi động thành công, bạn có thể truy cập cá
 
 ---
 
-## 👥 Quản Lý Nhân Vật, Đạo Tràng & Cơ Chế Giả Lập (Simulation & Crowd)
-
-### 1. Phân Lớp Nhân Vật Trong Chánh Điện 3D
-Hệ thống hiển thị nhân vật trong Chánh Điện theo 2 lớp riêng biệt:
-
-| Lớp Nhân Vật | Số Lượng & Vị Trí | Cơ Chế Hoạt Động & Hiển Thị |
-| :--- | :--- | :--- |
-| **Đạo Tràng Tương Tác** *(Interactive Avatars)* | • **40 Chỗ ngồi** (8 đài sen VIP hai bên thảm đỏ + 32 bồ đoàn gấm tròn)<br>• **16 Chỗ đứng chờ** phía sau chỗ ngồi | • Khi khởi động mới từ đầu: **0 người** (để trống 40 bồ đoàn sẵn sàng đón người thật hoặc người giả lập).<br>• Tự động bước lên dâng hương, thả đèn, gieo quẻ, hiện tên người thật / avatar TikTok. |
-| **Biển Người Hộ Niệm** *(Devotee Sea)* | • Tối đa **538 nhân vật 3D** đứng phủ kín 2 cánh gà và khu vực sau Chánh Điện tới cửa | • Dùng kỹ thuật `InstancedMesh` tối ưu hiệu năng đồ họa, đung đưa, chắp tay niệm Phật nhịp nhàng.<br>• Số lượng hiển thị phụ thuộc vào cài đặt **"Cấu hình Biển người"** ở Admin (`always` = 538 người; `scale` / `threshold` = 0 người khi chưa có mắt xem live; `off` = 0 người). |
-
----
-
-### 2. Chế Độ Tự Động Giả Lập Người Xem (`autoSim`)
-Hỗ trợ kiểm thử và tạo không khí trang nghiêm đông đúc cho phòng live khi chưa có nhiều người xem thật:
-
-- **Khi BẬT (`🤖 Tự động Giả lập Người Xem: BẬT`)**:
-  - Server kích hoạt tiến trình tự động chu kỳ **~9.5 giây / lượt**.
-  - **Vào chùa liên tục (`hall.arrive`)**: Sinh 1–3 người xem bước vào khu vực đứng chờ phía sau.
-  - **Mô phỏng trò chuyện (`hall.action`)**: Hiện bong bóng chat trên đầu (*"A Di Đà Phật", "Lạy Phật", "Chùa đẹp quá"...*) kèm động tác đảnh lễ.
-  - **Tự động làm lễ**: Ngẫu nhiên dâng 3 nén hương, thả hoa đăng, xin xăm, dâng hoa sen vàng hoặc thỉnh chuông đồng kèm đọc văn khấn TTS.
-- **Khi TẮT (`🤖 Tự động Giả lập Người Xem: TẮT`)**:
-  - Server lập tức hủy bỏ timer, dừng tạo thêm người và dừng gửi nghi thức tự động.
-  - Các Phật tử đang có mặt không biến mất đột ngột mà tuân theo chu kỳ nhàn rỗi tự nhiên: người đứng ở khu vực chờ rời chùa sau **45 giây** im lặng; người ngồi bồ đoàn rời chùa sau **2 phút** im lặng.
-- **Các nút điều khiển thủ công (trên Quick Dock và Admin)**:
-  - `👤 +1 Người Vào` (`live.simulateJoin`): Thêm ngay 1 người vào chùa.
-  - `🚪 1 Người Ra` (`live.simulateLeave`): Mời 1 người trong chùa bước ra cửa về.
-
----
-
-### 3. Đồng Bộ Trạng Thái 2 Chiều Giữa Admin và Trang Chủ
-- Cả **Trang Chủ** (`/`) và **Admin** (`/admin`) đều được kết nối **WebSocket (`/ws`)** theo thời gian thực tới Live Gateway.
-- Khi bật/tắt giả lập, kết nối TikTok, chỉnh âm lượng hoặc gửi nghi thức ở một bên, bên còn lại sẽ lập tức nhảy trạng thái và cập nhật giao diện trong vài mili-giây (0ms độ trễ) mà không cần tải lại trang.
-
----
-
-### 4. Giải Đáp Thắc Mắc: "Tại Sao Vừa Bật Server Đã Thấy Có Nhân Vật Sẵn?"
-Nếu vừa khởi động server mà đã thấy nhân vật xuất hiện trong chùa, thường do 3 nguyên nhân:
-1. **Cờ `autoSim` đã được ghi nhớ trong cấu hình**: Nếu trước đó bạn từng bật giả lập, server đã lưu `autoSim: true` vào `data/merit-state.json`. Khi khởi động lại, server tự động khôi phục chế độ này. *(Khắc phục: Bấm nút `Tắt Giả Lập` một lần để server ghi nhớ trạng thái tắt)*.
-2. **Nhân vật VIP dâng lễ từ phiên trước vẫn đang ở trong RAM**: Các nhân vật từng dâng quà lớn (ngồi 8 ghế VIP đài sen) theo quy tắc tâm linh sẽ được giữ chỗ suốt buổi live và không bị kick ra ngoài dù im lặng. *(Khắc phục: Vào Admin bấm **`♻️ Reset Thống Kê`** để dọn sạch toàn bộ 40 chỗ ngồi về 0 người)*.
-3. **Đang nhìn thấy Biển người hộ niệm phía sau**: Nếu cài đặt biển người đang để chế độ `Luôn hiển thị (always)`, 538 nhân vật nền sẽ luôn đứng niệm Phật dù phòng live có 0 mắt xem. *(Khắc phục: Vào Admin -> Mục 5 "Biển người" -> Chọn `Tỷ lệ theo người xem (scale)` hoặc `Tắt (off)` và bấm Lưu)*.
-
----
-
 ## 🔌 Giao Thức JSON-RPC 2.0 (`POST /rpc` & `ws://localhost:3000/ws`)
 
 Bạn có thể gọi trực tiếp từ **TikFinity**, **Streamer.bot**, webhook hoặc `curl`:

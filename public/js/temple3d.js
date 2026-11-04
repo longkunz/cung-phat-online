@@ -1448,9 +1448,11 @@ function startPetalRain(sec = 9) {
 //     Mỗi bộ phận 1 InstancedMesh dùng chung -> ~10 draw call cho cả đạo tràng.
 // ============================================================================
 // Kích thước (đơn vị ~ mét). Gốc thân ở "eo": váy áo phía dưới, thân trên + đầu phía trên.
-const SKIRT_H = 0.36; // chiều cao vạt áo từ eo xuống gấu (đủ dài nhưng để hở cổ chân)
-const STAND_WAIST = SKIRT_H + 0.11; // đứng: gấu áo cách sàn 11 cm (lộ cẳng chân và bàn chân khi bước)
-const KNEEL_WAIST = 0.27; // quỳ: thân hạ xuống, vạt áo xòe phẳng trên đệm (mặt đệm ~0.16)
+const THIGH_L = 0.22; // chiều dài đoạn đùi
+const CALF_L = 0.21; // chiều dài đoạn cẳng chân
+const SKIRT_H = 0.14; // chiều cao vạt áo lam ngắn ngang hông
+const STAND_WAIST = 0.47; // đứng: chiều cao eo (đùi 0.22 + cẳng chân 0.21 + hài 0.04)
+const KNEEL_WAIST = 0.27; // quỳ: thân hạ xuống bồ đoàn gấm
 const TORSO_H = 0.34;
 const HEAD_R = 0.27;
 const HEAD_C = 0.22; // tâm đầu cao hơn đỉnh thân
@@ -1484,9 +1486,9 @@ const faceTex = canvasTexture(512, 256, (ctx, w, h) => {
 }).tex;
 
 const partGeos = {
-  // vạt áo dưới eo: dáng áo tràng lam thanh thoát, gấu áo trên cổ chân để lộ cẳng chân và bước chân
+  // vạt áo lam ngắn ngang hông: dáng áo bà ba / áo lam thanh thoát, để lộ cẳng chân và bước chân đầy đủ
   skirt: mergeColored([
-    { geo: lathe([[0, 0.02], [0.19, 0.02], [0.205, -0.08], [0.22, -0.18], [0.235, -0.27], [0.245, -0.34], [0.24, -0.36], [0.15, -0.365], [0, -0.365]], 28), scale: [1, 1, 0.92] }
+    { geo: lathe([[0, 0.02], [0.195, 0.02], [0.21, -0.04], [0.225, -0.09], [0.23, -0.13], [0.15, -0.135], [0, -0.135]], 28), scale: [1, 1, 0.92] }
   ]),
   // thân trên: vai tròn, cổ áo sáng màu, đường khuy áo tràng
   torso: mergeColored([
@@ -1511,10 +1513,20 @@ const partGeos = {
     { geo: new THREE.SphereGeometry(0.1, 16, 12), pos: [0, HEAD_C + 0.2, 0.17] }
   ]),
   upperArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.062, ARM_L1 - 0.03, 6, 12), pos: [0, -ARM_L1 / 2, 0] }]),
-  foreArm: mergeColored([{ geo: new THREE.CapsuleGeometry(0.057, ARM_L2 - 0.04, 6, 12), pos: [0, -ARM_L2 / 2 + 0.01, 0] }]),
-  hand: mergeColored([{ geo: new THREE.SphereGeometry(0.062, 14, 10), scale: [0.85, 1, 0.7] }]),
-  leg: mergeColored([{ geo: new THREE.CylinderGeometry(0.042, 0.038, 0.12, 12), pos: [0, 0.06, 0] }]),
-  foot: mergeColored([{ geo: new THREE.SphereGeometry(1, 14, 10), scale: [0.052, 0.036, 0.095], pos: [0, 0.024, -0.01] }]),
+  foreArm: mergeColored([{ geo: new THREE.CylinderGeometry(0.066, 0.056, ARM_L2 - 0.02, 14), pos: [0, -ARM_L2 / 2 + 0.01, 0] }]),
+  hand: mergeColored([
+    { geo: new THREE.SphereGeometry(0.054, 14, 10), scale: [0.8, 1, 0.72], pos: [0, -0.015, 0] },
+    { geo: new THREE.CapsuleGeometry(0.018, 0.032, 6, 8), pos: [0.036, -0.008, 0.012], rot: [0.15, 0, -0.55] }
+  ]),
+  thigh: mergeColored([
+    { geo: new THREE.CylinderGeometry(0.062, 0.054, THIGH_L, 14), pos: [0, -THIGH_L / 2, 0] }
+  ]),
+  leg: mergeColored([
+    { geo: new THREE.CylinderGeometry(0.054, 0.046, CALF_L, 14), pos: [0, -CALF_L / 2, 0] }
+  ]),
+  foot: mergeColored([
+    { geo: new THREE.SphereGeometry(1, 14, 10), scale: [0.055, 0.038, 0.096], pos: [0, 0.024, -0.015] }
+  ]),
   // nén nhang cầm tay (3 nén xòe nhẹ), gốc ở giữa 2 bàn tay
   heldIncense: mergeColored([
     { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [-0.03, 0.26, 0], rot: [0, 0, 0.1] },
@@ -1522,11 +1534,11 @@ const partGeos = {
     { geo: new THREE.CylinderGeometry(0.009, 0.009, 0.6, 4), color: 0xd0401e, pos: [0.03, 0.26, 0], rot: [0, 0, -0.1] }
   ])
 };
-const PAIRED = { upperArm: true, foreArm: true, hand: true, leg: true, foot: true };
+const PAIRED = { upperArm: true, foreArm: true, hand: true, thigh: true, leg: true, foot: true };
 partGeos.heldIncense.scale(1.25, 1.2, 1.25);
 // máy quay ở xa (mặc định): nhang to hơn để đọc được động tác
 if (!CLOSEUPS_EARLY) partGeos.heldIncense.scale(1.5, 1.3, 1.5);
-const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0 });
+const avatarMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
 const headMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, metalness: 0 });
 const parts = {};
 for (const [name, geo] of Object.entries(partGeos)) {
@@ -2102,7 +2114,7 @@ function getOrCreateTones(key, fallbackIdx = 0) {
     pants: new THREE.Color(PANTS_TONES[(s >> 2) % PANTS_TONES.length]),
     skin: new THREE.Color(SKIN_TONES[(s >> 1) % SKIN_TONES.length]),
     hair: new THREE.Color(HAIR_TONES[(s >> 3) % HAIR_TONES.length]),
-    feet: new THREE.Color(0x3a2418),
+    feet: new THREE.Color(0xededed),
     hairStyle: ((s >> 4) % 7) < 3 ? 0 : ((s >> 4) % 7) < 6 ? 1 : 2
   };
   if (key) {
@@ -3315,6 +3327,7 @@ const _waist = new THREE.Matrix4();
 const _torso = new THREE.Matrix4();
 const _j1 = new THREE.Matrix4();
 const _j2 = new THREE.Matrix4();
+const _j3 = new THREE.Matrix4();
 const _t = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
 const _camQ = new THREE.Quaternion();
@@ -3416,8 +3429,8 @@ function updateAvatars(dt, t) {
     a.bobY = bob;
     const waistY = lerp(STAND_WAIST, KNEEL_WAIST, k) + bob + breath * 0.004;
     const kc = clamp01(k);
-    const skirtY = Math.max(0.2, (waistY - lerp(0.04, 0.13, kc)) / SKIRT_H);
-    const skirtW = lerp(1, 1.35, kc) * (1 + Math.max(0, k - 1) * 0.6);
+    const skirtY = lerp(1, 0.92, kc);
+    const skirtW = lerp(1, 1.18, kc) * (1 + Math.max(0, k - 1) * 0.4);
 
     _root.compose(_pos.set(a.pos.x, 0, a.pos.z), _q.setFromAxisAngle(_v.set(0, 1, 0), a.yaw), _s.set(s, s, s));
     _waist.copy(_root).multiply(mT(0, waistY, 0));
@@ -3450,29 +3463,37 @@ function updateAvatars(dt, t) {
       _el.copy(_sh).addScaledVector(_dir, ARM_L1 * cosA).addScaledVector(_pole, ARM_L1 * sinA);
       put('upperArm', limbMatrix(_j1, _torso, _sh, _el), T.robe);
       put('foreArm', limbMatrix(_j2, _torso, _el, H), T.robe);
-      _j1.copy(_torso).multiply(_m.compose(H, _qa, _one));
+      _j1.copy(_torso).multiply(_m.compose(H, _qa, _one)).multiply(_sc.makeScale(sg, 1, 1));
       put('hand', _j1, T.skin);
-      // chân & bàn chân: lộ bước đi tự nhiên, bước sải nhịp nhàng không bị trôi lướt
+      // chân & bàn chân 2 khúc: lộ cẳng chân và bước chân đầy đủ, sải bước tự nhiên và gập gối quỳ lạy
       const step = Math.sin(a.phase + (side ? Math.PI : 0));
-      const fv = Math.max(0.0001, 1 - kc * 0.96); // đứng & đi: hiển thị đầy đủ; quỳ: ẩn xếp gọn dưới vạt áo
+
 
       // Độ nâng chân khi bước (swing phase) và tiếp đất (stance phase)
       const stepY = Math.max(0, -step) * 0.045 * w;
       // Quãng sải chân trước/sau (tiến tới -Z khi nhấc bước, lùi về +Z khi trụ sàn)
       const stepZ = -0.02 - step * 0.16 * w;
-      const legPitch = -step * 0.35 * w;
+      const hipX = sg * 0.095;
+      const hipY = waistY - 0.02;
+      const hipZ = 0;
 
-      // Cẳng chân / ống quần lam: nối từ gấu áo xuống cổ chân
-      const legX = sg * 0.095;
-      const legY = Math.max(0.04, 0.05 + stepY * 0.5);
-      const legZ = -0.01 - step * 0.08 * w;
-      _j1.copy(_root).multiply(mT(legX, legY, legZ)).multiply(_rx.makeRotationX(legPitch)).multiply(_sc.makeScale(fv, fv, fv));
-      put('leg', _j1, T.robe);
+      const thighPitch = lerp(-step * 0.32 * w, -1.35, kc);
+      const kneeFlex = Math.max(0, -step) * 0.42 * w;
+      const relKneeAngle = lerp(kneeFlex, 2.78, kc);
+      const ankleFlex = -thighPitch - kneeFlex - step * 0.22 * w;
+      const relAnkleAngle = lerp(ankleFlex, -1.35, kc);
 
-      // Bàn chân: tiếp đất vững chãi, nhấc bước có độ chếch tự nhiên
-      const footPitch = -step * 0.22 * w;
-      _j1.copy(_root).multiply(mT(legX, stepY, stepZ)).multiply(_rx.makeRotationX(footPitch)).multiply(_sc.makeScale(fv, fv, fv));
-      put('foot', _j1, T.feet);
+      // Đùi (upper leg / thigh): nối từ háng xuống đầu gối
+      _j1.copy(_root).multiply(mT(hipX, hipY, hipZ)).multiply(_rx.makeRotationX(thighPitch));
+      put('thigh', _j1, T.robe);
+
+      // Cẳng chân (lower leg / shin / calf): nối từ đầu gối xuống cổ chân
+      _j2.copy(_j1).multiply(mT(0, -THIGH_L, 0)).multiply(_rx.makeRotationX(relKneeAngle));
+      put('leg', _j2, T.robe);
+
+      // Bàn chân mang hài/tất trắng: tiếp đất vững chãi khi bước, duỗi xuôi tự nhiên khi quỳ
+      _j3.copy(_j2).multiply(mT(0, -CALF_L, 0)).multiply(_rx.makeRotationX(relAnkleAngle));
+      put('foot', _j3, T.feet);
     }
     // nhang cầm tay
     if (a.sticks > 0) {

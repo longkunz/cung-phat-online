@@ -223,10 +223,18 @@
         <p class="help" style="margin-top: 4px;">
           Từ khóa tự động nhận diện: <code>thắp hương</code>, <code>bái phật</code>, <code>cầu ...</code>, <code>xin xăm / gieo quẻ</code>, <code>thỉnh chuông</code>, <code>gõ mõ</code>.
         </p>
-        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(244, 193, 80, 0.2);">
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(244, 193, 80, 0.2); display: flex; flex-direction: column; gap: 8px;">
           <button class="btn" type="button" id="btnAdminAutoSim" style="width: 100%;">
             🤖 Tự Động Giả Lập Người Xem: TẮT
           </button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn" type="button" id="btnAdminSimJoin" style="flex: 1;">
+              👤 +1 Người Vào
+            </button>
+            <button class="btn" type="button" id="btnAdminSimLeave" style="flex: 1;">
+              🚪 1 Người Ra
+            </button>
+          </div>
         </div>
       </section>
 
@@ -502,6 +510,14 @@
         if (btn) btn.disabled = false;
         refreshStatus();
       }
+    });
+    document.getElementById('btnAdminSimJoin')?.addEventListener('click', async () => {
+      const names = ['Minh Đức', 'Tâm An', 'Diệu Hoa', 'Phúc Lâm', 'Tuệ Tĩnh', 'Bảo Hân', 'Thanh Trúc'];
+      const user = names[Math.floor(Math.random() * names.length)];
+      await sendRpc('live.simulateJoin', { user });
+    });
+    document.getElementById('btnAdminSimLeave')?.addEventListener('click', async () => {
+      await sendRpc('live.simulateLeave', {});
     });
     document.getElementById('ttsSettingsForm').addEventListener('input', () => {
       ttsSettingsDirty = true;

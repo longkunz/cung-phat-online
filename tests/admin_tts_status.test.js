@@ -21,6 +21,13 @@ describe("Admin Dashboard TTS Status Feedback Loop", () => {
         value: id === "ttsVolume" ? "95" : (id === "musicVolume" ? "65" : (id === "sfxVolume" ? "80" : "")),
         checked: true,
         disabled: false,
+        style: {},
+        classList: {
+          add: () => {},
+          remove: () => {},
+          toggle: () => {},
+          contains: () => false
+        },
         dataset: {},
         children: [],
         options: [],

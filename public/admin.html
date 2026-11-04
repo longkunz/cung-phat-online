@@ -459,6 +459,8 @@
           await sendRpc('temple.updateSettings', { signApiKey });
         } catch (_) {}
       }
+      const btnConn = document.getElementById('btnConn');
+      if (btnConn) { btnConn.disabled = true; btnConn.textContent = '⏳ Đang Kết Nối...'; }
       showFeedback('ttStatus', `Đang kiểm tra và kết nối tới @${username}...`, false);
       try {
         const res = await sendRpc('live.connect', { username });
@@ -467,11 +469,15 @@
         }
       } catch (err) {
         showFeedback('ttStatus', `Lỗi kết nối: ${err.message}`, true);
+      } finally {
+        refreshStatus();
       }
     };
     document.getElementById('btnDisc').onclick = async () => {
+      const btnDisc = document.getElementById('btnDisc');
+      if (btnDisc) { btnDisc.disabled = true; btnDisc.textContent = '⏳ Đang Ngắt...'; }
       showFeedback('ttStatus', 'Đang ngắt kết nối...', false);
-      await sendRpc('live.disconnect', {});
+      try { await sendRpc('live.disconnect', {}); } finally { refreshStatus(); }
     };
     document.getElementById('btnSendComment').onclick = () => {
       const comment = document.getElementById('simComment').value.trim();
@@ -701,17 +707,27 @@
       const tt = st.tiktok || {};
       const settings = st.settings || {};
       const statusEl = document.getElementById('ttStatus');
+      const btnConn = document.getElementById('btnConn');
+      const btnDisc = document.getElementById('btnDisc');
       if (!statusEl) return;
       if (tt.connected) {
+        if (btnConn) { btnConn.disabled = true; btnConn.classList?.remove('gold'); btnConn.textContent = '🟢 Đã Kết Nối'; if (btnConn.style) { btnConn.style.opacity = '0.65'; btnConn.style.cursor = 'not-allowed'; } }
+        if (btnDisc) { btnDisc.disabled = false; btnDisc.classList?.add('gold'); btnDisc.textContent = 'Ngắt Kết Nối'; if (btnDisc.style) { btnDisc.style.opacity = '1'; btnDisc.style.cursor = 'pointer'; } }
         statusEl.textContent = `🟢 Đã kết nối Live: @${tt.username} (Phòng: ${tt.roomId || 'N/A'}) — Người xem: ${Number(tt.viewerCount || 0).toLocaleString('vi-VN')}`;
         statusEl.dataset.error = 'false';
       } else if (tt.connecting) {
+        if (btnConn) { btnConn.disabled = true; btnConn.classList?.remove('gold'); btnConn.textContent = '⏳ Đang Kết Nối...'; if (btnConn.style) { btnConn.style.opacity = '0.7'; btnConn.style.cursor = 'wait'; } }
+        if (btnDisc) { btnDisc.disabled = false; btnDisc.classList?.remove('gold'); btnDisc.textContent = 'Ngắt'; if (btnDisc.style) { btnDisc.style.opacity = '1'; btnDisc.style.cursor = 'pointer'; } }
         statusEl.textContent = `🟡 Đang kết nối tới @${tt.username}...`;
         statusEl.dataset.error = 'false';
       } else if (tt.lastError) {
+        if (btnConn) { btnConn.disabled = false; btnConn.classList?.add('gold'); btnConn.textContent = '🚀 Thử Kết Nối Lại'; if (btnConn.style) { btnConn.style.opacity = '1'; btnConn.style.cursor = 'pointer'; } }
+        if (btnDisc) { btnDisc.disabled = true; btnDisc.classList?.remove('gold'); btnDisc.textContent = 'Ngắt'; if (btnDisc.style) { btnDisc.style.opacity = '0.5'; btnDisc.style.cursor = 'not-allowed'; } }
         statusEl.textContent = `🔴 Lỗi kết nối: ${tt.lastError}`;
         statusEl.dataset.error = 'true';
       } else {
+        if (btnConn) { btnConn.disabled = false; btnConn.classList?.add('gold'); btnConn.textContent = '🚀 Kết Nối Live'; if (btnConn.style) { btnConn.style.opacity = '1'; btnConn.style.cursor = 'pointer'; } }
+        if (btnDisc) { btnDisc.disabled = true; btnDisc.classList?.remove('gold'); btnDisc.textContent = 'Ngắt'; if (btnDisc.style) { btnDisc.style.opacity = '0.5'; btnDisc.style.cursor = 'not-allowed'; } }
         const savedCh = settings.tiktokUsername || tt.username;
         statusEl.textContent = `⚪ Chưa kết nối TikTok Live${savedCh ? ` (Kênh: @${savedCh})` : ' (Kênh mặc định: @thangbina)'}.`;
         statusEl.dataset.error = 'false';

@@ -666,7 +666,7 @@ class TempleAudioEngine {
           this.onTtsStateChange({ speaking: false, synthesizing: false, text: '' });
         }
       } else {
-        setTimeout(() => this.processTtsQueue(), 250);
+        setTimeout(() => this.processTtsQueue(), 400);
       }
     }
   }
@@ -676,12 +676,15 @@ class TempleAudioEngine {
     return new Promise((resolve) => {
       let done = false;
       let audio = null;
-      const safetyTimer = setTimeout(() => finish(), 45000);
-      const finish = () => {
+      const safetyTimer = setTimeout(() => finish(false), 45000);
+      const finish = (isEnded = false) => {
         if (done) return;
         done = true;
         clearTimeout(safetyTimer);
-        if (audio) {
+        // KHÔNG gọi audio.pause() khi bài đã kết thúc tự nhiên (onended).
+        // Trong Chromium/OBS CEF, gọi .pause() khi bài vừa chạm mốc kết thúc sẽ flush
+        // sạch buffer âm thanh phần cứng (WASAPI/ALSA), làm mất 50-150ms âm thanh cuối (chữ cuối).
+        if (audio && !isEnded) {
           try { audio.pause(); } catch (_) {}
         }
         if (this.currentAudio === audio) this.currentAudio = null;
@@ -691,14 +694,14 @@ class TempleAudioEngine {
         audio = new Audio(url);
         this.currentAudio = audio;
         audio.volume = this.ttsVolume;
-        audio.onended = finish;
-        audio.onerror = finish;
+        audio.onended = () => finish(true);
+        audio.onerror = () => finish(false);
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(finish);
+          playPromise.catch(() => finish(false));
         }
       } catch (_) {
-        finish();
+        finish(false);
       }
     });
   }

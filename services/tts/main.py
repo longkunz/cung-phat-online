@@ -122,8 +122,13 @@ def clean_and_normalize_text(raw_text: str) -> str:
     if len(letters) < 2:
         return ""
 
-    if len(text) > 160:
-        text = text[:160].rsplit(" ", 1)[0]
+    if len(text) > 280:
+        cut_point = 280
+        last_punct = max(text[:cut_point].rfind("."), text[:cut_point].rfind("!"), text[:cut_point].rfind("?"))
+        if last_punct > 180:
+            text = text[:last_punct + 1]
+        else:
+            text = text[:cut_point].rsplit(" ", 1)[0]
 
     try:
         from zerotts import normalize_vi_text
@@ -161,7 +166,12 @@ def polish_waveform(wav: np.ndarray, sample_rate: int) -> np.ndarray:
         ramp_out = 0.5 * (1.0 + np.cos(np.linspace(0, np.pi, fade_out, dtype=np.float32)))
         arr[-fade_out:] *= ramp_out
 
-    return arr.reshape(1, -1)
+    # Thêm 250ms khoảng lặng đệm (tail silence padding) ở đuôi để bảo vệ âm tiết cuối
+    # không bao giờ bị cắt cụt khi trình duyệt hoặc OBS phát hiện kết thúc (onended) / flush buffer
+    tail_padding = np.zeros(int(sample_rate * 0.25), dtype=np.float32)
+    padded = np.concatenate([arr, tail_padding])
+
+    return padded.reshape(1, -1)
 
 
 def audio_to_data_uri(wav: np.ndarray, sample_rate: int) -> tuple[str, float]:
@@ -367,7 +377,7 @@ async def synthesize(req: SynthesizeRequest, request: Request):
                 raw_wav = TTS_ENGINE.synthesize(
                     norm_text,
                     voice=voice_emb if voice_emb is not None else voice,
-                    eoa_extra_frames=1
+                    eoa_extra_frames=3
                 )
                 if raw_wav is None or raw_wav.size == 0:
                     return None, "No audio generated"

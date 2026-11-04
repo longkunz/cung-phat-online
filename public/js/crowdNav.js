@@ -89,11 +89,23 @@
         const relZ = b.pos.z - a.pos.z;
         const d = Math.hypot(relX, relZ);
 
-        if (d > SENSORY_RANGE || d < 0.001) continue;
+        const bId = b.id !== undefined ? b.id : (b.idx !== undefined ? b.idx : i);
+        // Nhận diện đi cùng chiều hay đi ngược chiều:
+        const isCoMoving = b.walking && Math.cos((a.yaw || 0) - (b.yaw || 0)) > 0.35;
+        const effectiveSensoryRange = isCoMoving ? 0.85 : SENSORY_RANGE;
+
+        if (d > effectiveSensoryRange || d < 0.001) {
+          if (a.dodgeSideMap && d > effectiveSensoryRange + 0.3) a.dodgeSideMap.delete(bId);
+          continue;
+        }
 
         // Chiếu lên hướng di chuyển (trước / sau)
         const forward = relX * dirX + relZ * dirZ;
-        if (forward < -0.1) continue; // Ở phía sau, bỏ qua
+        if (forward < -0.25) {
+          // Vật cản đã qua hẳn phía sau: giải phóng cam kết né
+          if (a.dodgeSideMap) a.dodgeSideMap.delete(bId);
+          continue;
+        }
 
         // Độ lệch trên trục bên phải (projRight)
         // > 0: vật cản bên phải; < 0: vật cản bên trái
@@ -116,7 +128,7 @@
         const corridorRatio = absProjRight / SENSORY_CORRIDOR;
         const latFalloff = 1.0 - corridorRatio * corridorRatio;
 
-        const prox = (SENSORY_RANGE - d) / SENSORY_RANGE;
+        const prox = (effectiveSensoryRange - d) / effectiveSensoryRange;
 
         // Nhận diện hàng người đứng chờ (Queueing):
         // Chỉ áp dụng cho người thường xếp hàng; Hero làm đại lễ không bị nghẽn sau người chờ
@@ -129,16 +141,21 @@
           }
         }
 
-        // Chọn hướng lách:
-        // Nếu vật cản bên phải (projRight > 0.04) -> Lách sang trái (-right)
-        // Nếu vật cản bên trái (projRight < -0.04) -> Lách sang phải (+right)
-        // Nếu đối đầu trực diện (|projRight| <= 0.04) -> Lách sang phải theo thói quen (+right)
+        // Chọn hướng lách có bộ nhớ cam kết (Avoidance Commitment & Hysteresis):
+        // Quy tắc chuẩn giao thông đường bộ: luôn ưu tiên lách sang bên phải của mình (steerSide = 1) khi đối đầu trực diện
         let steerSide = 1;
-        if (projRight > 0.04) steerSide = -1;
-        else if (projRight < -0.04) steerSide = 1;
-        else steerSide = a.dodgePref !== undefined ? a.dodgePref : 1;
+        if (!a.dodgeSideMap) a.dodgeSideMap = new Map();
+        else if (a.dodgeSideMap.size > 8) a.dodgeSideMap.clear();
+        if (a.dodgeSideMap.has(bId)) {
+          steerSide = a.dodgeSideMap.get(bId);
+        } else {
+          if (projRight > 0.05) steerSide = -1; // Vật cản bên phải -> lách trái
+          else if (projRight < -0.05) steerSide = 1; // Vật cản bên trái -> lách phải
+          else steerSide = 1; // Đối đầu trực diện: cả 2 cùng lách sang phải (Rule of the Road), không bao giờ lách chung một hướng thế giới
+          a.dodgeSideMap.set(bId, steerSide);
+        }
 
-        let avoidStrength = Math.pow(prox, 1.2) * 2.8 * latFalloff;
+        let avoidStrength = Math.pow(prox, 1.2) * (isCoMoving ? 1.5 : 2.8) * latFalloff;
 
         // Ưu tiên nhường đường và xử lý chướng ngại vật:
         if (bStatic) {
@@ -157,7 +174,7 @@
           }
         } else if (aIsHero && !bIsHero) {
           // a là nhân vật chính làm đại lễ, b là người thường đang di chuyển -> a có quyền ưu tiên
-          if (b.walking) avoidStrength *= 0.6;
+          if (b.walking) avoidStrength *= 0.15;
         }
 
         if (!queueAhead) {
@@ -196,12 +213,15 @@
     // Tốc độ thực tế sau khi tính toán
     const speed = baseSpeed * (a.speedMult || 1.0) * throttle;
 
-    // Lọc mượt lực né (Exponential Moving Average) để triệt tiêu sốc gia tốc và hiện tượng giật rung giữa các khung hình
-    const avoidK = Math.min(1, dt * 10.0);
-    a.smoothAvoidX = (a.smoothAvoidX || 0) + (avoidX - (a.smoothAvoidX || 0)) * avoidK;
-    a.smoothAvoidZ = (a.smoothAvoidZ || 0) + (avoidZ - (a.smoothAvoidZ || 0)) * avoidK;
+    // Lọc mượt lực né (EMA) với tốc độ phân rã êm ái triệt tiêu rung giật
+    const kX = Math.abs(avoidX) > Math.abs(a.smoothAvoidX || 0) ? dt * 7.0 : dt * 4.5;
+    const kZ = Math.abs(avoidZ) > Math.abs(a.smoothAvoidZ || 0) ? dt * 7.0 : dt * 4.5;
+    a.smoothAvoidX = (a.smoothAvoidX || 0) + (avoidX - (a.smoothAvoidX || 0)) * Math.min(1, kX);
+    a.smoothAvoidZ = (a.smoothAvoidZ || 0) + (avoidZ - (a.smoothAvoidZ || 0)) * Math.min(1, kZ);
 
-    let moveVx = dirX + a.smoothAvoidX;
+    // Khi đang né sang ngang, làm dịu lực kéo hồi về tim đường để tránh dao động dội mép hành lang
+    const lateralDamp = aIsHero ? 1.0 : Math.max(0.25, 1.0 - Math.min(0.75, Math.abs(a.smoothAvoidX || 0) * 0.85));
+    let moveVx = dirX * lateralDamp + a.smoothAvoidX;
     let moveVz = dirZ + a.smoothAvoidZ;
     const vLen = Math.hypot(moveVx, moveVz);
 
@@ -214,8 +234,8 @@
     let stepDz = moveVz * dt;
     const stepDist = Math.hypot(stepDx, stepDz);
 
-    // Giới hạn bước không vượt quá đích nếu không có lực né
-    if (avoidX === 0 && avoidZ === 0 && stepDist > distTarget) {
+    // Giới hạn bước không vượt quá đích
+    if (stepDist > distTarget) {
       stepDx = (stepDx / stepDist) * distTarget;
       stepDz = (stepDz / stepDist) * distTarget;
     }
@@ -228,14 +248,18 @@
     a.phase = (a.phase || 0) + (actualMoved * Math.PI) / STRIDE;
 
     // Xoay mặt mềm mại theo hướng chuyển động thực tế (chỉ xoay khi quãng đường di chuyển đủ rõ ràng để tránh giật góc khi đứng gần như tại chỗ)
-    if (actualMoved > 0.006) {
+    if (actualMoved > 0.005) {
       if (!keepYaw) {
         const targetYaw = Math.atan2(-stepDx, -stepDz);
         a.yaw = lerpAngle(a.yaw || 0, targetYaw, Math.min(1, dt * 5.0));
       }
       a.walking = true;
-    } else if (throttle <= 0.05) {
-      a.walking = false;
+      a.idleFrames = 0;
+    } else if (throttle <= 0.04) {
+      a.idleFrames = (a.idleFrames || 0) + 1;
+      if (a.idleFrames >= 3) {
+        a.walking = false;
+      }
     }
 
     return distTarget <= 0.08;

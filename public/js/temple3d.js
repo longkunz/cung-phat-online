@@ -2497,6 +2497,17 @@ function walkOut(a) {
   a.member = false;
   a.waiting = false;
   a.vipRank = 0;
+  a.sticks = 0;
+  a.handPose = null;
+  a.heroStage = '';
+  a.bowSpot = -1;
+  a.goldTrail = false;
+  a.glow = 0;
+  if (typeof CrowdNav !== 'undefined' && typeof CrowdNav.cleanupAvatarRitual === 'function') {
+    CrowdNav.cleanupAvatarRitual(a);
+    a.leaving = true;
+    a.stuck = false;
+  }
   ensureTag(a);
   const steps = [];
   if (a.atSeat >= 0) {
@@ -2956,7 +2967,19 @@ const BELL_SPOT = new THREE.Vector3(BELL_POS.x + 1.5, 0, BELL_POS.z + 1.6);
 
 const countGuests = (kind) => avatars.filter((x) => x.active && x.guestKind === kind && !x.fade).length;
 // ra về: theo thảm ra cửa chính, bước qua ngưỡng rồi mờ dần trong ánh sáng ngoài cửa
-const exitSteps = (speed = GUEST_SPEED) => [moveStep(DOOR_IN.clone(), speed), moveStep(DOOR_OUT.clone(), speed), waitStep(0.05, (av) => despawn(av))];
+const exitSteps = (speed = GUEST_SPEED) => [
+  waitStep(0.01, (av) => {
+    av.sticks = 0;
+    av.handPose = null;
+    av.heroStage = '';
+    av.bowSpot = -1;
+    av.goldTrail = false;
+    av.glow = 0;
+  }),
+  moveStep(DOOR_IN.clone(), speed),
+  moveStep(DOOR_OUT.clone(), speed),
+  waitStep(0.05, (av) => despawn(av))
+];
 function toHallSteps(a, speed = GUEST_SPEED) {
   return a.pos.z > HALL_FRONT - 2.5 ? [moveStep(DOOR_IN.clone(), speed)] : [];
 }
@@ -3475,7 +3498,7 @@ function updateAvatars(dt, t) {
       put('foot', _j1, T.feet);
     }
     // nhang cầm tay
-    if (a.sticks > 0) {
+    if (a.sticks > 0 && !a.leaving && a.heroStage !== 'back' && !a.fade) {
       _v.addVectors(a.hands[0], a.hands[1]).multiplyScalar(0.5);
       _v.y += 0.02;
       _j1.copy(_torso).multiply(_m.compose(_v, _q.setFromEuler(_e.set(-0.12 + a.torsoS * 0.6, 0, 0, 'XYZ')), _one));

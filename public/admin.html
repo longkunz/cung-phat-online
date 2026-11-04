@@ -112,10 +112,16 @@
     .tts-status { font-size: 13px; color: var(--gold-light); }
     .tts-form { display: flex; flex-direction: column; gap: 16px; }
     .tts-form fieldset { border: 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    #crowdSettingsFields { display: flex; flex-direction: column; gap: 14px; border: 0; padding: 0; margin: 0; }
+    .tt-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
+    .tt-grid label { grid-column: 1 / -1; font-size: 14px; font-weight: 600; margin-top: 6px; }
+    .tt-grid .tt-label-first { margin-top: 0; }
+    .tt-actions { display: flex; gap: 8px; }
+    .tt-actions .btn { white-space: nowrap; }
     .btn:disabled { cursor: wait; opacity: 0.6; }
     .log-card { grid-column: 1 / -1; }
-    .audio-card { grid-column: 1 / -1; }
-    .audio-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .audio-cols { display: flex; flex-direction: column; gap: 20px; }
     .audio-cols h3 { margin: 0 0 12px; font-size: 16px; color: var(--gold-light); }
     .audio-form, .audio-form fieldset { display: flex; flex-direction: column; gap: 14px; border: 0; padding: 0; margin: 0; min-width: 0; }
     .playlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -132,11 +138,13 @@
     @media (max-width: 800px) {
       body { padding: 16px; }
       .grid { grid-template-columns: minmax(0, 1fr); }
-      .audio-cols { grid-template-columns: minmax(0, 1fr); }
       .top-bar { flex-direction: column; align-items: stretch; gap: 16px; }
       .top-title { font-size: 21px; }
       .top-links, .row { flex-wrap: wrap; }
       .row input { flex: 1 1 200px; }
+      .tt-grid { grid-template-columns: 1fr; }
+      .tt-actions { width: 100%; }
+      .tt-actions .btn { flex: 1; }
     }
     input, select, textarea {
       width: 100%;
@@ -180,35 +188,46 @@
     </header>
 
     <div class="grid">
+      <!-- Hàng 1, Cột 1: Cấu hình TikTok -->
       <section class="card">
-        <h2>📡 1. Kết Nối Phòng TikTok Live</h2>
+        <h2>📡 1. Cấu Hình TikTok Live</h2>
         <form id="tiktokSettingsForm" onsubmit="event.preventDefault();">
-          <div class="field">
-            <label for="ttUser">Tên Kênh TikTok Live (@username hoặc link phòng Live)</label>
-            <div class="row">
-              <input type="text" id="ttUser" placeholder="Ví dụ: @kenhcuaem hoặc https://www.tiktok.com/@kenhcuaem/live" />
+          <div class="tt-grid">
+            <label for="ttUser" class="tt-label-first">Tên Kênh TikTok Live (@username hoặc link phòng Live)</label>
+            <input type="text" id="ttUser" value="@thangbina" placeholder="Ví dụ: @thangbina hoặc link phòng Live" />
+            <div class="tt-actions">
               <button class="btn gold" type="button" id="btnConn">🚀 Kết Nối Live</button>
               <button class="btn" type="button" id="btnDisc">Ngắt</button>
             </div>
-          </div>
-          <div class="field" style="margin-top: 10px;">
-            <label for="ttApiKey">EulerStream Sign API Key (Tùy chọn — Nhập trực tiếp tại đây, không cần mở file .env)</label>
-            <div class="row">
-              <input type="password" id="ttApiKey" placeholder="Nhập key nếu có (để kết nối không giới hạn lượt gọi)..." autocomplete="off" />
-              <button class="btn" type="button" id="btnSaveTtChannel">💾 Lưu Cấu Hình Kênh</button>
+
+            <label for="ttApiKey">EulerStream Sign API Key (Tùy chọn)</label>
+            <input type="password" id="ttApiKey" placeholder="Nhập key nếu có (để kết nối không giới hạn lượt gọi)..." autocomplete="off" />
+            <div class="tt-actions">
+              <button class="btn" type="button" id="btnSaveTtChannel" style="width: 100%;">💾 Lưu Cấu Hình Kênh</button>
             </div>
           </div>
           <p class="feedback" id="ttStatus" role="status" style="margin-top: 10px;"></p>
-          <p class="help" id="ttHelp" style="margin-top: 6px;">
-            • Bạn có thể nhập và lưu tên kênh ngay tại đây, hệ thống sẽ tự động lưu vào cấu hình server và ghi nhớ qua các lần khởi động lại.<br/>
-            • Bấm <strong>"🚀 Kết Nối Live"</strong> sẽ tự động ghi nhớ tên kênh và tiến hành kiểm tra kết nối ngay lập tức.<br/>
-            • Không bắt buộc phải có API Key. Tuy nhiên nếu muốn kết nối liên tục không bị rate-limit của EulerStream, bạn có thể dán key miễn phí từ <a href="https://www.eulerstream.com/pricing" target="_blank" style="color: var(--gold-light);">eulerstream.com</a> trực tiếp vào ô trên mà không cần cấu hình file <code>.env</code>.
-          </p>
         </form>
       </section>
 
+      <!-- Hàng 1, Cột 2: Test comment -->
       <section class="card">
-        <h2>🎙️ 2. Cài Đặt Giọng Đọc TTS</h2>
+        <h2>💬 2. Test Comment (Giả Lập Bình Luận)</h2>
+        <div class="field">
+          <label for="simComment">Nội dung bình luận giả lập</label>
+          <div class="row">
+            <input type="text" id="simComment" value="Con xin gieo quẻ cầu tài lộc đầu tháng ạ" placeholder="Nhập nội dung bình luận TikTok..." />
+            <button class="btn gold" id="btnSendComment">Gửi Comment</button>
+          </div>
+        </div>
+        <p class="help" style="margin-top: 4px;">
+          Từ khóa tự động nhận diện: <code>thắp hương</code>, <code>bái phật</code>, <code>cầu ...</code>, <code>xin xăm / gieo quẻ</code>, <code>thỉnh chuông</code>, <code>gõ mõ</code>.
+        </p>
+      </section>
+
+      <!-- Hàng 2, Cột 1: Cấu hình TTS -->
+      <section class="card">
+        <h2>🎙️ 3. Cài Đặt Giọng Đọc TTS</h2>
         <p class="tts-status" id="ttsServiceStatus" role="status">Đang kiểm tra dịch vụ TTS...</p>
         <form class="tts-form" id="ttsSettingsForm">
           <fieldset id="ttsSettingsFields" disabled>
@@ -238,8 +257,9 @@
         <audio id="adminAudioPreview" aria-label="Nghe thử giọng TTS" controls style="width: 100%; height: 38px;"></audio>
       </section>
 
-      <section class="card audio-card">
-        <h2>🎵 3. Âm Thanh &amp; Nhạc Nền</h2>
+      <!-- Hàng 2, Cột 2: Cấu hình âm thanh -->
+      <section class="card">
+        <h2>🎵 4. Cài Đặt Âm Thanh &amp; Nhạc Nền</h2>
         <form class="audio-form" id="audioSettingsForm">
           <fieldset id="audioSettingsFields">
             <div class="audio-cols">
@@ -284,8 +304,9 @@
         </form>
       </section>
 
+      <!-- Hàng 3, Cột 1: Biển người -->
       <section class="card">
-        <h2>👥 4. Biển Người Phía Sau</h2>
+        <h2>👥 5. Biển Người Phía Sau</h2>
         <form id="crowdSettingsForm">
           <fieldset id="crowdSettingsFields">
             <div class="field">
@@ -307,8 +328,9 @@
         </form>
       </section>
 
+      <!-- Hàng 3, Cột 2: Gửi lệnh tương tác -->
       <section class="card">
-        <h2>🙏 5. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
+        <h2>🙏 6. Gửi Lệnh Tương Tác JSON-RPC 2.0</h2>
         <div class="row">
           <input type="text" id="rpcUser" value="Đại Thí Chủ Minh Tâm" placeholder="Tên người xem..." />
           <input type="text" id="rpcWish" value="Cầu gia đạo bình an, tài lộc vượng phát" placeholder="Lời cầu nguyện..." />
@@ -325,17 +347,7 @@
         </div>
       </section>
 
-      <section class="card">
-        <h2>💬 6. Giả Lập Bình Luận Người Xem TikTok</h2>
-        <div class="row">
-          <input type="text" id="simComment" value="Con xin gieo quẻ cầu tài lộc đầu tháng ạ" placeholder="Nhập nội dung bình luận TikTok..." />
-          <button class="btn gold" id="btnSendComment">Gửi Comment</button>
-        </div>
-        <p style="font-size: 13px; color: var(--muted);">
-          Từ khóa tự động nhận diện: <code>thắp hương</code>, <code>bái phật</code>, <code>cầu ...</code>, <code>xin xăm / gieo quẻ</code>, <code>thỉnh chuông</code>, <code>gõ mõ</code>.
-        </p>
-      </section>
-
+      <!-- Hàng 4 (Toàn chiều rộng): Nhật ký phản hồi RPC -->
       <section class="card log-card">
         <h2>🔌 7. Nhật Ký Phản Hồi JSON-RPC 2.0 (`/rpc`)</h2>
         <pre id="rpcOutput">{ "status": "Sẵn sàng nhận lệnh JSON-RPC 2.0" }</pre>
@@ -701,13 +713,18 @@
         statusEl.dataset.error = 'true';
       } else {
         const savedCh = settings.tiktokUsername || tt.username;
-        statusEl.textContent = `⚪ Chưa kết nối TikTok Live${savedCh ? ` (Kênh đã lưu: @${savedCh})` : ''}.`;
+        statusEl.textContent = `⚪ Chưa kết nối TikTok Live${savedCh ? ` (Kênh: @${savedCh})` : ' (Kênh mặc định: @thangbina)'}.`;
         statusEl.dataset.error = 'false';
       }
       if (!ttDirty) {
         const ttUserEl = document.getElementById('ttUser');
-        if (ttUserEl && !ttUserEl.value && (settings.tiktokUsername || tt.username)) {
-          ttUserEl.value = settings.tiktokUsername || tt.username;
+        if (ttUserEl) {
+          const ch = settings.tiktokUsername || tt.username;
+          if (ch) {
+            ttUserEl.value = ch.startsWith('@') ? ch : `@${ch}`;
+          } else if (!ttUserEl.value) {
+            ttUserEl.value = '@thangbina';
+          }
         }
         const ttApiKeyEl = document.getElementById('ttApiKey');
         if (ttApiKeyEl && !ttApiKeyEl.value && settings.signApiKey) {

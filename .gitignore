@@ -7,6 +7,7 @@ embedded-assets.js
 *.log
 *.m4a
 public/assets/bg_chant.m4a
+test_out_*.wav
 
 __pycache__/
 *.pyc

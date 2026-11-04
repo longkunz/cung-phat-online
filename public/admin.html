@@ -749,16 +749,22 @@
       }
     }
 
+    function applyState(st) {
+      if (!st) return;
+      document.getElementById('statusBanner').textContent =
+        `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | Giọng đọc: ${voiceLabels[st.tts?.voice] || st.tts?.voice || 'Mai Chi'}`;
+      renderTtsSettings(st);
+      renderAudioSettings(st);
+      renderCrowdSettings(st);
+      renderTikTokStatus(st);
+    }
+
     async function refreshStatus() {
       try {
         const res = await fetch('/api/state');
         if (!res.ok) throw new Error('Không tải được trạng thái hệ thống.');
         const st = await res.json();
-        document.getElementById('statusBanner').textContent =
-          `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | Giọng đọc: ${voiceLabels[st.tts?.voice] || st.tts?.voice || 'Mai Chi'}`;
-        renderTtsSettings(st);
-        renderAudioSettings(st);
-        renderTikTokStatus(st);
+        applyState(st);
       } catch (_) {
         ttsReady = false;
         document.getElementById('ttsServiceStatus').textContent = 'Không kết nối được dịch vụ TTS. Đang thử lại...';
@@ -767,6 +773,25 @@
     }
     refreshStatus();
     setInterval(refreshStatus, 4000);
+
+    // Đồng bộ thời gian thực 2 chiều với Trang chủ & TikTok Live qua WebSocket
+    function initAdminWs() {
+      if (typeof WebSocket === 'undefined') return;
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${proto}//${location.host}/ws`);
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.method === 'temple.state' && msg.params) {
+              applyState(msg.params);
+            }
+          } catch (_) {}
+        };
+        ws.onclose = () => setTimeout(initAdminWs, 3000);
+      } catch (_) {}
+    }
+    initAdminWs();
   </script>
 </body>
 </html>

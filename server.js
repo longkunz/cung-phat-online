@@ -2099,6 +2099,17 @@ app.get('/index.html', adminAuthMiddleware, (req, res) => {
 });
 app.use(['/admin', '/admin.html'], adminAuthMiddleware);
 
+// Dự phòng nhạc nền mặc định: chuyển tiếp default.mp3 sang default.wav nếu chưa có mp3
+app.get('/assets/audio/bg/default.mp3', (_req, res, next) => {
+  const mp3Path = path.join(__dirname, 'public', 'assets', 'audio', 'bg', 'default.mp3');
+  if (fs.existsSync(mp3Path)) return next();
+  const wavPath = path.join(__dirname, 'public', 'assets', 'audio', 'bg', 'default.wav');
+  if (fs.existsSync(wavPath)) {
+    return res.sendFile(wavPath);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 // Three.js cho Chánh Điện 3D, phục vụ từ node_modules (không phụ thuộc CDN khi đang live)
 app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));

@@ -54,6 +54,7 @@ let stageScale = 1;
 
 const audio = window.TempleAudioEngine ? new window.TempleAudioEngine() : null;
 window.addEventListener('pointerdown', () => audio?.ensureContext(), { once: true });
+window.addEventListener('keydown', () => audio?.ensureContext(), { once: true });
 if (OBS) {
   try { audio?.ensureContext(); } catch (_) {}
 }
@@ -4607,6 +4608,7 @@ function initQuickDock() {
   const btnMusic = document.getElementById('btnToggleMusic');
   btnMusic?.addEventListener('click', () => {
     if (!audio) return;
+    audio.ensureContext();
     audio.setMusicEnabled(!audio.bgMusicEnabled);
     btnMusic.textContent = `🎵 Nhạc Nền: ${audio.bgMusicEnabled ? 'BẬT' : 'TẮT'}`;
     btnMusic.classList.toggle('active-toggle', audio.bgMusicEnabled);

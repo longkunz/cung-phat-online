@@ -18,9 +18,8 @@ const SFX_CONFIG = {
 };
 
 const DEFAULT_BG_CANDIDATES = [
-  '/assets/audio/bg/default.mp3',
   '/assets/audio/bg/default.wav',
-  '/assets/bg_chant.m4a'
+  '/assets/audio/bg/default.mp3'
 ];
 
 function extractYouTubeId(urlOrId) {
@@ -264,7 +263,7 @@ class TempleAudioEngine {
       el = document.createElement('div');
       el.id = 'temple-yt-container';
       el.setAttribute('aria-hidden', 'true');
-      el.style.cssText = 'position:fixed;bottom:-9999px;right:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;z-index:-1;';
+      el.style.cssText = 'position:fixed;bottom:0;right:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-10;';
       document.body.appendChild(el);
     }
     return el;
@@ -285,8 +284,8 @@ class TempleAudioEngine {
 
     try {
       this.ytPlayer = new window.YT.Player('temple-yt-iframe', {
-        height: '1',
-        width: '1',
+        height: '200',
+        width: '200',
         videoId: this.youtubeVideoId || undefined,
         playerVars: {
           autoplay: 0,
@@ -305,7 +304,15 @@ class TempleAudioEngine {
               event.target.setVolume(Math.round(targetVol * 100));
             } catch (_) {}
             if (this.bgMusicEnabled && this.unlocked && this.youtubeVideoId) {
-              try { event.target.playVideo(); } catch (_) {}
+              try {
+                if (typeof event.target.loadVideoById === 'function') {
+                  event.target.loadVideoById(this.youtubeVideoId);
+                } else if (typeof event.target.playVideo === 'function') {
+                  event.target.playVideo();
+                }
+              } catch (_) {
+                this.startLocalBgAudio();
+              }
             }
           },
           onStateChange: (event) => {
@@ -341,7 +348,9 @@ class TempleAudioEngine {
             if (!this.bgMusicEnabled || !this.unlocked) {
               this.ytPlayer.pauseVideo();
             }
-          } catch (_) {}
+          } catch (_) {
+            this.startLocalBgAudio();
+          }
         } else {
           this.initYouTubeApi();
         }
@@ -365,7 +374,15 @@ class TempleAudioEngine {
       try {
         const res = await fetch(path, { method: 'HEAD' });
         if (res.ok && this.bgAudio) {
-          this.bgAudio.src = path;
+          const wasPlaying = !this.bgAudio.paused;
+          const needChange = !this.bgAudio.src || !this.bgAudio.src.endsWith(path);
+          if (needChange) {
+            this.bgAudio.src = path;
+            if (this.bgMusicEnabled && (this.unlocked || wasPlaying)) {
+              const p = this.bgAudio.play();
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            }
+          }
           break;
         }
       } catch (_) {}
@@ -421,7 +438,6 @@ class TempleAudioEngine {
 
   setMusicEnabled(enabled) {
     const v = Boolean(enabled);
-    if (v === this.bgMusicEnabled) return;
     this.bgMusicEnabled = v;
     if (v) {
       if (this.unlocked) this.startMusic();

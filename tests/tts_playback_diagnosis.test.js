@@ -91,7 +91,7 @@ describe("TTS Playback & Fallback Removal Diagnosis", () => {
     process.env.NODE_ENV = "test";
     const http = await import("http");
     let synthCalls = 0;
-    const testPort = 8094;
+    let testPort;
     const server = http.createServer((req, res) => {
       if (req.method === "GET" && req.url === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -111,7 +111,8 @@ describe("TTS Playback & Fallback Removal Diagnosis", () => {
       }
     });
 
-    await new Promise((r) => server.listen(testPort, r));
+    await new Promise((r) => server.listen(0, r));
+    testPort = server.address().port;
 
     try {
       const { ZeroTTSManager } = await import("../server.js");

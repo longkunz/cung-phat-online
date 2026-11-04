@@ -311,13 +311,13 @@ const DEFAULT_STATE = {
     autoSimIntervalMs: 9500,
     crowdSeaMode: 'always',
     crowdSeaThreshold: 100,
-    tiktokUsername: process.env.TIKTOK_USER || '',
+    tiktokUsername: process.env.TIKTOK_USER || 'thangbina',
     signApiKey: process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY || ''
   },
   tiktok: {
     connected: false,
     connecting: false,
-    username: process.env.TIKTOK_USER || '',
+    username: process.env.TIKTOK_USER || 'thangbina',
     roomId: null,
     viewerCount: 0,
     lastError: null
@@ -329,7 +329,7 @@ function loadState() {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
       const savedSettings = saved.settings || {};
-      const savedChannel = savedSettings.tiktokUsername || process.env.TIKTOK_USER || saved.tiktok?.username || '';
+      const savedChannel = (savedSettings.tiktokUsername !== undefined && savedSettings.tiktokUsername !== '') ? savedSettings.tiktokUsername : (process.env.TIKTOK_USER || 'thangbina');
       return {
         ...DEFAULT_STATE,
         ...saved,

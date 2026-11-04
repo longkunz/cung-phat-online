@@ -310,12 +310,14 @@ const DEFAULT_STATE = {
     autoSim: false,
     autoSimIntervalMs: 9500,
     crowdSeaMode: 'always',
-    crowdSeaThreshold: 100
+    crowdSeaThreshold: 100,
+    tiktokUsername: process.env.TIKTOK_USER || '',
+    signApiKey: process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY || ''
   },
   tiktok: {
     connected: false,
     connecting: false,
-    username: 'zenfacts_vn',
+    username: process.env.TIKTOK_USER || '',
     roomId: null,
     viewerCount: 0,
     lastError: null
@@ -326,6 +328,8 @@ function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      const savedSettings = saved.settings || {};
+      const savedChannel = savedSettings.tiktokUsername || process.env.TIKTOK_USER || saved.tiktok?.username || '';
       return {
         ...DEFAULT_STATE,
         ...saved,
@@ -333,10 +337,15 @@ function loadState() {
         offerings: { ...DEFAULT_STATE.offerings, ...(saved.offerings || {}) },
         settings: {
           ...DEFAULT_STATE.settings,
-          ...(saved.settings || {}),
-          sfx: { ...DEFAULT_STATE.settings.sfx, ...(saved.settings?.sfx || {}) }
+          ...savedSettings,
+          tiktokUsername: savedChannel,
+          signApiKey: savedSettings.signApiKey || process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY || '',
+          sfx: { ...DEFAULT_STATE.settings.sfx, ...(savedSettings.sfx || {}) }
         },
-        tiktok: { ...DEFAULT_STATE.tiktok }
+        tiktok: {
+          ...DEFAULT_STATE.tiktok,
+          username: savedChannel
+        }
       };
     }
   } catch (e) {
@@ -831,13 +840,24 @@ const Rituals = {
         (typeof params.crowdSeaThreshold !== 'number' || !Number.isFinite(params.crowdSeaThreshold) || params.crowdSeaThreshold < 1)) {
       throw new Error('Ngưỡng số lượng người phải là số nguyên >= 1');
     }
+    if (params.tiktokUsername !== undefined) {
+      if (typeof params.tiktokUsername !== 'string') throw new Error('Tên kênh TikTok phải là chuỗi ký tự');
+      const clean = params.tiktokUsername.trim().replace(/^@/, '');
+      params = { ...params, tiktokUsername: clean };
+      state.tiktok.username = clean;
+    }
+    if (params.signApiKey !== undefined) {
+      if (typeof params.signApiKey !== 'string') throw new Error('EulerStream Sign API Key phải là chuỗi ký tự');
+      params = { ...params, signApiKey: params.signApiKey.trim() };
+    }
     // Chỉ nhận các khóa cài đặt hợp lệ, tránh client ghi đè rác vào state/merit-state.json
     const ALLOWED_KEYS = [
       'ttsEnabled', 'ttsVoice', 'ttsVolume',
       'musicVolume', 'bgMusicEnabled', 'youtubeUrl',
       'sfxEnabled', 'sfxVolume', 'sfx',
       'smokeDensity', 'autoSim', 'autoSimIntervalMs',
-      'crowdSeaMode', 'crowdSeaThreshold'
+      'crowdSeaMode', 'crowdSeaThreshold',
+      'tiktokUsername', 'signApiKey'
     ];
     const patch = {};
     for (const key of ALLOWED_KEYS) {
@@ -1571,6 +1591,25 @@ class LikeBatchAccumulator {
 
 let activeLikeAccumulator = null;
 
+function extractTikTokErrorMessage(err, username = '') {
+  const raw = err?.exception || err;
+  const msg = raw?.message || (typeof raw === 'string' ? raw : (err?.info || ''));
+  const name = raw?.name || err?.name || '';
+
+  if (name === 'SignatureRateLimitError' || msg.includes('Rate Limited') || msg.includes('rate_limit_account_hour')) {
+    const retryMs = raw?.retryAfter || err?.retryAfter;
+    const retryMinutes = retryMs ? Math.ceil(retryMs / 60000) : 30;
+    return `Đã vượt quá giới hạn kết nối của máy chủ tạo chữ ký EulerStream (thử lại sau khoảng ${retryMinutes} phút). Để kết nối liên tục không giới hạn, hãy cấu hình SIGN_API_KEY trong file .env (đăng ký API key miễn phí tại https://www.eulerstream.com/pricing).`;
+  }
+  if (name === 'UserOfflineError' || msg.includes("isn't online") || msg.includes('offline')) {
+    return `Kênh @${username} hiện không phát trực tiếp (offline). Vui lòng kiểm tra lại tài khoản TikTok.`;
+  }
+  if (name === 'InvalidUniqueIdError' || msg.includes('Invalid uniqueId')) {
+    return `Tên tài khoản @${username} không hợp lệ trên TikTok.`;
+  }
+  return msg || 'Không thể kết nối phòng Live (kiểm tra tài khoản đang phát Live chưa)';
+}
+
 async function connectTikTokLive(usernameOrUrl) {
   const cleanUser = await resolveTikTokUsername(usernameOrUrl);
   if (!cleanUser) {
@@ -1592,12 +1631,17 @@ async function connectTikTokLive(usernameOrUrl) {
     viewerCount: 0,
     lastError: null
   };
+  // Tự động lưu tên kênh đã nhập vào cài đặt để ghi nhớ qua các lần khởi động
+  state.settings.tiktokUsername = cleanUser;
+  saveState();
   broadcastNotification('temple.state', getPublicState());
 
+  const signApiKey = state.settings?.signApiKey || process.env.SIGN_API_KEY || process.env.TIKTOK_SIGN_API_KEY;
   const conn = new TikTokLiveConnection(cleanUser, {
     processInitialData: true,
-    fetchRoomInfoOnConnect: false,
-    enableExtendedGiftInfo: false
+    fetchRoomInfoOnConnect: true,
+    enableExtendedGiftInfo: false,
+    signApiKey: signApiKey || undefined
   });
   tiktokConn = conn;
   // Sự kiện từ kết nối cũ (đã bị thay thế) không được ghi đè trạng thái của kết nối mới
@@ -1623,10 +1667,32 @@ async function connectTikTokLive(usernameOrUrl) {
   });
 
   on(ControlEvent.ERROR, (err) => {
-    state.tiktok.lastError = err?.message || String(err);
+    state.tiktok.lastError = extractTikTokErrorMessage(err, cleanUser);
     console.warn('[TikTok Live Warning]', state.tiktok.lastError);
     broadcastNotification('temple.state', getPublicState());
   });
+
+  // Pre-check xem kênh có đang phát live hay không trước khi gọi connect() (tránh tiêu tốn quota ký của EulerStream)
+  try {
+    const isLive = await conn.fetchIsLive();
+    if (isLive === false) {
+      state.tiktok.connected = false;
+      state.tiktok.connecting = false;
+      state.tiktok.lastError = `Kênh @${cleanUser} hiện không phát trực tiếp (offline). Vui lòng kiểm tra lại tài khoản TikTok.`;
+      broadcastNotification('temple.state', getPublicState());
+      throw new Error(state.tiktok.lastError);
+    }
+  } catch (checkErr) {
+    if (checkErr.message?.includes('offline') || checkErr.name === 'UserOfflineError' || checkErr.message?.includes('không phát trực tiếp')) {
+      state.tiktok.connected = false;
+      state.tiktok.connecting = false;
+      state.tiktok.lastError = `Kênh @${cleanUser} hiện không phát trực tiếp (offline). Vui lòng kiểm tra lại tài khoản TikTok.`;
+      broadcastNotification('temple.state', getPublicState());
+      throw new Error(state.tiktok.lastError);
+    }
+    // Nếu kiểm tra HTML ban đầu gặp lỗi mạng/captcha, ghi nhận cảnh báo và để conn.connect() thử tiếp
+    console.warn(`[TikTok Live Pre-check] @${cleanUser}:`, checkErr.message || checkErr);
+  }
 
   on(WebcastEvent.ROOM_USER, (data) => {
     const viewerCount = Number(data?.total ?? data?.viewerCount ?? 0);
@@ -1756,7 +1822,7 @@ async function connectTikTokLive(usernameOrUrl) {
     if (!isCurrent()) throw err;
     state.tiktok.connected = false;
     state.tiktok.connecting = false;
-    state.tiktok.lastError = err?.message || 'Không thể kết nối phòng Live (kiểm tra tài khoản đang phát Live chưa)';
+    state.tiktok.lastError = extractTikTokErrorMessage(err, cleanUser);
     broadcastNotification('temple.state', getPublicState());
     throw new Error(state.tiktok.lastError);
   }
@@ -2215,14 +2281,6 @@ if (process.env.NO_SERVER_LISTEN !== '1') {
   // Khôi phục chế độ giả lập đã lưu trong merit-state.json (trước đây cờ được lưu nhưng timer không chạy lại)
   if (state.settings.autoSim) {
     configureAutoSim(true);
-  }
-
-  // Tự động kết nối tới @zenfacts_vn ngay khi khởi động server
-  const defaultChannel = process.env.TIKTOK_USER || state.tiktok?.username || 'zenfacts_vn';
-  if (defaultChannel) {
-    connectTikTokLive(defaultChannel).catch((err) => {
-      console.warn(`[Auto-Connect @${defaultChannel}] Chưa kết nối được ngay:`, err.message);
-    });
   }
 });
 }

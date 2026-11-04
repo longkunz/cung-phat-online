@@ -182,11 +182,29 @@
     <div class="grid">
       <section class="card">
         <h2>📡 1. Kết Nối Phòng TikTok Live</h2>
-        <div class="row">
-          <input type="text" id="ttUser" placeholder="Nhập @username TikTok đang phát Live..." />
-          <button class="btn gold" id="btnConn">Kết Nối Live</button>
-          <button class="btn" id="btnDisc">Ngắt</button>
-        </div>
+        <form id="tiktokSettingsForm" onsubmit="event.preventDefault();">
+          <div class="field">
+            <label for="ttUser">Tên Kênh TikTok Live (@username hoặc link phòng Live)</label>
+            <div class="row">
+              <input type="text" id="ttUser" placeholder="Ví dụ: @kenhcuaem hoặc https://www.tiktok.com/@kenhcuaem/live" />
+              <button class="btn gold" type="button" id="btnConn">🚀 Kết Nối Live</button>
+              <button class="btn" type="button" id="btnDisc">Ngắt</button>
+            </div>
+          </div>
+          <div class="field" style="margin-top: 10px;">
+            <label for="ttApiKey">EulerStream Sign API Key (Tùy chọn — Nhập trực tiếp tại đây, không cần mở file .env)</label>
+            <div class="row">
+              <input type="password" id="ttApiKey" placeholder="Nhập key nếu có (để kết nối không giới hạn lượt gọi)..." autocomplete="off" />
+              <button class="btn" type="button" id="btnSaveTtChannel">💾 Lưu Cấu Hình Kênh</button>
+            </div>
+          </div>
+          <p class="feedback" id="ttStatus" role="status" style="margin-top: 10px;"></p>
+          <p class="help" id="ttHelp" style="margin-top: 6px;">
+            • Bạn có thể nhập và lưu tên kênh ngay tại đây, hệ thống sẽ tự động lưu vào cấu hình server và ghi nhớ qua các lần khởi động lại.<br/>
+            • Bấm <strong>"🚀 Kết Nối Live"</strong> sẽ tự động ghi nhớ tên kênh và tiến hành kiểm tra kết nối ngay lập tức.<br/>
+            • Không bắt buộc phải có API Key. Tuy nhiên nếu muốn kết nối liên tục không bị rate-limit của EulerStream, bạn có thể dán key miễn phí từ <a href="https://www.eulerstream.com/pricing" target="_blank" style="color: var(--gold-light);">eulerstream.com</a> trực tiếp vào ô trên mà không cần cấu hình file <code>.env</code>.
+          </p>
+        </form>
       </section>
 
       <section class="card">
@@ -397,11 +415,52 @@
       }
     }
 
-    document.getElementById('btnConn').onclick = () => {
+    let ttDirty = false;
+    document.getElementById('ttUser').addEventListener('input', () => { ttDirty = true; });
+    document.getElementById('ttApiKey').addEventListener('input', () => { ttDirty = true; });
+
+    document.getElementById('btnSaveTtChannel').onclick = async () => {
       const username = document.getElementById('ttUser').value.trim();
-      sendRpc('live.connect', { username });
+      const signApiKey = document.getElementById('ttApiKey').value.trim();
+      showFeedback('ttStatus', 'Đang lưu cấu hình kênh...', false);
+      try {
+        const patch = { tiktokUsername: username };
+        if (signApiKey) patch.signApiKey = signApiKey;
+        const res = await sendRpc('temple.updateSettings', patch);
+        if (res.error) throw new Error(res.error.message);
+        ttDirty = false;
+        showFeedback('ttStatus', `Đã lưu kênh mặc định: @${username || '(trống)'}. Server sẽ tự động nhớ kênh này.`);
+      } catch (err) {
+        showFeedback('ttStatus', `Lỗi lưu cấu hình: ${err.message}`, true);
+      }
     };
-    document.getElementById('btnDisc').onclick = () => sendRpc('live.disconnect', {});
+
+    document.getElementById('btnConn').onclick = async () => {
+      const username = document.getElementById('ttUser').value.trim();
+      const signApiKey = document.getElementById('ttApiKey').value.trim();
+      if (!username) {
+        showFeedback('ttStatus', 'Vui lòng nhập @username hoặc link TikTok Live.', true);
+        return;
+      }
+      if (signApiKey) {
+        try {
+          await sendRpc('temple.updateSettings', { signApiKey });
+        } catch (_) {}
+      }
+      showFeedback('ttStatus', `Đang kiểm tra và kết nối tới @${username}...`, false);
+      try {
+        const res = await sendRpc('live.connect', { username });
+        if (res.error) {
+          showFeedback('ttStatus', `Lỗi kết nối: ${res.error.message}`, true);
+        }
+      } catch (err) {
+        showFeedback('ttStatus', `Lỗi kết nối: ${err.message}`, true);
+      }
+    };
+    document.getElementById('btnDisc').onclick = async () => {
+      showFeedback('ttStatus', 'Đang ngắt kết nối...', false);
+      await sendRpc('live.disconnect', {});
+    };
     document.getElementById('btnSendComment').onclick = () => {
       const comment = document.getElementById('simComment').value.trim();
       sendRpc('temple.comment', { comment });
@@ -626,6 +685,37 @@
       }
     };
 
+    function renderTikTokStatus(st) {
+      const tt = st.tiktok || {};
+      const settings = st.settings || {};
+      const statusEl = document.getElementById('ttStatus');
+      if (!statusEl) return;
+      if (tt.connected) {
+        statusEl.textContent = `🟢 Đã kết nối Live: @${tt.username} (Phòng: ${tt.roomId || 'N/A'}) — Người xem: ${Number(tt.viewerCount || 0).toLocaleString('vi-VN')}`;
+        statusEl.dataset.error = 'false';
+      } else if (tt.connecting) {
+        statusEl.textContent = `🟡 Đang kết nối tới @${tt.username}...`;
+        statusEl.dataset.error = 'false';
+      } else if (tt.lastError) {
+        statusEl.textContent = `🔴 Lỗi kết nối: ${tt.lastError}`;
+        statusEl.dataset.error = 'true';
+      } else {
+        const savedCh = settings.tiktokUsername || tt.username;
+        statusEl.textContent = `⚪ Chưa kết nối TikTok Live${savedCh ? ` (Kênh đã lưu: @${savedCh})` : ''}.`;
+        statusEl.dataset.error = 'false';
+      }
+      if (!ttDirty) {
+        const ttUserEl = document.getElementById('ttUser');
+        if (ttUserEl && !ttUserEl.value && (settings.tiktokUsername || tt.username)) {
+          ttUserEl.value = settings.tiktokUsername || tt.username;
+        }
+        const ttApiKeyEl = document.getElementById('ttApiKey');
+        if (ttApiKeyEl && !ttApiKeyEl.value && settings.signApiKey) {
+          ttApiKeyEl.value = settings.signApiKey;
+        }
+      }
+    }
+
     async function refreshStatus() {
       try {
         const res = await fetch('/api/state');
@@ -635,6 +725,7 @@
           `Hương đã thắp: ${st.totalIncense} | Tổng Công Đức: ${st.totalMerit} | Giọng đọc: ${voiceLabels[st.tts?.voice] || st.tts?.voice || 'Mai Chi'}`;
         renderTtsSettings(st);
         renderAudioSettings(st);
+        renderTikTokStatus(st);
       } catch (_) {
         ttsReady = false;
         document.getElementById('ttsServiceStatus').textContent = 'Không kết nối được dịch vụ TTS. Đang thử lại...';

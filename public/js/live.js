@@ -783,10 +783,12 @@
     });
   });
 
-  document.getElementById('btnConnectTikTok')?.addEventListener('click', () => {
+  document.getElementById('btnConnectTikTok')?.addEventListener('click', async () => {
     const username = document.getElementById('inputTikTokUser')?.value.trim();
     if (!username) return;
-    callRpc('live.connect', { username });
+    try {
+      await callRpc('live.connect', { username });
+    } catch (_) {}
   });
 
   // Đảo theo trạng thái thật từ server (trước đây biến cục bộ luôn bắt đầu = false,
